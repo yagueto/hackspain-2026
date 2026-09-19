@@ -11,7 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
-import { MapLocation } from '../../core/models/operations';
+import { MapLocation, PRIORITY_LEVEL } from '../../core/models/operations';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { formatRouteDuration } from '../../core/services/routing';
 import { Icon } from '../../shared/icon/icon';
@@ -36,6 +36,7 @@ const normalize = (value: string) =>
 })
 export class Resources {
   readonly embedded = input(false);
+  protected readonly priorityLevels = PRIORITY_LEVEL;
   protected readonly store = inject(IncidentStore);
   private readonly simulation = inject(DemoRouteSimulation);
   private readonly route = inject(ActivatedRoute);

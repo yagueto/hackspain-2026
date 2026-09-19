@@ -199,7 +199,9 @@
               ><app-icon [name]="incident.icon" /><span
                 ><strong>{{ incident.id }} · {{ incident.title }}</strong
                 ><span>{{ incident.area }}</span></span
-              ><span class="badge">{{ incident.priority }} · {{ incident.status }}</span
+              ><span class="badge"
+                >{{ incident.priority ? priorityLevels[incident.priority] : '—' }} ·
+                {{ incident.status }}</span
               ><app-icon class="chevron" name="chevron"
             /></a>
           } @else {

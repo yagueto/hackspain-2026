@@ -321,5 +321,9 @@ describe('Individual dashboard views', () => {
         .slice(1)
         .map((option) => option.textContent?.trim()),
     ).toEqual(['1 · Crítica', '2 · Grave', '3 · Moderada', '4 · Baja']);
+    await harness.navigateByUrl('/?recurso=B-03');
+    expect(
+      harness.routeNativeElement!.querySelector('.current-assignment .badge')?.textContent?.trim(),
+    ).toBe('2 · Activa');
   });
 });
