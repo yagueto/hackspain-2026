@@ -161,6 +161,11 @@
   color: var(--text);
   text-decoration: underline;
 }
+.locate-button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
 @media (max-width: 800px) {
   .communication {
     min-width: 0;
@@ -189,6 +194,9 @@
   }
   .detail-link span {
     display: none;
+  }
+  .locate-button span {
+    display: inline;
   }
   .detail-link {
     padding-right: 4px;

@@ -109,7 +109,17 @@
     @if (selectedUnit(); as unit) {
       <header class="detail-heading">
         <div class="heading-title">
-          <span class="incident-icon active"><app-icon [name]="unit.icon" /></span>
+          @if (embedded()) {
+            <a
+              class="back-button"
+              routerLink="/"
+              aria-label="Volver a incidencias y recursos"
+              title="Volver"
+              ><app-icon name="back"
+            /></a>
+          } @else {
+            <span class="incident-icon active"><app-icon [name]="unit.icon" /></span>
+          }
           <h2>{{ unit.label }} · {{ serviceName(unit) }}</h2>
         </div>
         <span class="badge" [class.en-route]="unit.route?.status === 'active'">{{

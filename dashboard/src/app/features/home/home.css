@@ -39,30 +39,7 @@
 }
 .operations-column.detail-open {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
-}
-.back-button {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--muted);
-  background: var(--panel);
-  text-decoration: none;
-  font-size: 13px;
-}
-.back-button:hover {
-  color: var(--text);
-  background: var(--selected);
-}
-.back-button app-icon {
-  transform: rotate(180deg);
-  width: 16px;
-  height: 16px;
+  grid-template-rows: minmax(0, 1fr);
 }
 @media (max-width: 1200px) and (min-width: 801px) {
   .dashboard-grid {
@@ -90,6 +67,6 @@
     grid-template-rows: 350px 510px;
   }
   .operations-column.detail-open {
-    grid-template-rows: auto auto;
+    height: max(340px, min(60dvh, 580px));
   }
 }

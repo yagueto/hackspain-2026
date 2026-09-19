@@ -1,7 +1,6 @@
 import { computed, DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Observable, Subject } from 'rxjs';
-import { MOCK_COMMUNICATIONS } from '../../../core/data/operations.mock';
 import {
   HumanQuestion,
   IncomingQuestion,
@@ -92,17 +91,6 @@ export class OperationLogStore {
   start(): void {
     if (this.started) return;
     this.started = true;
-    for (const communication of MOCK_COMMUNICATIONS.slice(0, 2)) {
-      this.incidents.appendEvent({
-        id: `call:${communication.id}`,
-        incidentId: communication.incidentId,
-        occurredAt: new Date().toISOString(),
-        kind: 'call',
-        title: 'Llamada en curso',
-        description: `${communication.agent} tiene una llamada en curso para ${communication.incidentId}.`,
-        source: communication.vehicle,
-      });
-    }
     const tick = () => this.expireDue();
     const timer = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
@@ -402,23 +390,35 @@ export class OperationLogStore {
 
   private applyAction(action: QuestionAction, incidentId: string, questionId: string): string {
     if (action.type === 'set-status') {
-      this.incidents.applyUpdate({ incidentId, incident: { status: action.status } });
+      this.incidents.applyUpdate({
+        incidentId,
+        incident: { status: action.status },
+        event: {
+          id: `${questionId}:status`,
+          incidentId,
+          occurredAt: new Date().toISOString(),
+          kind: 'action',
+          title: `Estado actualizado · ${action.status}`,
+          description: `${incidentId} pasa de «${action.expectedStatus}» a «${action.status}».`,
+          source: 'Agente de coordinación',
+        },
+      });
       return `${incidentId} pasa a «${action.status}».`;
     }
     if (action.type === 'assign-resource') {
       const unit = this.simulation.project(
         this.incidents.units().find((item) => item.id === action.resourceId)!,
       );
-      this.incidents.reassignUnit(unit, incidentId);
+      this.incidents.reassignUnit(unit, incidentId, questionId);
       if (unit.incidentId && unit.incidentId !== incidentId)
         this.incidents.appendEvent({
           id: `${questionId}:transfer:${unit.id}`,
           incidentId: unit.incidentId,
           occurredAt: new Date().toISOString(),
           kind: 'assignment',
-          title: 'Recurso reasignado',
-          description: `${unit.id} ha sido reasignado a ${incidentId}.`,
-          source: 'Coordinación',
+          title: `Vehículo y equipo reasignados · ${unit.label}`,
+          description: `${unit.id} y su equipo pasan a ${incidentId}.`,
+          source: 'Agente de coordinación',
         });
       return `${unit.id} ha sido asignado a ${incidentId}${action.expectedIncidentId ? ` desde ${action.expectedIncidentId}` : ''}.`;
     }

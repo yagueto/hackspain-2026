@@ -17,6 +17,7 @@
   --selected: #f2f2f2;
   --resource-selected: #f4f4f4;
   --text: #454545;
+  --connection-text: #000;
   --muted: #777;
   --icon: #999;
   --icon-selected: #666;
@@ -50,6 +51,7 @@
   --selected: #222;
   --resource-selected: #202020;
   --text: #e5e5e5;
+  --connection-text: #e5e5e5;
   --muted: #b4b4b4;
   --icon: #979797;
   --icon-selected: #fff;
@@ -132,6 +134,17 @@ h2 {
 }
 .heading-title {
   gap: 9px;
+}
+.back-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  text-decoration: none;
 }
 .count-badge {
   padding: 3px 6px;

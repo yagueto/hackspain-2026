@@ -226,4 +226,100 @@ describe('Individual dashboard views', () => {
     expect(element.querySelectorAll('.signal-bars .active')).toHaveLength(1);
     fixture.destroy();
   });
+
+  it('shows calls and vehicle/personnel assignments in chronological order', async () => {
+    const harness = await RouterTestingHarness.create('/?incidencia=INC-001');
+    const element = harness.routeNativeElement!;
+    const entries = [...element.querySelectorAll('.timeline-event')];
+    const titles = entries.map((entry) => entry.querySelector('h3')?.textContent?.trim());
+    expect(titles).toContain('Llamada recibida · Central 112');
+    expect(titles).toContain('Llamada realizada · B-03');
+    expect(titles).toContain('Llamada recibida · B-03');
+    expect(titles).toContain('Vehículo asignado · B-03');
+    expect(titles).toContain('5 personas asignadas · B-03');
+    expect(titles.indexOf('Llamada realizada · B-03')).toBeLessThan(
+      titles.indexOf('Vehículo asignado · B-03'),
+    );
+    expect(titles.indexOf('Vehículo asignado · B-03')).toBeLessThan(
+      titles.indexOf('5 personas asignadas · B-03'),
+    );
+    const times = entries.map((entry) =>
+      Date.parse(entry.querySelector('time')!.getAttribute('datetime')!),
+    );
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it('records an approved vehicle and its crew once in the receiving incident', async () => {
+    const harness = await RouterTestingHarness.create('/?incidencia=INC-001');
+    const log = TestBed.inject(OperationLogStore);
+    const incidents = TestBed.inject(IncidentStore);
+    log.generateDemoQuestion();
+    const pending = log.questions()[0];
+    const option = pending.options![0];
+    const action = option.action;
+    if (action?.type !== 'assign-resource') throw new Error('Expected a reinforcement question');
+    log.updateDraft(pending, { optionIds: [option.id], text: '', custom: false });
+    log.submit(pending.id);
+    log.submit(pending.id);
+    await harness.fixture.whenStable();
+    expect(incidents.units().find((unit) => unit.id === action.resourceId)?.incidentId).toBe(
+      'INC-001',
+    );
+    const events = incidents
+      .events()
+      .filter((event) => event.incidentId === 'INC-001' && event.id.startsWith(`${pending.id}:`));
+    expect(events.filter((event) => event.id.endsWith(':vehicle'))).toHaveLength(1);
+    expect(events.filter((event) => event.id.endsWith(':people'))).toHaveLength(1);
+    expect(events.filter((event) => event.id.endsWith(':result'))).toHaveLength(1);
+    expect(harness.routeNativeElement?.textContent).toContain(
+      `Vehículo asignado · ${action.resourceId}`,
+    );
+    expect(harness.routeNativeElement?.querySelector('.timeline-event.awaiting-human')).toBeNull();
+  });
+
+  it('uses Inicio resource fields with Localizar and keeps incident facts concise', async () => {
+    const harness = await RouterTestingHarness.create('/?incidencia=INC-003');
+    const element = harness.routeNativeElement!;
+    const address = element.querySelector('[aria-label="Ubicación"]')!;
+    expect(address.textContent?.trim()).toBe(
+      MOCK_INCIDENTS.find((incident) => incident.id === 'INC-003')!.address,
+    );
+    expect(address.querySelector('app-icon')).toBeNull();
+    const people = element.querySelector('[aria-label="Personas implicadas"]')!;
+    expect(people.textContent).toContain('8 personas');
+    expect(people.textContent).toContain('3 necesitan asistencia');
+    expect(people.textContent).not.toMatch(/residentes|traslado/i);
+    expect(people.querySelector('app-icon')).toBeNull();
+    const services = element.querySelector('app-incident-activity app-service-feed')!;
+    expect(services.querySelector('.heading-title app-icon')).toBeNull();
+    expect(services.querySelector('.resource-agent')?.textContent).toContain('E. Gil');
+    for (const field of [
+      '.resource-code',
+      '.resource-agent',
+      '.resource-mission',
+      '.incident-tag',
+      '.communication-status',
+    ])
+      expect(services.querySelector(field)).not.toBeNull();
+    const zoom = vi.spyOn(L.Map.prototype, 'setView');
+    services.querySelector<HTMLButtonElement>('.locate-button')!.click();
+    await harness.fixture.whenStable();
+    const unit = MOCK_UNITS.find((item) => item.id === 'A-01')!;
+    expect(zoom).toHaveBeenCalledWith(
+      [unit.coordinates.lat, unit.coordinates.lng],
+      15,
+      expect.objectContaining({ animate: false }),
+    );
+    expect(TestBed.inject(Router).url).toBe('/?incidencia=INC-003');
+    expect(element.querySelector('.detail-heading .back-button')?.textContent?.trim()).toBe('');
+    expect(element.querySelector('.classification .priority')?.textContent?.trim()).toBe(
+      '1 · Crítica',
+    );
+    await harness.navigateByUrl('/incidencias?incidencia=INC-003');
+    expect(
+      [...harness.routeNativeElement!.querySelectorAll('select[name="priority"] option')]
+        .slice(1)
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(['1 · Crítica', '2 · Grave', '3 · Moderada', '4 · Baja']);
+  });
 });

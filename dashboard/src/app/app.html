@@ -10,11 +10,11 @@
     aria-live="polite"
     title="Conectividad del navegador y recepción de eventos. Datos de demostración."
   >
+    {{ connection.stable() ? 'Stable connection' : 'Unstable connection' }}
     <span class="signal-bars" aria-hidden="true">
       @for (bar of [1, 2, 3]; track bar) {
         <span [class.active]="bar <= connection.bars()"></span>
       }
     </span>
-    {{ connection.stable() ? 'Stable connection' : 'Unstable connection' }}
   </span>
 </footer>

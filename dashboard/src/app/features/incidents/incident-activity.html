@@ -1,60 +1,33 @@
-<app-operation-timeline
-  [incidentId]="incident().id"
-  [events]="timeline()"
-  [updateError]="updateError()"
-/>
 <div class="incident-facts">
   <section class="fact" aria-label="Ubicación">
-    <app-icon name="pin" />
-    <div>
-      <p>{{ incident().address }}</p>
-      <span>{{ incident().area }}</span>
-    </div>
+    <p>{{ incident().address }}</p>
   </section>
   <section class="fact" aria-label="Personas implicadas">
-    <app-icon name="walk" />
     <div>
       <p class="affected-count">
         {{ details()?.affected ?? 'Sin confirmar' }}
         {{ details()?.affected == null ? '' : 'personas' }}
       </p>
-      <span>{{ details()?.affectedNote }}</span>
+      @if (details()?.assistanceNeeded != null) {
+        <span>
+          {{ details()?.assistanceNeeded }}
+          {{ details()?.assistanceNeeded === 1 ? 'necesita' : 'necesitan' }} asistencia
+        </span>
+      } @else {
+        <span>Asistencia sin confirmar</span>
+      }
     </div>
   </section>
 </div>
-<section class="services-section" aria-labelledby="services-heading">
-  <div class="panel-heading">
-    <div class="heading-title">
-      <app-icon name="truck" />
-      <h2 id="services-heading">Servicios asociados</h2>
-      <span class="count-badge">{{ services().length }}</span>
-    </div>
-  </div>
-  <div class="services-list">
-    @for (unit of services(); track unit.id) {
-      <button
-        type="button"
-        class="service-card"
-        [class.selected]="selectedUnitId() === unit.id"
-        [attr.aria-pressed]="selectedUnitId() === unit.id"
-        [attr.aria-label]="'Localizar ' + unit.label + ' en el mapa'"
-        (click)="unitSelected.emit(unit.id)"
-      >
-        <span class="incident-icon"><app-icon [name]="unit.icon" /></span>
-        <span class="service-info"
-          ><strong
-            >{{ unit.label }} <span>· {{ serviceName(unit) }}</span></strong
-          ><span>{{ unit.address }}</span></span
-        >
-        <span class="service-action"
-          ><span class="badge" [class.en-route]="unit.route?.status === 'active'">{{
-            serviceStatus(unit)
-          }}</span
-          ><span class="locate-label"><app-icon name="locate" />Localizar</span></span
-        >
-      </button>
-    } @empty {
-      <p class="empty-state">No hay servicios asignados a esta incidencia.</p>
-    }
-  </div>
-</section>
+<app-service-feed
+  [associated]="true"
+  [communications]="communications()"
+  [resources]="projectedServices()"
+  [selectedUnitId]="selectedUnitId()"
+  (unitSelected)="unitSelected.emit($event)"
+/>
+<app-operation-timeline
+  [incidentId]="incident().id"
+  [events]="timeline()"
+  [updateError]="updateError()"
+/>

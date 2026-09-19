@@ -37,7 +37,8 @@ main {
 .connection {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  color: var(--connection-text);
 }
 .connection.unstable {
   color: var(--danger);
@@ -45,21 +46,21 @@ main {
 .signal-bars {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  height: 15px;
+  gap: 1.5px;
+  height: 7.5px;
 }
 .signal-bars span {
-  width: 3px;
-  height: 5px;
-  border-radius: 1px;
+  width: 1.5px;
+  height: 2.5px;
+  border-radius: 0.5px;
   background: currentColor;
   opacity: 0.2;
 }
 .signal-bars span:nth-child(2) {
-  height: 10px;
+  height: 5px;
 }
 .signal-bars span:nth-child(3) {
-  height: 15px;
+  height: 7.5px;
 }
 .signal-bars .active {
   opacity: 1;

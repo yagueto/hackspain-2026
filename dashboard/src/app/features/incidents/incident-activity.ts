@@ -1,23 +1,15 @@
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
-import { IconName, Incident, MapLocation } from '../../core/models/operations';
-import { Icon } from '../../shared/icon/icon';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { Communication, Incident, MapLocation } from '../../core/models/operations';
+import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { IncidentDetails, IncidentEvent } from './incidents.mock';
 import { OperationTimeline } from '../home/operation-log/operation-timeline';
-
-const SERVICE_NAMES: Partial<Record<IconName, string>> = {
-  'fire-truck': 'Bomberos',
-  helicopter: 'Apoyo aéreo',
-  bus: 'Transporte',
-  medical: 'Sanitarios',
-  shield: 'Policía',
-  tools: 'Guardia Civil',
-  truck: 'Logística',
-};
+import { ServiceFeed } from '../home/service-feed/service-feed';
+import { MOCK_RESOURCE_PROFILES } from '../resources/resources.mock';
 
 @Component({
   selector: 'app-incident-activity',
-  imports: [Icon, OperationTimeline],
+  imports: [OperationTimeline, ServiceFeed],
   templateUrl: './incident-activity.html',
   styleUrl: './incident-activity.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,17 +23,27 @@ export class IncidentActivity {
   readonly selectedUnitId = input<string | null>(null);
   readonly updateError = input(false);
   readonly unitSelected = output<string>();
-
-  protected serviceName(unit: MapLocation): string {
-    return SERVICE_NAMES[unit.icon] ?? 'Recurso de apoyo';
-  }
-
-  protected serviceStatus(unit: MapLocation): string {
-    unit = this.simulation.project(unit);
-    return unit.route?.status === 'active'
-      ? 'En camino'
-      : unit.route?.status === 'completed'
-        ? 'En destino'
-        : 'Asignado';
-  }
+  protected readonly projectedServices = computed(() =>
+    this.services().map((unit) => this.simulation.project(unit)),
+  );
+  protected readonly communications = computed<readonly Communication[]>(() =>
+    this.services().map((unit) => {
+      const communication = MOCK_COMMUNICATIONS.filter((item) => item.vehicle === unit.id).sort(
+        (a, b) => b.time.localeCompare(a.time),
+      )[0];
+      return {
+        ...(communication ?? {
+          id: unit.id,
+          time: '',
+          status: 'Asignado' as const,
+          message: `${unit.label} asignado a ${this.incident().id}.`,
+          service: MOCK_RESOURCE_PROFILES[unit.icon]?.service ?? 'Apoyo',
+          vehicle: unit.id,
+          agent: '',
+          icon: unit.icon,
+        }),
+        incidentId: this.incident().id,
+      };
+    }),
+  );
 }

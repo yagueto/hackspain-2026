@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
 import { MapLocation } from '../../core/models/operations';
 import { IncidentList } from './incident-list/incident-list';
@@ -12,20 +12,10 @@ import { IncidentStore } from '../incidents/incident-store';
 import { OperationLogStore } from './operation-log/operation-log-store';
 import { Incidents } from '../incidents/incidents';
 import { Resources } from '../resources/resources';
-import { Icon } from '../../shared/icon/icon';
 
 @Component({
   selector: 'app-home',
-  imports: [
-    OperationalMap,
-    IncidentList,
-    ServiceFeed,
-    SplitPane,
-    Incidents,
-    Resources,
-    Icon,
-    RouterLink,
-  ],
+  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, Incidents, Resources],
   host: { '(window:keydown)': 'handleKeyboard($event)' },
   templateUrl: './home.html',
   styleUrl: './home.css',

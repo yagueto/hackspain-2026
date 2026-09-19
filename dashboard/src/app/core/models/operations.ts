@@ -16,6 +16,7 @@ export type IconName =
   | 'locate'
   | 'layers'
   | 'chevron'
+  | 'back'
   | 'close'
   | 'pin'
   | 'radio'
@@ -76,7 +77,15 @@ export interface Incident {
   radiusMeters?: number;
 }
 
-export type CommunicationStatus = 'Recibida' | 'Aceptada' | 'En ejecución' | 'Confirmada';
+export const PRIORITY_LEVEL: Record<NonNullable<Incident['priority']>, number> = {
+  P0: 1,
+  P1: 2,
+  P2: 3,
+  P3: 4,
+};
+
+export type CommunicationStatus =
+  'Recibida' | 'Aceptada' | 'En ejecución' | 'Confirmada' | 'Asignado';
 
 export interface Communication {
   id: string;

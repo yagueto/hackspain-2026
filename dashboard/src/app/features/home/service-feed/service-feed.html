@@ -1,22 +1,29 @@
-<section class="panel resources-panel" aria-labelledby="resources-title">
+<section
+  class="panel resources-panel"
+  [attr.aria-labelledby]="associated() ? 'services-heading' : 'resources-title'"
+>
   <div class="panel-heading resources-heading">
     <div class="heading-title">
-      <h2 id="resources-title">Recursos</h2>
+      <h2 [id]="associated() ? 'services-heading' : 'resources-title'">
+        {{ associated() ? 'Servicios asociados' : 'Recursos' }}
+      </h2>
       <span class="count-badge" aria-live="polite">{{ filteredCommunications().length }}</span>
     </div>
-    <button
-      type="button"
-      class="filter-button"
-      [class.is-active]="filterCount() > 0"
-      [attr.aria-expanded]="filtersOpen()"
-      aria-controls="resource-filters"
-      (click)="filtersOpen.set(!filtersOpen())"
-    >
-      <app-icon name="filter" /> Filtrar
-      @if (filterCount()) {
-        <span class="filter-count">{{ filterCount() }}</span>
-      }
-    </button>
+    @if (!associated()) {
+      <button
+        type="button"
+        class="filter-button"
+        [class.is-active]="filterCount() > 0"
+        [attr.aria-expanded]="filtersOpen()"
+        aria-controls="resource-filters"
+        (click)="filtersOpen.set(!filtersOpen())"
+      >
+        <app-icon name="filter" /> Filtrar
+        @if (filterCount()) {
+          <span class="filter-count">{{ filterCount() }}</span>
+        }
+      </button>
+    }
   </div>
   @if (filtersOpen()) {
     <div
@@ -47,7 +54,12 @@
       }
     </div>
   }
-  <div id="resources-list" class="feed-list" tabindex="0" aria-label="Lista de recursos">
+  <div
+    [id]="associated() ? 'associated-services-list' : 'resources-list'"
+    class="feed-list"
+    tabindex="0"
+    [attr.aria-label]="associated() ? 'Servicios asociados' : 'Lista de recursos'"
+  >
     @for (item of filteredCommunications(); track item.id) {
       @let status = resourceStatus(item);
       <article
@@ -79,13 +91,24 @@
             >{{ status }}</span
           >
         </button>
-        <a
-          class="detail-link"
-          routerLink="/"
-          [queryParams]="{ recurso: item.vehicle }"
-          [attr.aria-label]="'Ver detalles de ' + item.vehicle"
-          ><span>Detalles</span><app-icon name="chevron"
-        /></a>
+        @if (associated()) {
+          <button
+            class="detail-link locate-button"
+            type="button"
+            [attr.aria-label]="'Localizar ' + item.vehicle + ' en el mapa'"
+            (click)="unitSelected.emit(item.vehicle)"
+          >
+            <app-icon name="locate" /><span>Localizar</span>
+          </button>
+        } @else {
+          <a
+            class="detail-link"
+            routerLink="/"
+            [queryParams]="{ recurso: item.vehicle }"
+            [attr.aria-label]="'Ver detalles de ' + item.vehicle"
+            ><span>Detalles</span><app-icon name="chevron"
+          /></a>
+        }
       </article>
     } @empty {
       <p class="empty-state">

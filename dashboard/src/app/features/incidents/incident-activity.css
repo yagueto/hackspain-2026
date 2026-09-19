@@ -1,13 +1,6 @@
 :host {
   display: block;
 }
-h2 {
-  font-size: 17px;
-}
-.heading-title > app-icon {
-  color: var(--muted);
-  width: 20px;
-}
 .incident-facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -23,12 +16,8 @@ h2 {
   border-radius: 6px;
   background: var(--tag);
 }
-.fact > app-icon {
-  width: 20px;
-  color: var(--muted);
-}
 .fact p {
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .fact span {
@@ -38,107 +27,11 @@ h2 {
   font-size: 13px;
   line-height: 1.5;
 }
-.services-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-.service-card {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 12px;
-  gap: 12px;
-  text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-.service-card:hover {
-  background: var(--tag);
-  border-color: var(--border);
-}
-.service-card.selected {
-  background: var(--selected);
-  border-color: var(--border);
-  font-weight: 700;
-}
-.incident-icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  color: var(--muted);
-  background: var(--tag);
-}
-.selected .incident-icon {
-  background: var(--selected);
-  color: var(--icon-selected);
-}
-.service-info {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  font-size: 15px;
-}
-.service-info strong {
-  font-weight: 600;
-}
-.service-info > span,
-.service-info strong span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 400;
-}
-.service-action {
-  display: grid;
-  justify-items: end;
-  gap: 6px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.locate-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.locate-label app-icon {
-  width: 16px;
-  height: 16px;
-}
-.badge {
-  padding: 6px 8px;
-  border-radius: 5px;
-  background: var(--tag);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.3;
-}
-.en-route {
-  color: var(--en-route);
-  background: var(--tag);
+app-service-feed {
+  margin: 16px 0;
 }
 @media (max-width: 1100px) {
   .incident-facts {
     grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 480px) {
-  .service-card {
-    flex-wrap: wrap;
-  }
-  .service-info {
-    flex: 1;
-  }
-  .service-action {
-    display: flex;
-    align-items: center;
-    gap: 12px;
   }
 }

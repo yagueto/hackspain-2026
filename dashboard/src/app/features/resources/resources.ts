@@ -88,9 +88,7 @@ export class Resources {
     this.store
       .events()
       .filter((event) => event.incidentId === this.currentIncident()?.id)
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      ),
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)),
   );
   protected readonly communication = computed(() =>
     this.latestCommunication(this.selectedSource()?.id ?? ''),

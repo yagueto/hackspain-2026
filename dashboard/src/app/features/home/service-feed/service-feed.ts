@@ -21,6 +21,7 @@ import { Icon } from '../../../shared/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServiceFeed {
+  readonly associated = input(false);
   readonly communications = input.required<readonly Communication[]>();
   readonly resources = input.required<readonly MapLocation[]>();
   readonly selectedUnitId = input<string | null>(null);

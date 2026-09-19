@@ -9,7 +9,7 @@ import {
   output,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Incident } from '../../../core/models/operations';
+import { Incident, PRIORITY_LEVEL } from '../../../core/models/operations';
 import { IncidentAttention, URGENCY_RANK } from '../../../core/models/operation-log';
 import { Icon } from '../../../shared/icon/icon';
 
@@ -54,10 +54,10 @@ export class IncidentList {
   }
 
   protected priority(incident: Incident): string {
-    return incident.priority?.slice(1) ?? '—';
+    return incident.priority ? String(PRIORITY_LEVEL[incident.priority]) : '—';
   }
 
   private priorityRank(incident: Incident): number {
-    return incident.priority ? Number(incident.priority.slice(1)) : Number.POSITIVE_INFINITY;
+    return incident.priority ? PRIORITY_LEVEL[incident.priority] : Number.POSITIVE_INFINITY;
   }
 }

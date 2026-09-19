@@ -20,6 +20,7 @@
   "locate": "current-location",
   "layers": "layers-intersect",
   "chevron": "chevron-right",
+  "back": "arrow-left",
   "close": "x",
   "pin": "map-pin",
   "radio": "antenna",

@@ -150,6 +150,12 @@
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
   <path d="M9 6l6 6l-6 6" />
 </symbol>
+<symbol id="arrow-left" viewBox="0 0 24 24">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M5 12l14 0" />
+  <path d="M5 12l6 6" />
+  <path d="M5 12l6 -6" />
+</symbol>
 <symbol id="x" viewBox="0 0 24 24">
   <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
   <path d="M18 6l-12 12" />

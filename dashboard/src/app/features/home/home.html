@@ -15,9 +15,6 @@
     <app-split-pane />
     <div class="operations-column" [class.detail-open]="detail()">
       @if (detail()) {
-        <a class="back-button" routerLink="/" aria-label="Volver a incidencias y recursos">
-          <app-icon name="chevron" /> Volver
-        </a>
         @if (detail() === 'incident') {
           <app-incidents [embedded]="true" (unitLocated)="locateUnit($event)" />
         } @else {

@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Incident, MapLocation } from '../../core/models/operations';
+import { Incident, MapLocation, PRIORITY_LEVEL } from '../../core/models/operations';
 import { IncidentActivity } from './incident-activity';
 import { Icon } from '../../shared/icon/icon';
 import { OperationalMap } from '../home/operational-map/operational-map';
@@ -47,6 +47,7 @@ export class Incidents {
     P3: 'Baja',
   };
   protected readonly priorities = ['P0', 'P1', 'P2', 'P3'] as const;
+  protected readonly priorityLevels = PRIORITY_LEVEL;
   private readonly selectedId = signal<string | null>(null);
   private readonly unitId = signal<string | null>(null);
   private readonly detailMap = viewChild<ElementRef<HTMLElement>>('detailMap');
@@ -91,9 +92,7 @@ export class Incidents {
     this.store
       .events()
       .filter((event) => event.incidentId === this.selectedIncident()?.id)
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      ),
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)),
   );
   protected readonly locations = computed<readonly MapLocation[]>(() => {
     const incident = this.selectedIncident();

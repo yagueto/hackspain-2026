@@ -59,7 +59,9 @@
             >
               <option value="">Gravedad</option>
               @for (priority of priorities; track priority) {
-                <option [value]="priority">{{ priority }} · {{ severity[priority] }}</option>
+                <option [value]="priority">
+                  {{ priorityLevels[priority] }} · {{ severity[priority] }}
+                </option>
               }
             </select></label
           >
@@ -101,7 +103,9 @@
             <span class="badges"
               ><span class="badge">{{ category(incident) }}</span
               ><span class="badge priority" [attr.data-priority]="incident.priority">{{
-                incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
+                incident.priority
+                  ? priorityLevels[incident.priority] + ' · ' + severity[incident.priority]
+                  : '—'
               }}</span
               ><span class="badge">{{ incident.status }}</span></span
             >
@@ -127,7 +131,18 @@
     @if (selectedIncident(); as incident) {
       <header class="detail-heading">
         <div class="heading-title">
-          <span class="incident-icon active"><app-icon [name]="incident.icon" /></span>
+          @if (embedded()) {
+            <a
+              class="back-button"
+              href="/"
+              (click)="returnHome($event)"
+              aria-label="Volver a incidencias y recursos"
+              title="Volver"
+              ><app-icon name="back"
+            /></a>
+          } @else {
+            <span class="incident-icon active"><app-icon [name]="incident.icon" /></span>
+          }
           <h2>
             {{ incident.id }} <span>· {{ incident.title }}</span>
           </h2>
@@ -164,7 +179,9 @@
             <dt class="sr-only">Gravedad</dt>
             <dd>
               <span class="badge priority" [attr.data-priority]="incident.priority">{{
-                incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
+                incident.priority
+                  ? priorityLevels[incident.priority] + ' · ' + severity[incident.priority]
+                  : '—'
               }}</span>
             </dd>
           </div>
