@@ -1,0 +1,27 @@
+app-home .dashboard-grid .incident-list { --page-row-height: 68px; }
+app-home .dashboard-grid .feed-list { --page-row-height: 48px; }
+app-home .dashboard-grid .incident-row,
+app-home .dashboard-grid .communication { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
+app-home .dashboard-grid .incident-select,
+app-home .dashboard-grid .resource-select { display: grid; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+app-home .dashboard-grid .incident-select { grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 6px; }
+app-home .dashboard-grid .incident-info { display: grid; justify-items: start; }
+app-home .dashboard-grid .incident-info .status-badge { margin: 0; }
+app-home .dashboard-grid .resource-select { grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 5px; }
+app-home .dashboard-grid .resource-code { font-size: 14px; font-weight: 600; }
+app-home .dashboard-grid .resource-meta { display: flex; min-width: 0; align-items: center; gap: 5px; color: #a9b5bf; font-size: 11px; }
+app-home .dashboard-grid .resource-meta > span { padding: 1px 4px; border: 1px solid #485059; border-radius: 20px; white-space: nowrap; }
+app-home .dashboard-grid .resource-meta > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+app-home .dashboard-grid .detail-link { display: flex; align-items: center; align-self: stretch; gap: 3px; padding: 0 6px; border-left: 1px solid #ffffff12; color: #8fd0ff; font-size: 11px; text-decoration: none; }
+app-home .dashboard-grid .detail-link:hover { background: #168bec18; color: white; }
+app-home .dashboard-grid .detail-link app-icon { width: 13px; height: 13px; }
+@media (max-width: 1200px) {
+  app-home .dashboard-grid .feed-list { --page-row-height: 48px; }
+  app-home .dashboard-grid .communication { grid-template-columns: minmax(0, 1fr) auto; }
+  app-home .dashboard-grid .communication-body { grid-column: auto; grid-row: auto; }
+}
+@media (max-width: 480px) {
+  app-home .dashboard-grid .communication { grid-template-columns: minmax(0, 1fr) auto; }
+  app-home .dashboard-grid .communication-status { grid-column: auto; }
+  app-home .dashboard-grid .detail-link > span { display: none; }
+}

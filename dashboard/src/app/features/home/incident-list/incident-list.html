@@ -15,26 +15,37 @@
     #pager="paginatedList"
   >
     @for (incident of pager.visibleItems(); track incident.id) {
-      <button
-        type="button"
-        class="incident-row"
-        [class.selected]="selectedId() === incident.id"
-        [attr.aria-pressed]="selectedId() === incident.id"
-        (click)="incidentSelected.emit(incident.id)"
-      >
-        <span class="incident-icon"><app-icon [name]="incident.icon" /></span>
-        <span class="incident-info"
-          ><span class="incident-name"
-            ><strong>{{ incident.id }}</strong
-            ><span class="separator">·</span>{{ incident.title }}</span
-          ><span class="incident-area">{{ incident.area }}</span></span
+      <article class="incident-row" [class.selected]="selectedId() === incident.id">
+        <button
+          type="button"
+          class="incident-select"
+          [attr.aria-label]="'Mostrar ' + incident.id + ' en el mapa'"
+          [attr.aria-pressed]="selectedId() === incident.id"
+          (click)="incidentSelected.emit(incident.id)"
         >
-        <span class="status-badge"
-          ><span>{{ incident.priority }}</span
-          ><span class="status-dot"></span>{{ incident.status }}</span
+          <span class="incident-icon"><app-icon [name]="incident.icon" /></span>
+          <span class="incident-info">
+            <span class="incident-name">
+              <strong>{{ incident.id }}</strong
+              ><span class="separator">·</span>{{ incident.title }}
+            </span>
+            <span class="status-badge">
+              <span>{{ incident.priority }}</span
+              ><span class="status-dot"></span>{{ incident.status }}
+            </span>
+            <span class="incident-area">{{ incident.area }}</span>
+          </span>
+        </button>
+        <a
+          class="detail-link"
+          routerLink="/incidencias"
+          [queryParams]="{ incidencia: incident.id }"
+          [attr.aria-label]="'Ver detalles de ' + incident.id"
+          title="Ver detalles"
         >
-        <app-icon class="row-chevron" name="chevron" />
-      </button>
+          <span>Detalles</span><app-icon name="chevron" />
+        </a>
+      </article>
     } @empty {
       <p class="empty-state">No hay incidencias en seguimiento.</p>
     }

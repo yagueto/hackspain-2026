@@ -56,39 +56,42 @@
     #pager="paginatedList"
   >
     @for (item of pager.visibleItems(); track item.id) {
-      <button
-        type="button"
+      @let unit = resource(item.vehicle);
+      <article
         class="communication"
         [class.related]="
           selectedUnitId()
             ? item.vehicle === selectedUnitId()
             : item.incidentId === selectedIncidentId()
         "
-        [attr.aria-label]="item.time + ', ' + item.message + ' Ver recurso ' + item.vehicle"
-        [attr.aria-pressed]="item.vehicle === selectedUnitId()"
-        (click)="unitSelected.emit(item.vehicle)"
       >
-        <time>{{ item.time }}</time>
-        <app-icon class="service-icon" [name]="item.icon" />
-        <span class="communication-body">
-          <span class="message">{{ item.message }}</span>
-          <span class="tags">
-            <span
-              >Servicio: <strong>{{ item.service }}</strong></span
-            >
-            <span
-              >Vehículo: <strong>{{ item.vehicle }}</strong></span
-            >
-            <span
-              >Agente: <strong>{{ item.agent }}</strong></span
-            >
-            <span
-              >Incidencia: <strong>{{ item.incidentId }}</strong></span
-            >
+        <button
+          type="button"
+          class="resource-select"
+          [attr.aria-label]="'Mostrar recurso ' + item.vehicle + ' en el mapa'"
+          [attr.aria-pressed]="item.vehicle === selectedUnitId()"
+          (click)="unitSelected.emit(item.vehicle)"
+        >
+          <app-icon class="service-icon" [name]="item.icon" />
+          <span class="communication-body">
+            <strong class="resource-code">{{ item.vehicle }}</strong>
+            <span class="resource-meta">
+              <span>{{ item.incidentId }}</span>
+              <span>{{ unit?.address ?? 'Ubicación no disponible' }}</span>
+              <span class="communication-status">{{ resourceStatus(item) }}</span>
+            </span>
           </span>
-        </span>
-        <span class="communication-status">{{ item.status }}</span>
-      </button>
+        </button>
+        <a
+          class="detail-link"
+          routerLink="/recursos"
+          [queryParams]="{ recurso: item.vehicle }"
+          [attr.aria-label]="'Ver detalles de ' + item.vehicle"
+          title="Ver detalles"
+        >
+          <span>Detalles</span><app-icon name="chevron" />
+        </a>
+      </article>
     } @empty {
       <div class="empty-state">
         <p>

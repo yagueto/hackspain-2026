@@ -17,6 +17,7 @@
     />
     <app-service-feed
       [communications]="communications()"
+      [resources]="projectedUnits()"
       [selectedIncidentId]="selectedIncidentId()"
       [selectedUnitId]="selectedUnitId()"
       (unitSelected)="selectUnit($event)"
