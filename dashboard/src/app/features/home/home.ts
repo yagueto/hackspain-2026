@@ -4,10 +4,11 @@ import { MapLocation } from '../../core/models/operations';
 import { IncidentList } from './incident-list/incident-list';
 import { OperationalMap } from './operational-map/operational-map';
 import { ServiceFeed } from './service-feed/service-feed';
+import { SplitPane } from '../../shared/split-pane/split-pane';
 
 @Component({
   selector: 'app-home',
-  imports: [OperationalMap, IncidentList, ServiceFeed],
+  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane],
   templateUrl: './home.html',
   styleUrl: './home.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
