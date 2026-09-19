@@ -23,3 +23,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Devin local config (contiene secretos)
+.devin/mcp_config.local.json
