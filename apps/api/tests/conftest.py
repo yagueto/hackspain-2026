@@ -9,6 +9,15 @@ from app.main import create_app
 HEADERS = {"X-API-Key": "test"}
 
 
+@pytest.fixture(autouse=True)
+def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Los tests nunca deben leer credenciales ni modo live del .env local."""
+    monkeypatch.setenv("HAPPYROBOT_MODE", "simulated")
+    monkeypatch.setenv("HAPPYROBOT_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("SEED_PHONES", "")
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     settings = Settings(
