@@ -381,10 +381,29 @@ app-home .dashboard-grid .communication {
   gap: 6px;
 }
 app-home .dashboard-grid .communication {
+  grid-template-columns: 34px 20px minmax(0, 1fr) max-content;
+  column-gap: 3px;
+  row-gap: 1px;
+  padding-block: 1px;
   border-left-width: 1px;
+}
+app-home .dashboard-grid .communication time {
+  justify-self: start;
+}
+app-home .dashboard-grid .service-icon {
+  width: 20px;
+  height: 20px;
 }
 app-home .dashboard-grid .communication.related {
   border-left-color: #1366a3;
+}
+app-home .dashboard-grid .incident-icon {
+  width: 32px;
+  height: 32px;
+}
+app-home .dashboard-grid .incident-icon app-icon {
+  width: 19px;
+  height: 19px;
 }
 app-home .dashboard-grid .incident-info {
   gap: 1px;
@@ -426,7 +445,16 @@ app-home .dashboard-grid .tile-notice {
     --page-row-height: 80px;
   }
   app-home .dashboard-grid .communication {
-    row-gap: 2px;
+    grid-template-columns: 32px 20px minmax(0, 1fr);
+    column-gap: 3px;
+    row-gap: 1px;
+    padding-block: 1px;
+  }
+  app-home .dashboard-grid .communication-status {
+    grid-column: 1 / 3;
+  }
+  app-home .dashboard-grid .communication-body {
+    grid-column: 3;
   }
 }
 @media (max-width: 1150px) {
@@ -435,6 +463,18 @@ app-home .dashboard-grid .tile-notice {
   }
   app-home .dashboard-grid .incident-row {
     row-gap: 2px;
+  }
+}
+@media (max-width: 480px) {
+  app-home .dashboard-grid .communication {
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 3px;
+  }
+  app-home .dashboard-grid .communication-body {
+    grid-column: 2;
+  }
+  app-home .dashboard-grid .communication-status {
+    grid-column: 1;
   }
 }
 @media (max-width: 800px) {
