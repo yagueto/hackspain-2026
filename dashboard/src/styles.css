@@ -176,6 +176,8 @@ h2 {
   color: #f3f6f8;
 }
 .marker-symbol {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 30px;
@@ -190,6 +192,7 @@ h2 {
   height: 19px;
 }
 .marker-label {
+  z-index: 2;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -207,18 +210,52 @@ h2 {
   border-radius: 3px;
   box-shadow: 0 1px 3px #0003;
 }
+.map-marker.kind-incident {
+  --incident-pulse: #d9eaf4;
+  width: 52px;
+  height: 52px;
+}
+.map-marker.kind-incident::before,
+.map-marker.kind-incident::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--incident-pulse);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--incident-pulse) 12%, transparent);
+  opacity: 0.22;
+  transform: scale(1.15);
+  pointer-events: none;
+  animation: incident-ripple 4.8s ease-out infinite;
+}
+.map-marker.kind-incident::after {
+  animation-delay: -2.4s;
+}
+.map-marker.kind-incident.is-selected {
+  --incident-pulse: #52baff;
+}
+@keyframes incident-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.15);
+    opacity: 0;
+  }
+}
 .map-marker.kind-incident .marker-symbol {
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   border-width: 2px;
 }
 .map-marker.kind-incident svg {
-  width: 25px;
-  height: 25px;
+  width: 31px;
+  height: 31px;
 }
 .map-marker.kind-incident .marker-label {
-  left: 46px;
-  top: 12px;
+  left: 58px;
+  top: 18px;
   transform: none;
   font-size: 10px;
 }
@@ -265,6 +302,62 @@ h2 {
 }
 .leaflet-container a.leaflet-popup-close-button {
   color: #c2d1db;
+}
+.resource-route {
+  cursor: pointer;
+}
+.route-destination-dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 3px solid white;
+  border-radius: 50%;
+  background: #168ff0;
+  box-shadow:
+    0 0 0 2px #076bc6,
+    0 2px 8px #0005;
+}
+.leaflet-tooltip.route-eta {
+  padding: 8px 12px;
+  border: 2px solid #168ff0;
+  border-radius: 8px;
+  background: #f1f8ff;
+  color: #103855;
+  box-shadow: 0 3px 12px #0004;
+  text-align: center;
+}
+.leaflet-tooltip-top.route-eta::before {
+  border-top-color: #168ff0;
+}
+.route-eta-content strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.route-eta-content > span {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #456c8a;
+}
+.map-popup .map-route-status {
+  margin-top: 7px;
+  color: #c3e6ff;
+}
+.map-popup .route-disclaimer {
+  margin-top: 3px;
+  color: #8b9eac;
+  font-size: 9px;
+}
+.map-popup button {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid #3d86bd;
+  border-radius: 4px;
+  background: #193c56;
+  color: #b9e1ff;
+  cursor: pointer;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

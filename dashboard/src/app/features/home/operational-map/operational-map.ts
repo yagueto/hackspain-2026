@@ -10,12 +10,15 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
 import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
+import { formatRouteDuration, Routing } from '../../../core/services/routing';
+import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
 
 @Component({
   selector: 'app-operational-map',
@@ -46,6 +49,11 @@ export class OperationalMap {
   );
   private readonly canvas = viewChild.required<ElementRef<HTMLDivElement>>('mapCanvas');
   private readonly geocoding = inject(Geocoding);
+  private readonly routing = inject(Routing);
+  private readonly routeStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
+  private readonly routeRetryVersion = signal(0);
+  private readonly markers = new Map<string, L.Marker>();
+  private routeLayer?: ResourceRouteLayer;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
   private readonly retryVersion = signal(0);
@@ -76,6 +84,7 @@ export class OperationalMap {
         .zoom({ position: 'bottomright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' })
         .addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
+      this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
       this.map.on('moveend', () => {
         const { lat, lng } = this.map!.getCenter();
         this.centerLabel.set(
@@ -99,6 +108,16 @@ export class OperationalMap {
       void this.resolveAddresses(addresses, locations, controller.signal);
     });
 
+    effect((onCleanup) => {
+      if (!this.ready()) return;
+      const locations = this.locations();
+      const visible = this.showUnits();
+      this.routeRetryVersion();
+      const controller = new AbortController();
+      onCleanup(() => controller.abort());
+      void this.loadRoutes(visible ? locations : [], controller.signal);
+    });
+
     effect(() => {
       if (this.selectedUnitId()) this.showUnits.set(true);
     });
@@ -114,8 +133,21 @@ export class OperationalMap {
       );
     });
 
+    effect(() => {
+      if (!this.ready()) return;
+      const locations = this.resolvedLocations();
+      const states = this.routeStates();
+      this.routeLayer?.render(locations, states, this.selectedUnitId(), this.showUnits());
+      for (const location of locations) {
+        this.markers
+          .get(location.id)
+          ?.setPopupContent(this.popupContent(location, states.get(location.id)));
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
       this.resizeObserver?.disconnect();
+      this.routeLayer?.remove();
       this.map?.remove();
     });
   }
@@ -123,12 +155,21 @@ export class OperationalMap {
   protected fitLocations(): void {
     const visible = this.visibleLocations();
     if (visible.length && this.map) {
-      this.map.fitBounds(
-        L.latLngBounds(
-          visible.map((location) => [location.coordinates.lat, location.coordinates.lng]),
-        ),
-        { padding: [48, 58], maxZoom: 15, animate: false },
-      );
+      const points = visible.map((location) => location.coordinates);
+      for (const location of visible) {
+        const state = this.routeStates().get(location.id);
+        if (
+          location.kind === 'unit' &&
+          location.route?.status === 'active' &&
+          state?.status === 'ready'
+        )
+          points.push(...state.route.path);
+      }
+      this.map.fitBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
+        padding: [48, 58],
+        maxZoom: 15,
+        animate: false,
+      });
     }
   }
 
@@ -196,8 +237,11 @@ export class OperationalMap {
     unitsVisible: boolean,
   ): void {
     if (!this.map || !this.markerLayer) return;
+    const openMarker = [...this.markers].find(([, marker]) => marker.isPopupOpen())?.[0];
     this.markerLayer.clearLayers();
+    this.markers.clear();
     let selectedMarker: L.Marker | undefined;
+    let selectedLocationId: string | undefined;
     for (const location of locations) {
       if (!this.isVisible(location, incidentsVisible, unitsVisible)) continue;
       const selected = this.isSelected(location, selectedId, selectedUnitId);
@@ -208,20 +252,23 @@ export class OperationalMap {
         keyboard: true,
         zIndexOffset: selected ? 1000 : location.kind === 'incident' ? 500 : 0,
       }).addTo(this.markerLayer);
-      const popup = document.createElement('div');
-      popup.className = 'map-popup';
-      const title = document.createElement('strong');
-      title.textContent = location.label;
-      const address = document.createElement('span');
-      address.textContent = location.address;
-      popup.append(title, address);
-      marker.bindPopup(popup, { maxWidth: 250 });
+      this.markers.set(location.id, marker);
+      marker.bindPopup(
+        this.popupContent(
+          location,
+          untracked(() => this.routeStates().get(location.id)),
+        ),
+        { maxWidth: 250 },
+      );
       marker.on('click', () => {
         if (location.kind === 'unit') this.unitSelected.emit(location.id);
         else if (location.kind === 'incident' && location.incidentId)
           this.incidentSelected.emit(location.incidentId);
       });
-      if (selected) selectedMarker = marker;
+      if (selected) {
+        selectedMarker = marker;
+        selectedLocationId = location.id;
+      }
     }
     const locationKey = locations
       .map((location) => `${location.id}:${location.coordinates.lat}:${location.coordinates.lng}`)
@@ -233,12 +280,80 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      this.fitLocations();
+      untracked(() => this.fitLocations());
     } else if (selectionKey !== this.lastSelection && selectedMarker) {
       this.map.panTo(selectedMarker.getLatLng(), { animate: false });
       selectedMarker.openPopup();
     }
+    if (selectedMarker && selectedLocationId === openMarker) selectedMarker.openPopup();
     this.lastSelection = selectionKey;
+  }
+
+  private async loadRoutes(locations: readonly MapLocation[], signal: AbortSignal): Promise<void> {
+    const units = locations.filter(
+      (location) => location.kind === 'unit' && location.route?.status === 'active',
+    );
+    const states = new Map<string, ResourceRouteState>(
+      units.map((unit) => [unit.id, { status: 'loading' }]),
+    );
+    this.routeStates.set(new Map(states));
+    for (const [index, unit] of units.entries()) {
+      try {
+        const route = await this.routing.calculate(unit.coordinates, unit.route!, signal);
+        if (signal.aborted) return;
+        states.set(unit.id, route ? { status: 'ready', route } : { status: 'unavailable' });
+      } catch {
+        if (signal.aborted) return;
+        for (const pending of units.slice(index)) states.set(pending.id, { status: 'error' });
+        this.routeStates.set(new Map(states));
+        return;
+      }
+      this.routeStates.set(new Map(states));
+    }
+  }
+
+  private popupContent(location: MapLocation, state?: ResourceRouteState): HTMLElement {
+    const popup = document.createElement('div');
+    popup.className = 'map-popup';
+    const title = document.createElement('strong');
+    title.textContent = location.label;
+    const address = document.createElement('span');
+    address.textContent = location.address;
+    popup.append(title, address);
+    if (location.kind !== 'unit') return popup;
+    if (location.route?.destinationLabel) {
+      const destination = document.createElement('span');
+      destination.textContent = `Destino: ${location.route.destinationLabel}`;
+      popup.append(destination);
+    }
+    const status = document.createElement('span');
+    status.className = 'map-route-status';
+    status.textContent = !location.route
+      ? 'Sin ruta activa'
+      : location.route.status === 'completed'
+        ? 'Ruta finalizada'
+        : state?.status === 'ready'
+          ? `Llegada aproximada: ${formatRouteDuration(state.route.durationSeconds)}`
+          : state?.status === 'unavailable'
+            ? 'No se ha encontrado una ruta por carretera'
+            : state?.status === 'error'
+              ? 'No se ha podido calcular la ruta'
+              : 'Calculando ruta…';
+    popup.append(status);
+    if (location.route?.status === 'active' && state?.status === 'ready') {
+      const note = document.createElement('span');
+      note.className = 'route-disclaimer';
+      note.textContent = 'Sin tráfico en tiempo real';
+      popup.append(note);
+    }
+    if (location.route?.status === 'active' && state?.status === 'error') {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Reintentar ruta';
+      retry.addEventListener('click', () => this.routeRetryVersion.update((value) => value + 1));
+      popup.append(retry);
+    }
+    return popup;
   }
 
   private isVisible(location: MapLocation, incidents: boolean, units: boolean): boolean {
@@ -284,12 +399,13 @@ export class OperationalMap {
     label.className = 'marker-label';
     label.textContent = location.label;
     element.append(symbol, label);
+    const size = location.kind === 'incident' ? 52 : 40;
     return L.divIcon({
       html: element,
       className: 'operation-marker',
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
-      popupAnchor: [0, -24],
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+      popupAnchor: [0, -size / 2 - 4],
     });
   }
 }

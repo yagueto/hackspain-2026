@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import { MOCK_UNITS } from '../../../core/data/operations.mock';
 import { Coordinates } from '../../../core/models/operations';
 import { Geocoding } from '../../../core/services/geocoding';
+import { Routing } from '../../../core/services/routing';
 import { OperationalMap } from './operational-map';
 
 describe('OperationalMap', () => {
@@ -10,7 +11,12 @@ describe('OperationalMap', () => {
 
   beforeEach(() => {
     geocode.mockReset();
-    TestBed.configureTestingModule({ providers: [{ provide: Geocoding, useValue: { geocode } }] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: Geocoding, useValue: { geocode } },
+        { provide: Routing, useValue: { calculate: vi.fn().mockResolvedValue(null) } },
+      ],
+    });
   });
 
   it('uses provided coordinates and geocodes only unique unknown addresses', async () => {

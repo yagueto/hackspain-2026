@@ -3,12 +3,16 @@ import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { vi } from 'vitest';
 import { MOCK_UNITS } from '../../core/data/operations.mock';
 import { Geocoding } from '../../core/services/geocoding';
+import { Routing } from '../../core/services/routing';
 import { Home } from './home';
 
 describe('Home resource selection', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [{ provide: Geocoding, useValue: { geocode: vi.fn() } }],
+      providers: [
+        { provide: Geocoding, useValue: { geocode: vi.fn() } },
+        { provide: Routing, useValue: { calculate: vi.fn().mockResolvedValue(null) } },
+      ],
     });
   });
 
