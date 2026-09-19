@@ -30,7 +30,11 @@ export interface ResourceRoute {
   destination: Coordinates;
   destinationLabel?: string;
   via?: readonly Coordinates[];
+  navigation?: RouteNavigation;
 }
+
+export type RouteNavigation =
+  { status: 'loading' | 'unavailable' | 'error' } | { status: 'ready'; route: CalculatedRoute };
 
 export interface CalculatedRoute {
   path: readonly Coordinates[];

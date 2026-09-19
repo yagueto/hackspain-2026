@@ -18,6 +18,7 @@ import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
 import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
+import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
 
 @Component({
@@ -41,7 +42,10 @@ export class OperationalMap {
   protected readonly lookupFailed = signal(false);
   protected readonly tileError = signal(false);
   protected readonly centerLabel = signal('40.7340° N · 3.8760° O');
-  protected readonly resolvedLocations = signal<readonly MapLocation[]>([]);
+  private readonly sourceLocations = signal<readonly MapLocation[]>([]);
+  protected readonly resolvedLocations = computed(() =>
+    this.sourceLocations().map((location) => this.simulation.project(location)),
+  );
   protected readonly visibleLocations = computed(() =>
     this.resolvedLocations().filter((location) =>
       this.isVisible(location, this.showIncidents(), this.showUnits()),
@@ -50,9 +54,31 @@ export class OperationalMap {
   private readonly canvas = viewChild.required<ElementRef<HTMLDivElement>>('mapCanvas');
   private readonly geocoding = inject(Geocoding);
   private readonly routing = inject(Routing);
-  private readonly routeStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
+  private readonly simulation = inject(DemoRouteSimulation);
+  private readonly fetchedRouteStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
+  private readonly routeStates = computed(() => {
+    const states = new Map(this.fetchedRouteStates());
+    for (const location of this.resolvedLocations()) {
+      if (location.route?.navigation) states.set(location.id, location.route.navigation);
+    }
+    return states;
+  });
+  private readonly unmanagedLocations = computed(
+    () =>
+      this.locations().filter(
+        (location) =>
+          location.kind === 'unit' &&
+          location.route?.status === 'active' &&
+          !location.route.navigation &&
+          !this.simulation.isManaged(location),
+      ),
+    {
+      equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
+    },
+  );
   private readonly routeRetryVersion = signal(0);
   private readonly markers = new Map<string, L.Marker>();
+  private readonly markerAppearances = new Map<string, string>();
   private routeLayer?: ResourceRouteLayer;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
@@ -110,7 +136,7 @@ export class OperationalMap {
 
     effect((onCleanup) => {
       if (!this.ready()) return;
-      const locations = this.locations();
+      const locations = this.unmanagedLocations();
       const visible = this.showUnits();
       this.routeRetryVersion();
       const controller = new AbortController();
@@ -139,9 +165,11 @@ export class OperationalMap {
       const states = this.routeStates();
       this.routeLayer?.render(locations, states, this.selectedUnitId(), this.showUnits());
       for (const location of locations) {
-        this.markers
-          .get(location.id)
-          ?.setPopupContent(this.popupContent(location, states.get(location.id)));
+        const marker = this.markers.get(location.id);
+        if (!marker?.isPopupOpen()) continue;
+        const content = this.popupContent(location, states.get(location.id));
+        const previous = marker.getPopup()?.getContent() as HTMLElement | undefined;
+        if (previous?.textContent !== content.textContent) marker.setPopupContent(content);
       }
     });
 
@@ -195,7 +223,7 @@ export class OperationalMap {
     const pending = uniqueAddresses.filter((address) => !known.has(normalizeAddress(address)));
     const resolved = [...locations];
     const missing: string[] = [];
-    this.resolvedLocations.set([...resolved]);
+    this.sourceLocations.set([...resolved]);
     this.missingAddresses.set([]);
     this.lookupFailed.set(false);
     this.locating.set(pending.length > 0);
@@ -223,7 +251,7 @@ export class OperationalMap {
       }
     }
     if (!signal.aborted) {
-      this.resolvedLocations.set([...resolved]);
+      this.sourceLocations.set([...resolved]);
       this.missingAddresses.set(missing);
       this.locating.set(false);
     }
@@ -237,42 +265,67 @@ export class OperationalMap {
     unitsVisible: boolean,
   ): void {
     if (!this.map || !this.markerLayer) return;
-    const openMarker = [...this.markers].find(([, marker]) => marker.isPopupOpen())?.[0];
-    this.markerLayer.clearLayers();
-    this.markers.clear();
-    let selectedMarker: L.Marker | undefined;
-    let selectedLocationId: string | undefined;
-    for (const location of locations) {
-      if (!this.isVisible(location, incidentsVisible, unitsVisible)) continue;
-      const selected = this.isSelected(location, selectedId, selectedUnitId);
-      const marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
-        icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
-        title: `${location.label} · ${location.address}`,
-        alt: location.label,
-        keyboard: true,
-        zIndexOffset: selected ? 1000 : location.kind === 'incident' ? 500 : 0,
-      }).addTo(this.markerLayer);
-      this.markers.set(location.id, marker);
-      marker.bindPopup(
-        this.popupContent(
-          location,
-          untracked(() => this.routeStates().get(location.id)),
-        ),
-        { maxWidth: 250 },
-      );
-      marker.on('click', () => {
-        if (location.kind === 'unit') this.unitSelected.emit(location.id);
-        else if (location.kind === 'incident' && location.incidentId)
-          this.incidentSelected.emit(location.incidentId);
-      });
-      if (selected) {
-        selectedMarker = marker;
-        selectedLocationId = location.id;
-      }
+    const visible = locations.filter((location) =>
+      this.isVisible(location, incidentsVisible, unitsVisible),
+    );
+    const ids = new Set(visible.map((location) => location.id));
+    for (const [id, marker] of this.markers) {
+      if (ids.has(id)) continue;
+      this.markerLayer.removeLayer(marker);
+      this.markers.delete(id);
+      this.markerAppearances.delete(id);
     }
-    const locationKey = locations
-      .map((location) => `${location.id}:${location.coordinates.lat}:${location.coordinates.lng}`)
-      .join('|');
+    let selectedMarker: L.Marker | undefined;
+    for (const location of visible) {
+      const selected = this.isSelected(location, selectedId, selectedUnitId);
+      const related = !selectedUnitId && !!selectedId && location.incidentId === selectedId;
+      const appearance = JSON.stringify([
+        location.kind,
+        location.icon,
+        location.label,
+        selected,
+        related,
+      ]);
+      let marker = this.markers.get(location.id);
+      if (!marker) {
+        marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
+          icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
+          title: `${location.label} · ${location.address}`,
+          alt: location.label,
+          keyboard: true,
+        }).addTo(this.markerLayer);
+        this.markers.set(location.id, marker);
+        this.markerAppearances.set(location.id, appearance);
+        marker.bindPopup(
+          this.popupContent(
+            location,
+            untracked(() => this.routeStates().get(location.id)),
+          ),
+          { maxWidth: 250 },
+        );
+        marker.on('click', () => {
+          if (location.kind === 'unit') this.unitSelected.emit(location.id);
+          else if (location.kind === 'incident' && location.incidentId)
+            this.incidentSelected.emit(location.incidentId);
+        });
+        marker.on('popupopen', () => {
+          const current = this.resolvedLocations().find((item) => item.id === location.id);
+          if (current)
+            marker!.setPopupContent(this.popupContent(current, this.routeStates().get(current.id)));
+        });
+      } else {
+        if (this.markerAppearances.get(location.id) !== appearance) {
+          marker.setIcon(this.createIcon(location, selectedUnitId ? null : selectedId, selected));
+          this.markerAppearances.set(location.id, appearance);
+        }
+        const point = L.latLng(location.coordinates.lat, location.coordinates.lng);
+        if (!marker.getLatLng().equals(point)) marker.setLatLng(point);
+        marker.getElement()?.setAttribute('title', `${location.label} · ${location.address}`);
+      }
+      marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
+      if (selected) selectedMarker = marker;
+    }
+    const locationKey = locations.map((location) => location.id).join('|');
     const selectionKey = selectedUnitId
       ? `unit:${selectedUnitId}`
       : selectedId
@@ -285,7 +338,6 @@ export class OperationalMap {
       this.map.panTo(selectedMarker.getLatLng(), { animate: false });
       selectedMarker.openPopup();
     }
-    if (selectedMarker && selectedLocationId === openMarker) selectedMarker.openPopup();
     this.lastSelection = selectionKey;
   }
 
@@ -296,7 +348,7 @@ export class OperationalMap {
     const states = new Map<string, ResourceRouteState>(
       units.map((unit) => [unit.id, { status: 'loading' }]),
     );
-    this.routeStates.set(new Map(states));
+    this.fetchedRouteStates.set(new Map(states));
     for (const [index, unit] of units.entries()) {
       try {
         const route = await this.routing.calculate(unit.coordinates, unit.route!, signal);
@@ -305,10 +357,10 @@ export class OperationalMap {
       } catch {
         if (signal.aborted) return;
         for (const pending of units.slice(index)) states.set(pending.id, { status: 'error' });
-        this.routeStates.set(new Map(states));
+        this.fetchedRouteStates.set(new Map(states));
         return;
       }
-      this.routeStates.set(new Map(states));
+      this.fetchedRouteStates.set(new Map(states));
     }
   }
 
@@ -350,7 +402,10 @@ export class OperationalMap {
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.textContent = 'Reintentar ruta';
-      retry.addEventListener('click', () => this.routeRetryVersion.update((value) => value + 1));
+      retry.addEventListener('click', () => {
+        if (location.route?.navigation) this.simulation.retry(location.id);
+        else this.routeRetryVersion.update((value) => value + 1);
+      });
       popup.append(retry);
     }
     return popup;
