@@ -15,27 +15,22 @@ export class ServiceFeed {
   readonly selectedIncidentId = input<string | null>(null);
   readonly unitSelected = output<string>();
   protected readonly filtersOpen = signal(false);
-  protected readonly serviceFilter = signal('');
-  protected readonly incidentFilter = signal('');
+  protected readonly selectedServices = signal<readonly string[]>([]);
   protected readonly services = computed(() => [
     ...new Set(this.communications().map((item) => item.service)),
   ]);
-  protected readonly incidents = computed(() => [
-    ...new Set(this.communications().map((item) => item.incidentId)),
-  ]);
-  protected readonly filterCount = computed(
-    () => Number(!!this.serviceFilter()) + Number(!!this.incidentFilter()),
-  );
+  protected readonly filterCount = computed(() => this.selectedServices().length);
   protected readonly filteredCommunications = computed(() =>
     this.communications().filter(
-      (item) =>
-        (!this.serviceFilter() || item.service === this.serviceFilter()) &&
-        (!this.incidentFilter() || item.incidentId === this.incidentFilter()),
+      (item) => !this.filterCount() || this.selectedServices().includes(item.service),
     ),
   );
 
-  protected resetFilters(): void {
-    this.serviceFilter.set('');
-    this.incidentFilter.set('');
+  protected toggleService(service: string): void {
+    this.selectedServices.update((selected) =>
+      selected.includes(service)
+        ? selected.filter((item) => item !== service)
+        : [...selected, service],
+    );
   }
 }

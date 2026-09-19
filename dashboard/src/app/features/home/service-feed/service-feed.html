@@ -1,7 +1,7 @@
-<section class="panel services-panel" aria-labelledby="services-title">
-  <div class="panel-heading services-heading">
+<section class="panel resources-panel" aria-labelledby="resources-title">
+  <div class="panel-heading resources-heading">
     <div>
-      <h2 id="services-title">Servicios</h2>
+      <h2 id="resources-title">Recursos</h2>
       <p class="panel-subtitle">Historial de comunicaciones</p>
     </div>
     <div class="feed-actions">
@@ -10,7 +10,7 @@
         class="filter-button"
         [class.is-active]="filterCount() > 0"
         [attr.aria-expanded]="filtersOpen()"
-        aria-controls="service-filters"
+        aria-controls="resource-filters"
         (click)="filtersOpen.set(!filtersOpen())"
       >
         <app-icon name="filter" /> Filtrar
@@ -18,38 +18,39 @@
           <span class="filter-count">{{ filterCount() }}</span>
         }
       </button>
-      <span class="record-count" aria-live="polite"
-        >{{ filteredCommunications().length }} registros</span
-      >
+      <span class="record-count" aria-live="polite">
+        {{ filteredCommunications().length }}
+        {{ filteredCommunications().length === 1 ? 'registro' : 'registros' }}
+      </span>
     </div>
   </div>
   @if (filtersOpen()) {
-    <div id="service-filters" class="filters">
-      <label
-        >Servicio<select
-          #service
-          [value]="serviceFilter()"
-          (change)="serviceFilter.set(service.value)"
-        >
-          <option value="">Todos los servicios</option>
-          @for (item of services(); track item) {
-            <option [value]="item">{{ item }}</option>
-          }
-        </select></label
+    <div
+      id="resource-filters"
+      class="filters"
+      role="group"
+      aria-label="Filtrar recursos por categoría"
+    >
+      <button
+        type="button"
+        class="category-chip"
+        [class.is-active]="!filterCount()"
+        [attr.aria-pressed]="!filterCount()"
+        (click)="selectedServices.set([])"
       >
-      <label
-        >Incidencia<select
-          #incident
-          [value]="incidentFilter()"
-          (change)="incidentFilter.set(incident.value)"
+        Todos
+      </button>
+      @for (service of services(); track service) {
+        <button
+          type="button"
+          class="category-chip"
+          [class.is-active]="selectedServices().includes(service)"
+          [attr.aria-pressed]="selectedServices().includes(service)"
+          (click)="toggleService(service)"
         >
-          <option value="">Todas las incidencias</option>
-          @for (item of incidents(); track item) {
-            <option [value]="item">{{ item }}</option>
-          }
-        </select></label
-      >
-      <button class="clear-filters" type="button" (click)="resetFilters()">Limpiar</button>
+          {{ service }}
+        </button>
+      }
     </div>
   }
   <div class="feed-list">
@@ -67,30 +68,36 @@
         (click)="unitSelected.emit(item.vehicle)"
       >
         <time>{{ item.time }}</time>
-        <span class="communication-status">{{ item.status }}</span>
         <app-icon class="service-icon" [name]="item.icon" />
         <span class="communication-body">
           <span class="message">{{ item.message }}</span>
-          <span class="tags"
-            ><span
+          <span class="tags">
+            <span
               >Servicio: <strong>{{ item.service }}</strong></span
-            ><span
+            >
+            <span
               >Vehículo: <strong>{{ item.vehicle }}</strong></span
-            ><span
+            >
+            <span
               >Agente: <strong>{{ item.agent }}</strong></span
-            ><span
+            >
+            <span
               >Incidencia: <strong>{{ item.incidentId }}</strong></span
-            ></span
-          >
+            >
+          </span>
         </span>
+        <span class="communication-status">{{ item.status }}</span>
       </button>
     } @empty {
       <div class="empty-state">
         <app-icon name="filter" />
-        <p>No hay comunicaciones con estos filtros.</p>
-        <button type="button" class="clear-filters" (click)="resetFilters()">
-          Mostrar todos los registros
-        </button>
+        <p>
+          {{
+            communications().length
+              ? 'No hay recursos en las categorías seleccionadas.'
+              : 'No hay recursos disponibles.'
+          }}
+        </p>
       </div>
     }
   </div>
