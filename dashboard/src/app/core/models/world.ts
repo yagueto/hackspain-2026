@@ -41,6 +41,14 @@ export interface OperationalTask {
   incoming_call_id?: string | null;
   target_location?: (Coordinates & { label: string }) | null;
   outcome?: string;
+  /** La decidió el agente; el operador puede anularla mientras dure `hold_until`. */
+  autonomous?: boolean;
+  hold_until?: string | null;
+  blocked_reason?: string;
+  priority_reason?: string;
+  requires_approval?: boolean;
+  approved_at?: string | null;
+  escalated_at?: string | null;
 }
 
 export interface IncomingCall {
@@ -88,7 +96,12 @@ export interface WorldSnapshot {
   }[];
   contacts: { id: string; name: string }[];
   tasks: OperationalTask[];
-  agent?: { mode: 'running' | 'paused' };
+  agent?: {
+    mode: 'running' | 'paused';
+    autonomous?: boolean;
+    hold_seconds?: number;
+    escalate_after_seconds?: number;
+  };
   recent_actions: {
     id: string;
     ts: string;

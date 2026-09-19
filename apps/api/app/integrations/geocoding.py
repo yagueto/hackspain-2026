@@ -21,7 +21,8 @@ COARSE_PLACES = {
 
 class NominatimGeocoder:
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
-        self.enabled = settings.nominatim_demo_enabled and settings.seed_demo
+        self.enabled = settings.geocoding_enabled
+        self._endpoint = settings.geocoding_endpoint
         self._client = client or httpx.AsyncClient(timeout=8)
         self._lock = asyncio.Lock()
         self._last_start = 0.0
@@ -31,7 +32,7 @@ class NominatimGeocoder:
         await self._client.aclose()
 
     async def search(self, location: ReportedLocation) -> LocationResolution:
-        if not self.enabled or not location.public_search_allowed:
+        if not self.enabled:
             return LocationResolution()
         query = (
             ", ".join(
@@ -58,7 +59,7 @@ class NominatimGeocoder:
             self._last_start = time.monotonic()
             try:
                 response = await self._client.get(
-                    "https://nominatim.openstreetmap.org/search",
+                    self._endpoint,
                     params={
                         "q": query,
                         "format": "jsonv2",

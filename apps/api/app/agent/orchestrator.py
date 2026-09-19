@@ -4,14 +4,14 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from app.agent.executor import Executor, invalid_task, reachable
-from app.agent.llm import LLMReviewer
+from app.agent.executor import Executor, invalid_task, location_pending, reachable
+from app.agent.llm import LLMReviewer, Review
 from app.agent.planner import Proposal, propose, replan_needed
 from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
@@ -20,8 +20,11 @@ from app.domain.models import (
     AgentMode,
     Decision,
     Event,
+    EventKind,
+    EventSource,
     Observation,
     Receipt,
+    Severity,
     TaskStatus,
     now,
 )
@@ -30,6 +33,14 @@ from app.domain.state import WorldState
 from app.store.persistence import Store, StoreError, VersionConflict
 
 log = logging.getLogger(__name__)
+
+
+def _review_signature(events: list[Event], proposals: list[Proposal]) -> tuple[str, ...]:
+    """Identifica el contexto que juzgó el LLM: eventos y propuestas por posición."""
+    return tuple(
+        [f"e:{e.id}" for e in events]
+        + [f"p:{i}:{p.task.kind}:{p.task.title}" for i, p in enumerate(proposals)]
+    )
 
 
 class Orchestrator:
@@ -52,6 +63,9 @@ class Orchestrator:
         self._task: asyncio.Task[None] | None = None
         self._tick_lock = asyncio.Lock()
         self._autoplan = False
+        # Localización de avisos sin GPS; la inyecta el runtime, que es quien tiene el
+        # proveedor y sus guardas de concurrencia.
+        self.locate: Callable[[str, datetime], Awaitable[object]] | None = None
 
     @property
     def incident_id(self) -> str:
@@ -77,6 +91,9 @@ class Orchestrator:
             try:
                 if self.state.incident:
                     await self.synchronize()
+                    await self.locate_pending_reports()
+                    await self.reconcile_intake()
+                    await self.escalate_stale_approvals()
                 if (
                     self.state.incident
                     and self._autoplan
@@ -228,7 +245,12 @@ class Orchestrator:
             await self._dispatch_pending()
             return decision
 
-    async def _tick(self, trigger: str, attempt: int = 0) -> Decision:
+    async def _tick(
+        self,
+        trigger: str,
+        attempt: int = 0,
+        cached: tuple[tuple[str, ...], Review] | None = None,
+    ) -> Decision:
         await self._synchronize()
         s = self.state.copy()
         if s.agent.mode == AgentMode.paused:
@@ -241,6 +263,8 @@ class Orchestrator:
         replan_reason = replan_needed(s, facts)
         cancelled = []
         for task in s.open_tasks():
+            if location_pending(s, task):
+                continue
             reason = invalid_task(s, task)
             if reason:
                 await executor.cancel_task(task, reason)
@@ -263,13 +287,23 @@ class Orchestrator:
         )
         if not new_events and not proposals and not cancelled and s.decisions and not can_retry:
             return s.decisions[-1]
-        review = await self.reviewer.review(
-            s.snapshot(), new_events, proposals, await self.store.lessons_summary()
+        # El review es la parte lenta del tick (decenas de segundos). Si al revalidar el
+        # contexto que juzgó el LLM no ha cambiado, se reutiliza en vez de volver a pagarlo.
+        signature = _review_signature(new_events, proposals)
+        review = (
+            cached[1]
+            if cached and cached[0] == signature
+            else await self.reviewer.review(
+                s.snapshot(), new_events, proposals, await self.store.lessons_summary()
+            )
         )
         if await self.store.pending(self.incident_id, 1):
-            if attempt >= 2:
+            # Un solo reintento: cada uno puede costar otro review completo.
+            if attempt >= 1:
                 raise VersionConflict("nuevas observaciones durante la planificación; reintenta")
-            return await self._tick("revalidated", attempt + 1)
+            return await self._tick(
+                "revalidated", attempt + 1, (signature, review) if review else None
+            )
         if review:
             adjustments = {a.index: a for a in review.tasks}
             kept = []
@@ -326,6 +360,101 @@ class Orchestrator:
         await self._commit(s, require_synced=True)
         return decision
 
+    def _stale_intake_tasks(self, state: WorldState) -> list[str]:
+        return [
+            task.id
+            for task in state.open_tasks()
+            if task.incoming_call_id
+            and not location_pending(state, task)
+            and invalid_task(state, task)
+        ]
+
+    async def reconcile_intake(self) -> None:
+        """Pone al día las misiones de un aviso: cancela lo inválido y prepara lo nuevo.
+
+        Solo construye la orden; enviarla es cosa de `dispatch_pending`, que respeta la
+        ventana para anular y la parada de emergencia.
+        """
+        stale = self._stale_intake_tasks(self.state)
+        ready = [
+            task.id
+            for task in self.state.tasks.values()
+            if task.autonomous and task.status == TaskStatus.proposed and not task.action_ids
+        ]
+        if not stale and not ready:
+            return
+        async with self.edit() as s:
+            executor = self.executor.bind(s)
+            for task_id in self._stale_intake_tasks(s):
+                await executor.cancel_task(s.tasks[task_id], invalid_task(s, s.tasks[task_id]))
+            reliability = {c.id: c.reliability for c in s.contacts.values()}
+            for task_id in sorted(ready, key=lambda i: -s.tasks[i].priority):
+                task = s.tasks.get(task_id)
+                if not task or task.status != TaskStatus.proposed or task.action_ids:
+                    continue
+                await executor.execute(
+                    Proposal(task, task.resource_types, task.contact_roles), reliability
+                )
+
+    async def locate_pending_reports(self) -> None:
+        """Resuelve la ubicación de los avisos sin GPS que aún no se han intentado.
+
+        Fuera de la petición del webhook: el workflow que atiende al ciudadano no debe
+        esperar a un proveedor externo. Un fallo del proveedor no descarta el aviso.
+        """
+        if not self.locate:
+            return
+        for report in list(self.state.incoming_calls.values()):
+            if report.location.lat is not None or report.resolution.status != "not_requested":
+                continue
+            try:
+                await self.locate(report.run_id, report.timestamp)
+            except (ValueError, KeyError) as exc:
+                log.info("no se pudo localizar el aviso %s: %s", report.run_id, exc)
+
+    async def escalate_stale_approvals(self) -> None:
+        """Una decisión crítica sin confirmar no se despacha sola, pero tampoco se calla.
+
+        Avisa una sola vez por tarea. El aviso queda `dispatched` hasta que llegue la
+        observación `message_outcome`: no se da por entregado antes.
+        """
+        limit = self.state.agent.escalate_after_seconds
+        if limit <= 0:
+            return
+        deadline = now() - timedelta(seconds=limit)
+        stale = [
+            task.id
+            for task in self.state.tasks.values()
+            if task.status == TaskStatus.awaiting_approval
+            and not task.escalated_at
+            and task.updated_at <= deadline
+        ]
+        if not stale:
+            return
+        async with self.edit() as s:
+            for task_id in stale:
+                task = s.tasks.get(task_id)
+                if not task or task.status != TaskStatus.awaiting_approval or task.escalated_at:
+                    continue
+                task.escalated_at = now()
+                s.upsert_task(task)
+                await self.executor.bind(s).message(
+                    None,
+                    f"Decisión crítica sin confirmar tras {limit:.0f} s: {task.title}. "
+                    f"{task.priority_reason} Revísala en el panel de coordinación.",
+                    task_id=task.id,
+                )
+                s.add_event(
+                    Event(
+                        source=EventSource.system,
+                        kind=EventKind.note,
+                        severity=Severity.high,
+                        title=f"Escalado: decisión crítica sin confirmar ({task.title})",
+                        payload={"task_id": task.id},
+                    )
+                )
+        await self.dispatch_pending()
+
     async def approve(
         self,
         task_id: str,
@@ -339,15 +468,20 @@ class Orchestrator:
             task = s.tasks[task_id]
             if task.status != TaskStatus.awaiting_approval:
                 raise ValueError("la tarea no está pendiente de aprobación")
+            # Confirmar una ubicación solo tiene sentido sobre un aviso ciudadano; una
+            # evacuación no tiene parte que revisar.
             if task.incoming_call_id:
                 if expected_updated_at != task.updated_at:
                     raise ValueError("la propuesta ha cambiado; revisa el estado actualizado")
-                if approved and (not confirm_location or invalid_task(s, task)):
+                if approved and (
+                    not confirm_location or location_pending(s, task) or invalid_task(s, task)
+                ):
                     raise ValueError("confirma una ubicación válida antes de aprobar recursos")
             if not approved:
                 task.status, task.outcome = TaskStatus.rejected, note or "Rechazada por operador"
             else:
                 task.approved_at = now()
+                task.hold_until = None  # ya hay una decisión humana: no hay nada que retener
                 task.status = TaskStatus.proposed
                 task.outcome = note
                 await self.executor.bind(s).execute(
@@ -393,6 +527,9 @@ class Orchestrator:
                 await self._commit(s)
                 continue
             if task:
+                if location_pending(s, task):
+                    # No hay destino todavía: se espera, no se descarta el aviso.
+                    continue
                 reason = invalid_task(s, task)
                 if task.status in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.rejected):
                     reason = "tarea cerrada"
@@ -411,6 +548,10 @@ class Orchestrator:
                 contact = s.contacts.get(action.contact_id or "")
                 if contact and action.kind == ActionKind.call:
                     action.request.update(self.executor.bind(s)._briefing(task, contact))
+            # Ventana para anular una decisión automática. Se comprueba después de validar:
+            # una orden retenida que ya no vale se cancela, no se queda esperando.
+            if action.hold_until and action.hold_until > now():
+                continue
             action.state_version = s.version + 1
             action.status = ActionStatus.sending
             action.attempts += 1

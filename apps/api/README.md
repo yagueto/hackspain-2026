@@ -55,6 +55,47 @@ URL pública antes de activar `HAPPYROBOT_MODE=live`. El entorno de workflows de
 La persistencia no necesita una API key de HappyRobot: solo las llamadas y los avisos la usan.
 `integrations.storage` refleja el estado del store.
 
+### Autonomía y frontera crítica
+
+El agente decide, localiza, reserva y despacha **sin operador**. Solo somete a confirmación
+humana lo crítico, y el operador interviene como override, no como puerta previa.
+
+| Caso | Comportamiento |
+| --- | --- |
+| Aviso `vital` o `evacuate_zone` | `awaiting_approval`; requiere confirmación explícita |
+| Resto de avisos | Orden preparada al instante, retenida `AGENT_HOLD_SECONDS` (10 s) |
+| Crítico sin confirmar en `AGENT_ESCALATE_AFTER_SECONDS` (30 s) | Un aviso por `send_telegram`; **sigue esperando** |
+| Sin ubicación utilizable | Propuesta bloqueada (`blocked_reason`), nunca cancelada ni enviada a ciegas |
+
+La frontera vive en `app/domain/autonomy.py` y se configura en `AgentConfig`
+(`autonomous`, `approval_required_severities`, `approval_required_for`, `hold_seconds`,
+`escalate_after_seconds`), ajustable con `PATCH /api/v1/control/agent`. Con
+`AGENT_AUTONOMOUS=false` todo vuelve a requerir una persona.
+
+Overrides, todos con `X-API-Key`:
+
+- `POST /control/tasks/{id}/status` con `{"status":"cancelled"}` anula una decisión
+  automática: marca la orden no enviada como `skipped` y libera la unidad.
+- `POST /control/pause` es la **parada de emergencia**: frena los envíos nuevos, incluidos
+  los retenidos. No cancela runs ya enviados ni libera unidades movilizadas; para eso hay
+  que cancelar cada misión. Reactivar con `/control/resume` es explícito, y el arranque
+  nunca reactiva por su cuenta un incidente guardado en pausa.
+
+La ventana `hold_until` se comprueba **después** de revalidar la tarea: una orden retenida
+cuyo aviso se ha corregido se cancela en lugar de salir hacia el destino viejo.
+
+### Localización automática de avisos
+
+Si el aviso llega sin GPS, el agente lo geocodifica por su cuenta. No lo hace dentro del
+webhook —quien llama es el workflow que está atendiendo al ciudadano— sino en el bucle del
+orquestador (`locate_pending_reports`). Solo se acepta un candidato único y no genérico:
+un resultado ambiguo o un centro de población deja la propuesta bloqueada.
+
+`GEOCODING_ENDPOINT` apunta por defecto al Nominatim público de OSMF, que en esta demo
+recibe las direcciones del aviso, **incluidas las privadas**. Es aceptable para una demo de
+un solo usuario; para cualquier otro uso, apunta la variable a una instancia propia.
+`GEOCODING_ENABLED=false` lo desactiva por completo.
+
 ### Avisos de Telegram por workflow
 
 `POST /api/v1/control/telegram`, autenticado con `X-API-Key`, recibe:

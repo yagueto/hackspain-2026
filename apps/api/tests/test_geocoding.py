@@ -9,16 +9,29 @@ from app.domain.models import ReportedLocation
 from app.integrations.geocoding import NominatimGeocoder
 
 
-@pytest.mark.parametrize("enabled,consent", [(False, True), (True, False)])
-async def test_geocoding_needs_demo_enablement_and_public_address_permission(enabled, consent):
+async def test_disabled_geocoding_never_reaches_the_provider():
     handler = AsyncMock(return_value=httpx.Response(200, json=[]))
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        geocoder = NominatimGeocoder(Settings(nominatim_demo_enabled=enabled), client)
-        result = await geocoder.search(
-            ReportedLocation(raw_text="Lugar público de prueba", public_search_allowed=consent)
-        )
+        geocoder = NominatimGeocoder(Settings(geocoding_enabled=False), client)
+        result = await geocoder.search(ReportedLocation(raw_text="Lugar de prueba"))
     assert result.status == "not_requested"
     handler.assert_not_called()
+
+
+async def test_configured_endpoint_replaces_the_public_demo_provider():
+    """Fuera de la demo las direcciones deben poder ir a una instancia propia."""
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        geocoder = NominatimGeocoder(
+            Settings(geocoding_endpoint="https://geocoder.interno/search"), client
+        )
+        await geocoder.search(ReportedLocation(raw_text="Calle X 1"))
+    assert requests[0].url.host == "geocoder.interno"
 
 
 async def test_unique_public_location_uses_cache_and_rate_limit(monkeypatch):
@@ -41,8 +54,8 @@ async def test_unique_public_location_uses_cache_and_rate_limit(monkeypatch):
     sleep = AsyncMock()
     monkeypatch.setattr("app.integrations.geocoding.asyncio.sleep", sleep)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        geocoder = NominatimGeocoder(Settings(nominatim_demo_enabled=True), client)
-        location = ReportedLocation(raw_text="Plaza pública de prueba", public_search_allowed=True)
+        geocoder = NominatimGeocoder(Settings(), client)
+        location = ReportedLocation(raw_text="Plaza pública de prueba")
         first = await geocoder.search(location)
         second = await geocoder.search(location)
         other = await geocoder.search(
@@ -81,10 +94,8 @@ async def test_ambiguous_coarse_and_invalid_results_never_select_a_destination(r
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=results))
     ) as client:
-        geocoder = NominatimGeocoder(Settings(nominatim_demo_enabled=True), client)
-        result = await geocoder.search(
-            ReportedLocation(raw_text="Lugar público", public_search_allowed=True)
-        )
+        geocoder = NominatimGeocoder(Settings(), client)
+        result = await geocoder.search(ReportedLocation(raw_text="Lugar público"))
     assert result.status == status
     assert result.selected is None
 
@@ -92,8 +103,8 @@ async def test_ambiguous_coarse_and_invalid_results_never_select_a_destination(r
 async def test_provider_failure_is_bounded_and_cached():
     handler = AsyncMock(return_value=httpx.Response(429))
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        geocoder = NominatimGeocoder(Settings(nominatim_demo_enabled=True), client)
-        location = ReportedLocation(raw_text="Lugar público", public_search_allowed=True)
+        geocoder = NominatimGeocoder(Settings(), client)
+        location = ReportedLocation(raw_text="Lugar público")
         results = await asyncio.gather(geocoder.search(location), geocoder.search(location))
     assert all(result.status == "unavailable" for result in results)
     handler.assert_awaited_once()

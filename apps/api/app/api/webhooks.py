@@ -11,6 +11,7 @@ from app.domain.models import (
     IncomingCallIn,
     Observation,
     Severity,
+    TaskStatus,
 )
 from app.domain.observations import apply_observation, resolve_action
 from app.runtime import Runtime, get_runtime
@@ -58,21 +59,22 @@ async def incoming_call_webhook(
     )
     if receipt.status == "invalid":
         raise HTTPException(422, receipt.reason)
-    if (
-        receipt.status == "applied"
-        and body.location.lat is None
-        and body.location.public_search_allowed
-        and body.location.confirmed
-        and rt.state.incoming_calls[body.run_id].timestamp == body.timestamp
-    ):
-        await rt.geocode_report(body.run_id, body.timestamp)
+    # La decisión no espera a nadie: se asigna el medio y se prepara la orden aquí mismo.
+    # Enviarla es cosa del outbox, que respeta la ventana para anular y la parada.
+    # La localización sin GPS, en cambio, la resuelve el bucle: quien llama es el workflow
+    # que está atendiendo al ciudadano y no debe esperar a un proveedor externo.
+    if receipt.status == "applied":
+        await rt.orchestrator.reconcile_intake()
+    tasks = [t for t in rt.state.tasks.values() if t.incoming_call_id == body.run_id]
     return {
         "ok": True,
         "status": receipt.status,
         "observation_id": observation.observation_id,
         "run_id": body.run_id,
         "location_confirmed": body.location.confirmed and body.location.lat is not None,
-        "requires_operator": body.escalation_required,
+        "requires_operator": any(
+            t.status == TaskStatus.awaiting_approval or t.blocked_reason for t in tasks
+        ),
     }
 
 

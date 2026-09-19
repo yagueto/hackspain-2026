@@ -21,15 +21,19 @@ describe('Home resource selection', () => {
             communications: signal(MOCK_COMMUNICATIONS),
             units: signal(MOCK_UNITS),
             snapshot: signal(null),
-            meta: signal({ happyrobot_mode: 'simulated', nominatim_demo_enabled: true }),
+            meta: signal({ happyrobot_mode: 'simulated', geocoding_enabled: true }),
             start: vi.fn(),
             refresh: vi.fn(),
             approve: vi.fn().mockResolvedValue({}),
             geocode: vi.fn().mockResolvedValue({}),
             confirmLocation: vi.fn().mockResolvedValue({}),
+            cancelTask: vi.fn().mockResolvedValue({}),
             resumeSimulated: vi.fn().mockResolvedValue({}),
             connection: signal('live'),
             error: signal(''),
+            operatorKey: signal(''),
+            now: signal(Date.parse('2026-09-19T12:00:00Z')),
+            paused: signal(false),
           },
         },
         { provide: Geocoding, useValue: { geocode: vi.fn() } },
@@ -170,7 +174,7 @@ describe('Home resource selection', () => {
     expect(button.disabled).toBe(false);
     button.click();
     await fixture.whenStable();
-    expect(operations.approve).toHaveBeenCalledWith(task, true, 'operator-test', true);
+    expect(operations.approve).toHaveBeenCalledWith(task, true, true);
     expect(operations.resumeSimulated).not.toHaveBeenCalled();
     operations.snapshot.set({
       ...state,
@@ -178,8 +182,78 @@ describe('Home resource selection', () => {
     });
     await fixture.whenStable();
     expect(button.disabled).toBe(true);
-    await fixture.componentInstance.searchLocation();
-    expect(operations.geocode).not.toHaveBeenCalled();
+  });
+
+  it('shows the automatic decision with its reason and lets the operator override it', async () => {
+    const operations = TestBed.inject(Operations);
+    const report = {
+      run_id: 'auto-1',
+      timestamp: '2026-09-19T12:00:00Z',
+      emergency_type: 'incendio',
+      severity: 'grave' as const,
+      escalation_required: false,
+      location: { raw_text: 'Plaza pública', lat: 40, lng: -4, confirmed: true },
+      victims: {},
+    };
+    const task = {
+      id: 'auto-task-1',
+      title: 'Automático: Bomberos para aviso de incendio',
+      zone_id: null,
+      resource_ids: ['res_bomb1'],
+      status: 'dispatching',
+      autonomous: true,
+      requires_approval: false,
+      priority_reason: 'Aviso grave de tipo incendio: bomberos asignados automáticamente.',
+      hold_until: '2026-09-19T12:00:10Z',
+      incoming_call_id: report.run_id,
+      updated_at: report.timestamp,
+      target_location: { lat: 40, lng: -4, label: 'Plaza pública' },
+    };
+    operations.snapshot.set({
+      version: 1,
+      generated_at: report.timestamp,
+      incident: { id: 'incident', name: 'Crisis', started_at: report.timestamp },
+      zones: [],
+      fronts: [],
+      resources: [],
+      contacts: [],
+      tasks: [task],
+      recent_actions: [],
+      incoming_calls: [report],
+      agent: { mode: 'running', autonomous: true },
+    } as WorldSnapshot);
+    (operations.incidents as WritableSignal<Incident[]>).set([
+      {
+        id: 'call:auto-1',
+        title: 'Aviso',
+        address: 'Plaza pública',
+        area: 'Plaza pública',
+        priority: 'P1',
+        status: 'Automático · orden preparada',
+        coordinates: { lat: 40, lng: -4 },
+        icon: 'fire',
+      },
+    ]);
+    const fixture = await setup();
+    fixture.componentInstance.selectIncident('call:auto-1');
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.badge.auto')?.textContent).toContain('Decisión automática');
+    expect(element.querySelector('.reason')?.textContent).toContain('automáticamente');
+    // Nadie ha aprobado nada: no hay botón de confirmación, solo el de anular.
+    expect(element.querySelector('.proposal-actions')).toBeNull();
+    expect(element.querySelector('.countdown')?.textContent).toContain('10 s');
+    const cancel = element.querySelector('.countdown button') as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    fixture.componentInstance.operatorKey.set('operator-test');
+    await fixture.whenStable();
+    cancel.click();
+    await fixture.whenStable();
+    expect(operations.cancelTask).toHaveBeenCalledWith(task);
+    // Al vencer la ventana desaparece la cuenta atrás: ya no hay nada que anular a tiempo.
+    (operations.now as WritableSignal<number>).set(Date.parse('2026-09-19T12:00:11Z'));
+    await fixture.whenStable();
+    expect(element.querySelector('.countdown')).toBeNull();
   });
 
   it('focuses the resource from the feed, including another resource in the same incident', async () => {

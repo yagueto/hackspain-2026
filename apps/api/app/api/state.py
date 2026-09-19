@@ -13,12 +13,15 @@ router = APIRouter(tags=["state"])
 
 
 @router.get("/meta")
-async def get_meta(rt: Runtime = Depends(get_runtime)) -> dict[str, str | bool]:
+async def get_meta(rt: Runtime = Depends(get_runtime)) -> dict[str, str | bool | float]:
     return {
         "seed_demo": rt.settings.seed_demo,
         "happyrobot_mode": rt.settings.happyrobot_mode,
         "storage": rt.settings.storage_backend,
-        "nominatim_demo_enabled": rt.geocoder.enabled,
+        "geocoding_enabled": rt.geocoder.enabled,
+        "autonomous": rt.state.agent.autonomous,
+        "hold_seconds": rt.state.agent.hold_seconds,
+        "escalate_after_seconds": rt.state.agent.escalate_after_seconds,
     }
 
 

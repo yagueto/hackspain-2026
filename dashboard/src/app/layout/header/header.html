@@ -21,6 +21,32 @@
   </nav>
   <div class="header-meta">
     <span class="demo-indicator"><span></span> {{ operations.modeLabel() }}</span>
+    <div class="autonomy" role="group" aria-label="Control de autonomía del agente">
+      <span class="autonomy-state" [class.stopped]="paused()">
+        {{ paused() ? 'AUTONOMÍA DETENIDA' : 'Autonomía activa' }}
+      </span>
+      <label class="operator-key"
+        ><span class="sr-only">Clave de operador</span>
+        <input
+          type="password"
+          autocomplete="off"
+          placeholder="Clave de operador"
+          [value]="operations.operatorKey()"
+          (input)="operations.operatorKey.set($any($event.target).value)"
+      /></label>
+      <button
+        type="button"
+        class="panic"
+        [class.resume]="paused()"
+        [disabled]="busy() || !operations.operatorKey()"
+        (click)="toggleAutonomy()"
+      >
+        {{ paused() ? 'Reactivar autonomía' : 'PARADA DE EMERGENCIA' }}
+      </button>
+    </div>
+    @if (message()) {
+      <span role="alert" class="autonomy-message">{{ message() }}</span>
+    }
     <time class="date" [attr.datetime]="now().toISOString()"
       >{{ date() }} <span class="clock">{{ time() }}</span></time
     >

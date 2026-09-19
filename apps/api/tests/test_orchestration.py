@@ -156,6 +156,58 @@ async def test_observation_during_llm_review_discards_stale_plan(runtime: Runtim
     assert not any(t.zone_id == "front_sur" for t in rt.state.tasks.values())
 
 
+async def test_revalidation_reuses_review_when_context_unchanged(runtime: Runtime) -> None:
+    rt = runtime
+    calls = 0
+
+    async def review(*args: object) -> Review:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # Observación que se descarta al aplicarse: no añade evento ni cambia propuestas.
+            await rt.orchestrator.ingest(
+                observation(
+                    rt,
+                    EventKind.resource_status,
+                    payload={
+                        "resource_id": "res_bomba1",
+                        "status": ResourceStatus.available,
+                        "task_id": "task_inexistente",
+                    },
+                )
+            )
+        return Review(situation_summary="plan", next_action="extinción")
+
+    rt.orchestrator.reviewer.review = review
+    decision = await rt.orchestrator.tick()
+    assert decision.trigger == "revalidated"
+    assert calls == 1
+    assert decision.situation_summary == "plan"
+
+
+async def test_revalidation_reviews_again_when_new_event_arrives(runtime: Runtime) -> None:
+    rt = runtime
+    calls = 0
+
+    async def review(*args: object) -> Review:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await rt.orchestrator.ingest(
+                observation(
+                    rt,
+                    EventKind.fire_spread,
+                    payload={"front_id": "front_sur", "contained_pct": 100},
+                )
+            )
+        return Review(situation_summary="plan", next_action="extinción")
+
+    rt.orchestrator.reviewer.review = review
+    decision = await rt.orchestrator.tick()
+    assert decision.trigger == "revalidated"
+    assert calls == 2
+
+
 async def test_llm_cannot_allocate_incompatible_resource(runtime: Runtime) -> None:
     rt = runtime
     rt.orchestrator.reviewer.review = AsyncMock(

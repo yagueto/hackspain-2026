@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     store_batch_size: int = Field(default=100, ge=1, le=250)
     happyrobot_mode: Literal["simulated", "live"] = "simulated"
     public_base_url: str = "http://localhost:8000"
-    nominatim_demo_enabled: bool = False
+    # El agente localiza los avisos sin GPS por su cuenta. El endpoint por defecto es el
+    # Nominatim público de OSMF, apto solo para esta demo de un único usuario: fuera de
+    # ella, apuntar a una instancia propia antes de enviarle direcciones de terceros.
+    geocoding_enabled: bool = True
+    geocoding_endpoint: str = "https://nominatim.openstreetmap.org/search"
 
     happyrobot_api_key: str = ""
     happyrobot_cluster: Literal["us", "eu"] = "eu"
@@ -35,8 +39,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = ""  # vacío = OpenAI; p.ej. https://api.deepseek.com
+    # Los modelos con razonamiento tardan decenas de segundos en el review completo.
+    openai_timeout_seconds: float = Field(default=45.0, ge=1, le=120)
     agent_tick_seconds: float = Field(default=10.0, ge=0.1)
     agent_autostart: bool = True
+    # Semilla de la política de autonomía; una vez creado el incidente manda el snapshot.
+    agent_autonomous: bool = True
+    agent_hold_seconds: float = Field(default=10.0, ge=0)
+    agent_escalate_after_seconds: float = Field(default=30.0, ge=0)
 
     @property
     def cors_origin_list(self) -> list[str]:

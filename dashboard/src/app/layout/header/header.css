@@ -81,6 +81,58 @@ nav button:disabled {
   background: #72b996;
   box-shadow: 0 0 0 3px #72b99610;
 }
+.autonomy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.autonomy-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8fc9a8;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.autonomy-state.stopped {
+  color: #f0a3a3;
+}
+.operator-key input {
+  width: 118px;
+  padding: 5px 8px;
+  color: #e7ecf2;
+  background: #0f1417;
+  border: 1px solid #3a3e42;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.panic {
+  padding: 6px 11px;
+  color: #fff3f3;
+  background: #8c2b2b;
+  border: 1px solid #b04141;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.panic.resume {
+  color: #eaf5ee;
+  background: #2f6446;
+  border-color: #3f8159;
+}
+.panic:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.autonomy-message {
+  max-width: 220px;
+  color: #f0a3a3;
+  font-size: 10px;
+}
 .clock {
   margin-left: 9px;
   color: #d5dee7;
@@ -173,6 +225,13 @@ nav button:disabled {
   }
   .demo-indicator {
     font-size: 9px;
+  }
+  .header-meta {
+    flex-wrap: wrap;
+    padding: 8px 0;
+  }
+  .operator-key input {
+    width: 92px;
   }
   .date {
     margin-left: auto;

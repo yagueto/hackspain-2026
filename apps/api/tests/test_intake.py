@@ -9,6 +9,7 @@ from app.domain.models import now
 from app.integrations.geocoding import NominatimGeocoder
 from app.main import create_app
 from app.store.persistence import MemoryStore
+from tests.conftest import runtime_of
 
 
 def report(**updates: object) -> dict[str, object]:
@@ -34,7 +35,7 @@ def report(**updates: object) -> dict[str, object]:
     }
 
 
-async def test_inbound_call_reaches_snapshot_without_outbound_order(
+async def test_inbound_call_reaches_snapshot_and_is_idempotent(
     client: httpx.AsyncClient,
 ) -> None:
     payload = report()
@@ -49,7 +50,8 @@ async def test_inbound_call_reaches_snapshot_without_outbound_order(
     assert incoming[0]["location"]["confirmed"] is True
     assert incoming[0]["victims"]["breathing"] is None
     assert incoming[0]["caller"]["phone"] is None
-    assert snapshot["recent_actions"] == []
+    # La orden se prepara sola, pero recibir el aviso no la envía.
+    assert [a["status"] for a in snapshot["recent_actions"]] == ["pending"]
     assert any(e["kind"] == "incoming_call" for e in snapshot["recent_events"])
     version = snapshot["version"]
     repeated = await client.post("/api/v1/webhooks/happyrobot/inbound", json=payload)
@@ -137,19 +139,49 @@ async def test_late_call_update_does_not_replace_new_location(client: httpx.Asyn
     assert incoming[0]["location"]["lat"] == 40.6564
 
 
-async def test_intake_proposes_help_while_paused_and_requires_review(
+async def test_grave_intake_dispatches_without_operator_approval(
     client: httpx.AsyncClient,
 ) -> None:
-    headers = {"X-API-Key": "test"}
-    await client.post("/api/v1/control/pause", headers=headers)
+    """Un aviso no crítico se decide, reserva y envía solo. Nadie pulsa nada."""
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
     state = (await client.get("/api/v1/state")).json()
     task = state["tasks"][0]
     assert task["incoming_call_id"] == "incoming-test-1"
-    assert task["status"] == "awaiting_approval"
+    assert task["status"] == "dispatching"
+    assert task["autonomous"] is True
+    assert task["requires_approval"] is False
     assert task["resource_types"] == ["fire_engine"]
     assert task["target_location"]["lat"] == 40.6564
-    assert task["resource_ids"] == []
+    assert "automáticamente" in task["priority_reason"]
+    action = next(a for a in state["recent_actions"] if a["task_id"] == task["id"])
+    assert action["status"] == "pending"
+    assert action["hold_until"] is not None
+    assert action["request"]["target_location"]["lat"] == 40.6564
+    assert any("Decisión automática" in e["title"] for e in state["recent_events"])
+    # La ventana solo retrasa el envío; al vencer sale sin intervención.
+    rt = runtime_of(client)
+    async with rt.orchestrator.edit() as s:
+        s.actions[action["id"]].hold_until = now() - timedelta(seconds=1)
+    await rt.orchestrator.dispatch_pending()
+    state = (await client.get("/api/v1/state")).json()
+    action = next(a for a in state["recent_actions"] if a["task_id"] == task["id"])
+    assert action["status"] == "dispatched"
+    assert action["happyrobot_run_id"].startswith("fake_")
+    assert (
+        next(r for r in state["resources"] if r["assigned_task_id"] == task["id"])["status"]
+        == "reserved"
+    )
+
+
+async def test_vital_report_waits_for_human_confirmation(client: httpx.AsyncClient) -> None:
+    headers = {"X-API-Key": "test"}
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
+    state = (await client.get("/api/v1/state")).json()
+    task = state["tasks"][0]
+    assert task["status"] == "awaiting_approval"
+    assert task["requires_approval"] is True
+    assert task["autonomous"] is False
+    assert task["hold_until"] is None
     assert state["recent_actions"] == []
     url = f"/api/v1/control/tasks/{task['id']}/approve"
     assert (await client.post(url, json={"approved": True})).status_code == 401
@@ -164,21 +196,91 @@ async def test_intake_proposes_help_while_paused_and_requires_review(
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "dispatching"
     state = (await client.get("/api/v1/state")).json()
     action = next(a for a in state["recent_actions"] if a["task_id"] == task["id"])
-    assert action["status"] == "pending"
-    assert action["request"]["target_location"]["lat"] == 40.6564
-    await client.post("/api/v1/control/resume", headers=headers)
-    assert (await client.post("/api/v1/control/dispatch", headers=headers)).status_code == 200
+    assert action["hold_until"] is None  # ya hay decisión humana: nada que retener
+    assert action["status"] == "dispatched"  # confirmada, sale sin más espera
+
+
+async def test_grace_window_delays_dispatch_and_operator_can_cancel(
+    client: httpx.AsyncClient,
+) -> None:
+    headers = {"X-API-Key": "test"}
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
+    task = (await client.get("/api/v1/tasks")).json()[0]
+    rt = runtime_of(client)
+    await rt.orchestrator.dispatch_pending()
     state = (await client.get("/api/v1/state")).json()
-    action = next(a for a in state["recent_actions"] if a["task_id"] == task["id"])
-    assert action["status"] == "dispatched"
-    assert action["happyrobot_run_id"].startswith("fake_")
-    assert (
-        next(r for r in state["resources"] if r["assigned_task_id"] == task["id"])["status"]
-        == "reserved"
+    assert state["recent_actions"][0]["status"] == "pending"  # retenida, no enviada
+    response = await client.post(
+        f"/api/v1/control/tasks/{task['id']}/status",
+        headers=headers,
+        json={"status": "cancelled", "outcome": "Anulada por el operador"},
     )
+    assert response.status_code == 200
+    state = (await client.get("/api/v1/state")).json()
+    assert state["tasks"][0]["status"] == "cancelled"
+    assert state["recent_actions"][0]["status"] == "skipped"
+    assert not any(r["assigned_task_id"] == task["id"] for r in state["resources"])
+    await rt.orchestrator.dispatch_pending()
+    assert (await client.get("/api/v1/state")).json()["recent_actions"][0]["status"] == "skipped"
+
+
+async def test_panic_button_stops_held_orders(client: httpx.AsyncClient) -> None:
+    headers = {"X-API-Key": "test"}
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
+    action_id = (await client.get("/api/v1/actions")).json()[0]["id"]
+    assert (await client.post("/api/v1/control/pause", headers=headers)).status_code == 200
+    rt = runtime_of(client)
+    async with rt.orchestrator.edit() as s:
+        s.actions[action_id].hold_until = now() - timedelta(seconds=1)
+    await rt.orchestrator.dispatch_pending()
+    state = (await client.get("/api/v1/state")).json()
+    assert state["recent_actions"][0]["status"] == "pending"
+    assert state["agent"]["mode"] == "paused"
+    assert any("Parada de emergencia" in e["title"] for e in state["recent_events"])
+
+
+async def test_unconfirmed_critical_escalates_by_telegram_exactly_once(
+    client: httpx.AsyncClient,
+) -> None:
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
+    rt = runtime_of(client)
+    await rt.orchestrator.escalate_stale_approvals()
+    assert (await client.get("/api/v1/actions")).json() == []  # aún dentro del plazo
+    async with rt.orchestrator.edit() as s:
+        task = next(iter(s.tasks.values()))
+        task.updated_at = now() - timedelta(seconds=31)
+    await rt.orchestrator.escalate_stale_approvals()
+    await rt.orchestrator.escalate_stale_approvals()
+    state = (await client.get("/api/v1/state")).json()
+    avisos = [a for a in state["recent_actions"] if a["kind"] == "telegram"]
+    assert len(avisos) == 1
+    assert avisos[0]["workflow"] == "send_telegram"
+    assert avisos[0]["task_id"] is None  # no es una misión: el outbox no debe cancelarla
+    assert state["tasks"][0]["status"] == "awaiting_approval"
+    assert state["tasks"][0]["escalated_at"] is not None
+    assert sum("Escalado" in e["title"] for e in state["recent_events"]) == 1
+
+
+async def test_evacuation_approval_does_not_require_location_confirmation(
+    client: httpx.AsyncClient,
+) -> None:
+    """Una evacuación es crítica, pero no tiene aviso ciudadano cuya ubicación revisar."""
+    headers = {"X-API-Key": "test"}
+    response = await client.post(
+        "/api/v1/control/tasks",
+        headers=headers,
+        json={"kind": "evacuate_zone", "title": "Evacuar zona de prueba", "zone_id": "zone_raso"},
+    )
+    assert response.status_code == 201
+    task = response.json()
+    assert task["status"] == "awaiting_approval"
+    approved = await client.post(
+        f"/api/v1/control/tasks/{task['id']}/approve", headers=headers, json={"approved": True}
+    )
+    assert approved.status_code == 200
+    assert approved.json()["approved_at"] is not None
 
 
 async def test_unknown_location_blocks_approval_and_corrections_invalidate_old_reviews(
@@ -221,7 +323,7 @@ async def test_non_emergency_does_not_create_dispatch_proposal(client: httpx.Asy
     assert (await client.get("/api/v1/tasks")).json() == []
 
 
-async def test_public_address_is_geocoded_persisted_and_not_claimed_as_gps() -> None:
+async def test_address_without_gps_is_geocoded_and_dispatched_as_approximate() -> None:
     requests = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -238,94 +340,92 @@ async def test_public_address_is_geocoded_persisted_and_not_claimed_as_gps() -> 
             ],
         )
 
-    settings = Settings(api_key="test", nominatim_demo_enabled=True, agent_autostart=False)
+    settings = Settings(api_key="test", agent_autostart=False)
     app = create_app(settings)
     await app.state.rt.geocoder.close()
     app.state.rt.geocoder = NominatimGeocoder(
         settings, httpx.AsyncClient(transport=httpx.MockTransport(handle))
     )
+    rt = app.state.rt
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app), base_url="http://test"
         ) as client:
-            payload = report(
-                location={
-                    "raw_text": "Plaza pública de prueba",
-                    "confirmed": True,
-                    "public_search_allowed": True,
-                }
-            )
+            payload = report(location={"raw_text": "Plaza pública de prueba", "confirmed": True})
             response = await client.post("/api/v1/webhooks/happyrobot/inbound", json=payload)
             assert response.status_code == 202
+            # Recibir el aviso no bloquea a quien atiende al ciudadano: localiza después.
+            assert requests == []
+            await rt.orchestrator.locate_pending_reports()
+            await rt.orchestrator.reconcile_intake()
             state = (await client.get("/api/v1/state")).json()
             incoming = state["incoming_calls"][0]
-            assert incoming["location"]["lat"] is None
+            assert incoming["location"]["lat"] is None  # nunca se atribuye como GPS
             assert incoming["resolution"]["provider"] == "nominatim"
             assert incoming["resolution"]["selected"]["lat"] == 40.1
             assert state["tasks"][0]["target_location"]["lat"] == 40.1
-            assert state["tasks"][0]["status"] == "awaiting_approval"
-            assert state["recent_actions"] == []
+            assert state["tasks"][0]["status"] == "dispatching"
             await client.post("/api/v1/webhooks/happyrobot/inbound", json=payload)
+            await rt.orchestrator.locate_pending_reports()
             assert (await client.get("/api/v1/state")).json()["version"] == state["version"]
             assert len(requests) == 1
+            # Con una misión en curso, el destino no se cambia por detrás.
             corrected = await client.post(
                 "/api/v1/control/incoming-calls/incoming-test-1/location",
                 headers={"X-API-Key": "test"},
                 json={
                     "expected_timestamp": payload["timestamp"],
-                    "location": {
-                        "lat": 40.2,
-                        "lng": -4.3,
-                        "label": "Destino revisado",
-                        "kind": "manual",
-                    },
+                    "location": {"lat": 40.2, "lng": -4.3, "label": "Revisado", "kind": "manual"},
                 },
             )
-            assert corrected.status_code == 200
-            task = (await client.get("/api/v1/tasks")).json()[0]
-            assert task["target_location"]["lat"] == 40.2
-            assert task["status"] == "awaiting_approval"
+            assert corrected.status_code == 409
 
 
-async def test_geocoding_failure_does_not_drop_the_incoming_report() -> None:
-    settings = Settings(nominatim_demo_enabled=True, agent_autostart=False)
+async def test_unresolvable_location_blocks_dispatch_without_cancelling() -> None:
+    """Un fallo del proveedor no descarta el aviso ni moviliza a nadie a ciegas."""
+    settings = Settings(agent_autostart=False)
     app = create_app(settings)
     await app.state.rt.geocoder.close()
     app.state.rt.geocoder = NominatimGeocoder(
         settings, httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
     )
+    rt = app.state.rt
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app), base_url="http://test"
         ) as client:
             response = await client.post(
                 "/api/v1/webhooks/happyrobot/inbound",
-                json=report(
-                    location={
-                        "raw_text": "Plaza pública",
-                        "confirmed": True,
-                        "public_search_allowed": True,
-                    }
-                ),
+                json=report(location={"raw_text": "Plaza sin localizar", "confirmed": True}),
             )
             assert response.status_code == 202
+            assert response.json()["requires_operator"] is True
+            await rt.orchestrator.locate_pending_reports()
+            await rt.orchestrator.reconcile_intake()
+            await rt.orchestrator.dispatch_pending()
             state = (await client.get("/api/v1/state")).json()
             assert state["incoming_calls"][0]["resolution"]["status"] == "unavailable"
-            assert state["tasks"][0]["target_location"] is None
+            task = state["tasks"][0]
+            assert task["target_location"] is None
+            assert task["status"] == "proposed"  # bloqueada, no cancelada
+            assert task["blocked_reason"]
             assert state["recent_actions"] == []
+            assert not any(r["assigned_task_id"] for r in state["resources"])
 
 
-async def test_geocoding_control_requires_public_consent_and_cannot_accept_caller_resolution(
+async def test_operator_geocoding_is_a_retry_and_rejects_a_caller_supplied_resolution(
     client: httpx.AsyncClient,
 ) -> None:
     payload = report()
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=payload)
+    # Con el proveedor desactivado el reintento del operador no inventa un destino.
     response = await client.post(
         "/api/v1/control/incoming-calls/incoming-test-1/geocode",
         headers={"X-API-Key": "test"},
         json={"expected_timestamp": payload["timestamp"]},
     )
-    assert response.status_code == 422
+    assert response.status_code == 409
+    # El parte entrante no puede declararse a sí mismo como ubicación confirmada.
     response = await client.post(
         "/api/v1/webhooks/happyrobot/inbound",
         json={**payload, "resolution": {"status": "confirmed"}},
@@ -346,7 +446,7 @@ async def test_geocoder_result_cannot_overwrite_a_newer_report() -> None:
             ],
         )
 
-    settings = Settings(api_key="test", nominatim_demo_enabled=True, agent_autostart=False)
+    settings = Settings(api_key="test", agent_autostart=False)
     app = create_app(settings)
     await app.state.rt.geocoder.close()
     app.state.rt.geocoder = NominatimGeocoder(
@@ -362,7 +462,7 @@ async def test_geocoder_result_cannot_overwrite_a_newer_report() -> None:
                 client.post(
                     "/api/v1/control/incoming-calls/incoming-test-1/geocode",
                     headers={"X-API-Key": "test"},
-                    json={"expected_timestamp": original["timestamp"], "public_address": True},
+                    json={"expected_timestamp": original["timestamp"]},
                 )
             )
             await asyncio.wait_for(started.wait(), timeout=1)
@@ -377,31 +477,24 @@ async def test_geocoder_result_cannot_overwrite_a_newer_report() -> None:
             assert state["tasks"][0]["target_location"]["lat"] == 40.6564
 
 
-async def test_updated_report_does_not_send_previously_approved_destination(
+async def test_autonomous_mission_is_cancelled_when_the_report_location_changes(
     client: httpx.AsyncClient,
 ) -> None:
+    """Una orden retenida cuyo aviso se corrige no sale hacia el destino viejo."""
     headers = {"X-API-Key": "test"}
-    await client.post("/api/v1/control/pause", headers=headers)
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
     task = (await client.get("/api/v1/tasks")).json()[0]
-    await client.post(
-        f"/api/v1/control/tasks/{task['id']}/approve",
-        headers=headers,
-        json={
-            "approved": True,
-            "confirm_location": True,
-            "expected_updated_at": task["updated_at"],
-        },
-    )
+    assert task["status"] == "dispatching"
     await client.post(
         "/api/v1/webhooks/happyrobot/inbound",
         json=report(location={"lat": 41, "lng": -5, "confirmed": True}),
     )
     await client.post("/api/v1/control/resume-simulated", headers=headers)
     state = (await client.get("/api/v1/state")).json()
-    assert state["tasks"][0]["status"] == "cancelled"
+    old = next(t for t in state["tasks"] if t["id"] == task["id"])
+    assert old["status"] == "cancelled"
     assert state["recent_actions"][0]["status"] == "skipped"
-    assert not any(resource["assigned_task_id"] == task["id"] for resource in state["resources"])
+    assert not any(r["assigned_task_id"] == task["id"] for r in state["resources"])
 
 
 async def test_simulated_resume_cannot_activate_live_communications() -> None:
@@ -424,20 +517,25 @@ async def test_simulated_resume_cannot_activate_live_communications() -> None:
             assert (await client.get("/api/v1/state")).json()["agent"]["mode"] == "paused"
 
 
-async def test_corrected_emergency_reopens_only_an_unsent_unapproved_proposal(
+async def test_corrected_emergency_cancels_the_mission_and_escalates_to_confirmation(
     client: httpx.AsyncClient,
 ) -> None:
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
     original = (await client.get("/api/v1/tasks")).json()[0]
+    assert original["status"] == "dispatching"
+    # Deja de ser emergencia: la orden retenida se anula y la unidad se libera.
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="no_emergencia"))
-    assert (await client.get("/api/v1/tasks")).json()[0]["status"] == "cancelled"
+    tasks = (await client.get("/api/v1/tasks")).json()
+    assert tasks[0]["status"] == "cancelled"
+    assert (await client.get("/api/v1/actions")).json()[0]["status"] == "skipped"
+    # Se corrige a vital: ya no se decide solo, pasa a requerir confirmación.
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
     tasks = (await client.get("/api/v1/tasks")).json()
     assert len(tasks) == 1
     assert tasks[0]["id"] == original["id"]
     assert tasks[0]["status"] == "awaiting_approval"
+    assert tasks[0]["autonomous"] is False
     assert tasks[0]["priority"] == 100
-    assert (await client.get("/api/v1/actions")).json() == []
 
 
 async def test_future_intake_rejected_before_acknowledgement(client: httpx.AsyncClient) -> None:

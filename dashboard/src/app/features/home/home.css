@@ -118,9 +118,54 @@ app-operational-map {
   gap: 8px;
 }
 .response-proposal {
+  display: grid;
+  gap: 6px;
   padding: 8px;
   border: 1px solid #d6dfe5;
   border-radius: 4px;
+}
+.response-proposal.critical {
+  border-color: #b3403f;
+  background: #fdf3f3;
+}
+.proposal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.badge {
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge.auto {
+  color: #1c4f36;
+  background: #d8efe1;
+}
+.badge.critical {
+  color: #fdf3f3;
+  background: #b3403f;
+}
+.response-proposal .reason {
+  color: #3c5364;
+  font-style: italic;
+}
+.response-proposal .blocked,
+.response-proposal .escalated {
+  color: #8c2b2b;
+}
+.response-proposal .approximate {
+  color: #7a5b1e;
+}
+.countdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .proposal-actions {
   display: flex;

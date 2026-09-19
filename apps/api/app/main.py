@@ -49,7 +49,12 @@ def build_runtime(
         else FakeHappyRobotClient(settings)
     )
     executor = Executor(state, hr, store, public_base_url=settings.public_base_url)
-    reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model, settings.openai_base_url)
+    reviewer = LLMReviewer(
+        settings.openai_api_key,
+        settings.openai_model,
+        settings.openai_base_url,
+        settings.openai_timeout_seconds,
+    )
     orchestrator = Orchestrator(
         state,
         executor,
@@ -59,7 +64,9 @@ def build_runtime(
         settings.store_poll_seconds,
         settings.store_batch_size,
     )
-    return Runtime(settings, state, store, hr, executor, orchestrator, NominatimGeocoder(settings))
+    rt = Runtime(settings, state, store, hr, executor, orchestrator, NominatimGeocoder(settings))
+    orchestrator.locate = rt.geocode_report
+    return rt
 
 
 def create_app(settings: Settings | None = None, store: persistence.Store | None = None) -> FastAPI:
@@ -77,6 +84,9 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
                 if rt.state.incident:
                     rt.state.incident.id = settings.incident_id
                 rt.state.agent.tick_seconds = settings.agent_tick_seconds
+                rt.state.agent.autonomous = settings.agent_autonomous
+                rt.state.agent.hold_seconds = settings.agent_hold_seconds
+                rt.state.agent.escalate_after_seconds = settings.agent_escalate_after_seconds
                 snapshot = await rt.store.create(rt.state.snapshot(full=True))
             if snapshot:
                 rt.state.restore(snapshot)

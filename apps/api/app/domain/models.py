@@ -258,6 +258,7 @@ class Action(BaseModel):
     workflow: str | None = None
     decision_id: str | None = None
     expires_at: datetime | None = None
+    hold_until: datetime | None = None
 
 
 class Task(BaseModel):
@@ -285,6 +286,10 @@ class Task(BaseModel):
     incoming_call_id: str | None = None
     incoming_call_timestamp: datetime | None = None
     target_location: Location | None = None
+    autonomous: bool = False  # la decidió el agente, no un operador
+    hold_until: datetime | None = None  # margen para anular antes de enviar
+    blocked_reason: str = ""  # por qué no puede despacharse todavía
+    escalated_at: datetime | None = None
 
 
 class Decision(BaseModel):
@@ -314,9 +319,20 @@ class Incident(BaseModel):
 
 
 class AgentConfig(BaseModel):
+    """Frontera entre lo que el agente decide solo y lo que somete a un humano.
+
+    Todo es autónomo salvo lo crítico: las evacuaciones masivas y los avisos cuya
+    severidad figura en `approval_required_severities`. Lo autónomo se retiene
+    `hold_seconds` antes de enviarse para que el operador pueda anularlo.
+    """
+
     mode: AgentMode = AgentMode.running
+    autonomous: bool = True
     approval_required_for: list[TaskKind] = Field(default_factory=lambda: [TaskKind.evacuate_zone])
+    approval_required_severities: list[str] = Field(default_factory=lambda: ["vital"])
     tick_seconds: float = 10.0
+    hold_seconds: float = Field(default=10.0, ge=0)
+    escalate_after_seconds: float = Field(default=30.0, ge=0)
 
 
 class IntakeFields(BaseModel):
@@ -342,6 +358,8 @@ class ReportedLocation(IntakeFields):
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
     confirmed: bool = False
+    # Ya no condiciona la búsqueda: el agente localiza cualquier aviso sin GPS. Se conserva
+    # porque el workflow de intake lo sigue enviando y borrarlo rompería sus referencias.
     public_search_allowed: bool = False
     accuracy_m: float | None = Field(default=None, gt=0)
 

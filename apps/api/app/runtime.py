@@ -29,13 +29,10 @@ class Runtime:
     geocoder: NominatimGeocoder
 
     async def geocode_report(
-        self,
-        run_id: str,
-        expected_timestamp: datetime,
-        *,
-        public_search_allowed: bool = False,
-        retry: bool = False,
+        self, run_id: str, expected_timestamp: datetime, *, retry: bool = False
     ) -> LocationResolution:
+        if not self.geocoder.enabled:
+            return LocationResolution()
         await self.orchestrator.synchronize()
         report = self.state.incoming_calls[run_id].model_copy(deep=True)
         if report.timestamp != expected_timestamp:
@@ -44,18 +41,12 @@ class Runtime:
             return report.resolution
         if retry and any(
             task.incoming_call_id == run_id
-            and task.approved_at
+            and (task.approved_at or task.action_ids)
             and task.status not in (TaskStatus.done, TaskStatus.cancelled, TaskStatus.failed)
             for task in self.state.tasks.values()
         ):
-            raise ValueError("hay una misión aprobada; revisa su destino antes de buscar otro")
-        location = report.location.model_copy(
-            update={
-                "public_search_allowed": public_search_allowed
-                or report.location.public_search_allowed,
-            }
-        )
-        result = await self.geocoder.search(location)
+            raise ValueError("hay una misión en curso; revisa su destino antes de buscar otro")
+        result = await self.geocoder.search(report.location)
         if result.status == "not_requested":
             return result
         async with self.orchestrator.edit() as state:

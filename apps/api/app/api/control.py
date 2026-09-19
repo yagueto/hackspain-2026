@@ -7,6 +7,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 
 from app.agent.planner import Proposal
 from app.api.deps import require_api_key
+from app.domain.autonomy import needs_confirmation
 from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     Action,
@@ -22,6 +23,7 @@ from app.domain.models import (
     IncomingCall,
     LocationResolution,
     ResourceType,
+    Severity,
     Task,
     TaskKind,
     TaskStatus,
@@ -37,8 +39,21 @@ router = APIRouter(prefix="/control", tags=["control"], dependencies=[Depends(re
 
 @router.post("/pause")
 async def pause(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
+    """Parada de emergencia: no sale nada nuevo, ni siquiera lo ya retenido.
+
+    No cancela los runs ya enviados ni libera las unidades movilizadas: para eso hay
+    que cancelar cada misión.
+    """
     async with rt.orchestrator.edit() as state:
         state.agent.mode = AgentMode.paused
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                severity=Severity.high,
+                title="Parada de emergencia activada: el agente no envía nuevas órdenes",
+            )
+        )
     return rt.state.agent
 
 
@@ -46,6 +61,13 @@ async def pause(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
 async def resume(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
     async with rt.orchestrator.edit() as state:
         state.agent.mode = AgentMode.running
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title="Autonomía reactivada por el operador",
+            )
+        )
     return rt.state.agent
 
 
@@ -93,22 +115,18 @@ async def approve(task_id: str, body: ApprovalIn, rt: Runtime = Depends(get_runt
 
 class GeocodeIn(BaseModel):
     expected_timestamp: AwareDatetime
-    public_address: bool = False
 
 
 @router.post("/incoming-calls/{run_id}/geocode")
 async def geocode_report(
     run_id: str, body: GeocodeIn, rt: Runtime = Depends(get_runtime)
 ) -> LocationResolution:
+    """Reintento explícito: el agente ya lo intenta solo al recibir el aviso."""
     if run_id not in rt.state.incoming_calls:
         raise HTTPException(404, "aviso desconocido")
-    if not body.public_address:
-        raise HTTPException(422, "autoriza solo una dirección pública de prueba")
     if not rt.geocoder.enabled:
-        raise HTTPException(409, "geocodificación pública de demo desactivada")
-    return await rt.geocode_report(
-        run_id, body.expected_timestamp, public_search_allowed=True, retry=True
-    )
+        raise HTTPException(409, "geocodificación desactivada")
+    return await rt.geocode_report(run_id, body.expected_timestamp, retry=True)
 
 
 class ConfirmLocationIn(BaseModel):
@@ -132,12 +150,12 @@ async def confirm_report_location(
             )
         if any(
             task.incoming_call_id == run_id
-            and task.approved_at
+            and (task.approved_at or task.action_ids)
             and task.status not in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.failed)
             for task in state.tasks.values()
         ):
             raise HTTPException(
-                409, "hay una misión aprobada; cancélala antes de cambiar su destino"
+                409, "hay una misión en curso; cancélala antes de cambiar su destino"
             )
         report.resolution = report.resolution.model_copy(
             update={
@@ -224,7 +242,7 @@ async def create_task(body: ManualTaskIn, rt: Runtime = Depends(get_runtime)) ->
     async with rt.orchestrator.edit() as state:
         if body.contact_id and body.contact_id not in state.contacts:
             raise HTTPException(404, "contacto desconocido")
-        t.requires_approval = t.kind in state.agent.approval_required_for
+        t.requires_approval = needs_confirmation(state.agent, t.kind, None)
         t.status = TaskStatus.awaiting_approval if t.requires_approval else TaskStatus.proposed
         types = body.resource_types or {
             TaskKind.dispatch_resource: [ResourceType.fire_engine, ResourceType.helicopter],
@@ -298,17 +316,19 @@ async def operator_note(body: NoteIn, rt: Runtime = Depends(get_runtime)) -> Eve
 
 
 class AgentConfigIn(BaseModel):
+    autonomous: bool | None = None
     approval_required_for: list[TaskKind] | None = None
+    approval_required_severities: list[str] | None = None
     tick_seconds: float | None = Field(default=None, ge=0.1)
+    hold_seconds: float | None = Field(default=None, ge=0)
+    escalate_after_seconds: float | None = Field(default=None, ge=0)
 
 
 @router.patch("/agent")
 async def configure_agent(body: AgentConfigIn, rt: Runtime = Depends(get_runtime)) -> AgentConfig:
     async with rt.orchestrator.edit() as state:
-        if body.approval_required_for is not None:
-            state.agent.approval_required_for = body.approval_required_for
-        if body.tick_seconds is not None:
-            state.agent.tick_seconds = body.tick_seconds
+        for field, value in body.model_dump(exclude_none=True).items():
+            setattr(state.agent, field, value)
     rt.orchestrator.tick_seconds = rt.state.agent.tick_seconds
     return rt.state.agent
 

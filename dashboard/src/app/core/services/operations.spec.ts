@@ -106,7 +106,8 @@ describe('Operations API integration', () => {
       status: 'awaiting_approval',
       updated_at: '2026-09-19T12:00:00Z',
     };
-    const result = operations.approve(task, true, 'operator-test', true);
+    operations.operatorKey.set('operator-test');
+    const result = operations.approve(task, true, true);
     const request = http.expectOne('/api/v1/control/tasks/proposal-1/approve');
     expect(request.request.headers.get('X-API-Key')).toBe('operator-test');
     expect(request.request.body).toEqual({
@@ -120,16 +121,52 @@ describe('Operations API integration', () => {
     http.expectNone('/api/v1/control/resume-simulated');
   });
 
-  it('requests demo geocoding only as an authenticated explicit operation', async () => {
+  it('retries geocoding only as an authenticated explicit operation', async () => {
     const report = snapshot().incoming_calls[0];
-    const result = operations.geocode(report, 'operator-test');
+    operations.operatorKey.set('operator-test');
+    const result = operations.geocode(report);
     const request = http.expectOne('/api/v1/control/incoming-calls/call-1/geocode');
-    expect(request.request.body).toEqual({
-      expected_timestamp: report.timestamp,
-      public_address: true,
-    });
+    expect(request.request.body).toEqual({ expected_timestamp: report.timestamp });
     expect(request.request.headers.get('X-API-Key')).toBe('operator-test');
     request.flush({ status: 'not_found' });
+    await result;
+  });
+
+  it('refuses any control action without an operator key', async () => {
+    const rejected = await operations.pause().then(
+      () => false,
+      () => true,
+    );
+    expect(rejected).toBe(true);
+    http.expectNone('/api/v1/control/pause');
+  });
+
+  it('overrides an automatic decision by cancelling the mission', async () => {
+    const task = {
+      id: 'proposal-1',
+      title: 'Bomberos',
+      zone_id: null,
+      resource_ids: [],
+      status: 'dispatching',
+      autonomous: true,
+    };
+    operations.operatorKey.set('operator-test');
+    const result = operations.cancelTask(task);
+    const request = http.expectOne('/api/v1/control/tasks/proposal-1/status');
+    expect(request.request.body).toEqual({
+      status: 'cancelled',
+      outcome: 'Anulada por el operador',
+    });
+    request.flush({ ...task, status: 'cancelled' });
+    expect((await result).status).toBe('cancelled');
+  });
+
+  it('stops the agent through the panic button', async () => {
+    operations.operatorKey.set('operator-test');
+    const result = operations.pause();
+    const request = http.expectOne('/api/v1/control/pause');
+    expect(request.request.headers.get('X-API-Key')).toBe('operator-test');
+    request.flush({ mode: 'paused' });
     await result;
   });
 

@@ -35,32 +35,15 @@
         @if (selectedReport(); as report) {
           <div class="operator-controls">
             <p>Aviso recibido: {{ reportTime() }}</p>
-            <label
-              >Clave de operador
-              <input
-                type="password"
-                autocomplete="off"
-                [value]="operatorKey()"
-                (input)="operatorKey.set($any($event.target).value)"
-              />
-            </label>
             <details>
-              <summary>Buscar o corregir ubicación</summary>
-              @if (operations.meta()?.nominatim_demo_enabled) {
-                <label class="check-label"
-                  ><input
-                    type="checkbox"
-                    [checked]="publicAddress()"
-                    (change)="publicAddress.set($any($event.target).checked)"
-                  />
-                  Es una dirección pública de prueba; autorizo consultarla en OpenStreetMap.</label
-                >
+              <summary>Corregir ubicación</summary>
+              @if (operations.meta()?.geocoding_enabled) {
                 <button
                   type="button"
                   (click)="searchLocation()"
-                  [disabled]="operatorBusy() || !publicAddress() || !operatorKey()"
+                  [disabled]="operatorBusy() || !operatorKey()"
                 >
-                  Buscar coordenadas
+                  Reintentar búsqueda de coordenadas
                 </button>
               }
               @if (report.resolution; as resolution) {
@@ -110,24 +93,67 @@
                 Confirmar coordenadas manuales
               </button>
             </details>
-            <label class="check-label"
-              ><input
-                type="checkbox"
-                [checked]="locationReviewed()"
-                (change)="
-                  reviewedLocation.set($any($event.target).checked ? locationVersion() : null)
-                "
-              />
-              He revisado el destino y su precisión para esta propuesta.</label
-            >
             @for (task of reportTasks(); track task.id) {
-              <div class="response-proposal">
-                <strong>{{ task.title }}</strong>
+              <div class="response-proposal" [class.critical]="task.requires_approval">
+                <div class="proposal-head">
+                  <strong>{{ task.title }}</strong>
+                  @if (task.autonomous) {
+                    <span class="badge auto">Decisión automática</span>
+                  } @else if (task.requires_approval) {
+                    <span class="badge critical">Decisión crítica · requiere confirmación</span>
+                  }
+                </div>
+                @if (task.priority_reason) {
+                  <p class="reason">{{ task.priority_reason }}</p>
+                }
                 <p>{{ taskLabels[task.status] || task.status }}</p>
+                @if (approximateLocation(task)) {
+                  <p class="approximate">
+                    Ubicación aproximada de OpenStreetMap, no GPS del informante.
+                  </p>
+                }
+                @if (task.blocked_reason) {
+                  <p class="blocked">{{ task.blocked_reason }}</p>
+                }
                 @if (task.outcome) {
                   <p>{{ task.outcome }}</p>
                 }
+                @if (holdRemaining(task); as remaining) {
+                  <div class="countdown" role="status">
+                    <span>Se envía sola en {{ remaining }} s</span>
+                    <button
+                      type="button"
+                      (click)="cancelTask(task)"
+                      [disabled]="operatorBusy() || !operatorKey()"
+                    >
+                      Anular
+                    </button>
+                  </div>
+                } @else if (task.status === 'dispatching' || task.status === 'dispatched') {
+                  <button
+                    type="button"
+                    (click)="cancelTask(task)"
+                    [disabled]="operatorBusy() || !operatorKey()"
+                  >
+                    Cancelar misión
+                  </button>
+                }
+                @if (task.escalated_at) {
+                  <p class="escalated">
+                    Sin confirmar a tiempo: se avisó al coordinador por Telegram.
+                  </p>
+                }
                 @if (task.status === 'awaiting_approval') {
+                  <label class="check-label"
+                    ><input
+                      type="checkbox"
+                      [checked]="locationReviewed()"
+                      (change)="
+                        reviewedLocation.set($any($event.target).checked ? locationVersion() : null)
+                      "
+                    />
+                    He revisado el destino y su precisión.</label
+                  >
                   <div class="proposal-actions">
                     <button
                       type="button"
@@ -139,7 +165,7 @@
                         !task.target_location
                       "
                     >
-                      Aprobar propuesta
+                      Confirmar y movilizar
                     </button>
                     <button
                       type="button"
@@ -155,7 +181,7 @@
               <p>No hay propuesta automática de recursos para este aviso.</p>
             }
             @if (paused()) {
-              <p>Agente en pausa: aprobar prepara la orden, pero todavía no la envía.</p>
+              <p>Parada de emergencia activa: el agente no envía ninguna orden nueva.</p>
               @if (hasQueuedOrders() && operations.meta()?.happyrobot_mode === 'simulated') {
                 <button
                   type="button"

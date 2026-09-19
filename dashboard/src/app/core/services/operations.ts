@@ -66,6 +66,15 @@ const emergencyIcons: Record<string, IconName> = {
 };
 const timeFormatter = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
 
+export interface Meta {
+  seed_demo: boolean;
+  happyrobot_mode: string;
+  geocoding_enabled?: boolean;
+  autonomous?: boolean;
+  hold_seconds?: number;
+  escalate_after_seconds?: number;
+}
+
 function coordinates(value: { lat?: number | null; lng?: number | null }): Coordinates | undefined {
   return typeof value.lat === 'number' &&
     typeof value.lng === 'number' &&
@@ -119,7 +128,7 @@ export function toOperations(state: WorldSnapshot): {
         : reported
           ? 'Coordenadas confirmadas por el informante'
           : resolved
-            ? 'Ubicación aproximada de OpenStreetMap · revisar antes de aprobar'
+            ? 'Ubicación aproximada de OpenStreetMap · no es GPS del informante'
             : resolution?.status === 'ambiguous'
               ? 'Coincidencias ambiguas o precisión insuficiente'
               : 'Ubicación pendiente de confirmar en el mapa';
@@ -130,16 +139,16 @@ export function toOperations(state: WorldSnapshot): {
       area: address(call.location),
       address: address(call.location),
       priority: priority(call.severity),
-      status: !point
-        ? 'Ubicación pendiente'
-        : tasks.some((task) => task.status === 'awaiting_approval')
-          ? 'Pendiente de aprobación'
-          : tasks.some((task) => task.status === 'dispatching')
-            ? 'Orden pendiente'
-            : tasks.some((task) => task.status === 'dispatched')
-              ? 'Respuesta pendiente'
-              : call.escalation_required
-                ? 'Revisión urgente'
+      status: tasks.some((task) => task.status === 'awaiting_approval')
+        ? 'CRÍTICO · confirmar'
+        : tasks.some((task) => task.blocked_reason)
+          ? 'Bloqueada: ubicación no resoluble'
+          : !point
+            ? 'Ubicación pendiente'
+            : tasks.some((task) => task.status === 'dispatching')
+              ? 'Automático · orden preparada'
+              : tasks.some((task) => task.status === 'dispatched')
+                ? 'Enviada automáticamente'
                 : 'Recibida',
       coordinates: point,
       icon: emergencyIcons[call.emergency_type] ?? 'pin',
@@ -277,11 +286,12 @@ export class Operations {
   readonly snapshot = signal<WorldSnapshot | null>(null);
   readonly connection = signal<'loading' | 'live' | 'reconnecting' | 'offline'>('loading');
   readonly error = signal('');
-  readonly meta = signal<{
-    seed_demo: boolean;
-    happyrobot_mode: string;
-    nominatim_demo_enabled?: boolean;
-  } | null>(null);
+  /** Clave del operador: solo en memoria, nunca en almacenamiento del navegador. */
+  readonly operatorKey = signal('');
+  readonly meta = signal<Meta | null>(null);
+  /** Reloj compartido: alimenta las cuentas atrás sin un temporizador por tarjeta. */
+  readonly now = signal(Date.now());
+  readonly paused = computed(() => this.snapshot()?.agent?.mode === 'paused');
   private readonly data = computed(() =>
     this.snapshot()
       ? toOperations(this.snapshot()!)
@@ -298,6 +308,7 @@ export class Operations {
   });
   private started = false;
   private stream: EventSource | null = null;
+  private clock?: ReturnType<typeof setInterval>;
   private polling?: ReturnType<typeof setInterval>;
   private request?: Subscription;
   private metaRequest?: Subscription;
@@ -309,14 +320,11 @@ export class Operations {
   start(): void {
     if (this.started) return;
     this.started = true;
-    this.metaRequest = this.http
-      .get<{ seed_demo: boolean; happyrobot_mode: string; nominatim_demo_enabled?: boolean }>(
-        `${this.base}/meta`,
-      )
-      .subscribe({
-        next: (meta) => this.meta.set(meta),
-        error: () => this.meta.set(null),
-      });
+    this.metaRequest = this.http.get<Meta>(`${this.base}/meta`).subscribe({
+      next: (meta) => this.meta.set(meta),
+      error: () => this.meta.set(null),
+    });
+    this.clock ??= setInterval(() => this.now.set(Date.now()), 1000);
     this.refresh();
     this.stream = this.createStream(`${this.base}/stream`);
     this.stream?.addEventListener('snapshot', (event) => {
@@ -357,56 +365,54 @@ export class Operations {
   approve(
     task: OperationalTask,
     approved: boolean,
-    key: string,
     confirmLocation: boolean,
   ): Promise<OperationalTask> {
-    return this.control(
-      `/tasks/${encodeURIComponent(task.id)}/approve`,
-      {
-        approved,
-        confirm_location: confirmLocation,
-        expected_updated_at: task.updated_at,
-      },
-      key,
-    );
+    return this.control(`/tasks/${encodeURIComponent(task.id)}/approve`, {
+      approved,
+      confirm_location: confirmLocation,
+      expected_updated_at: task.updated_at,
+    });
   }
 
-  geocode(report: IncomingCall, key: string): Promise<unknown> {
-    return this.control(
-      `/incoming-calls/${encodeURIComponent(report.run_id)}/geocode`,
-      {
-        expected_timestamp: report.timestamp,
-        public_address: true,
-      },
-      key,
-    );
+  /** Override de una decisión automática: anula la misión y libera la unidad. */
+  cancelTask(task: OperationalTask, note = 'Anulada por el operador'): Promise<OperationalTask> {
+    return this.control(`/tasks/${encodeURIComponent(task.id)}/status`, {
+      status: 'cancelled',
+      outcome: note,
+    });
   }
 
-  confirmLocation(
-    report: IncomingCall,
-    location: GeocodedPlace,
-    key: string,
-  ): Promise<IncomingCall> {
-    return this.control(
-      `/incoming-calls/${encodeURIComponent(report.run_id)}/location`,
-      {
-        expected_timestamp: report.timestamp,
-        location,
-      },
-      key,
-    );
+  /** Parada de emergencia: el agente deja de enviar órdenes nuevas. */
+  pause(): Promise<unknown> {
+    return this.control('/pause', {});
   }
 
-  resumeSimulated(key: string): Promise<unknown> {
-    return this.control('/resume-simulated', {}, key);
+  resume(): Promise<unknown> {
+    return this.control('/resume', {});
   }
 
-  private control<T>(path: string, body: unknown, key: string): Promise<T> {
-    if (!key.trim()) return Promise.reject(new Error('Introduce la clave de operador.'));
+  geocode(report: IncomingCall): Promise<unknown> {
+    return this.control(`/incoming-calls/${encodeURIComponent(report.run_id)}/geocode`, {
+      expected_timestamp: report.timestamp,
+    });
+  }
+
+  confirmLocation(report: IncomingCall, location: GeocodedPlace): Promise<IncomingCall> {
+    return this.control(`/incoming-calls/${encodeURIComponent(report.run_id)}/location`, {
+      expected_timestamp: report.timestamp,
+      location,
+    });
+  }
+
+  resumeSimulated(): Promise<unknown> {
+    return this.control('/resume-simulated', {});
+  }
+
+  private control<T>(path: string, body: unknown): Promise<T> {
+    const key = this.operatorKey().trim();
+    if (!key) return Promise.reject(new Error('Introduce la clave de operador.'));
     return firstValueFrom(
-      this.http.post<T>(`${this.base}/control${path}`, body, {
-        headers: { 'X-API-Key': key.trim() },
-      }),
+      this.http.post<T>(`${this.base}/control${path}`, body, { headers: { 'X-API-Key': key } }),
     );
   }
 
@@ -416,7 +422,8 @@ export class Operations {
     this.request?.unsubscribe();
     this.metaRequest?.unsubscribe();
     clearInterval(this.polling);
-    this.polling = undefined;
+    clearInterval(this.clock);
+    this.polling = this.clock = undefined;
     this.started = false;
   }
 

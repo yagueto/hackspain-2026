@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
@@ -10,7 +11,14 @@ describe('App', () => {
       imports: [App],
       providers: [
         provideRouter([]),
-        { provide: Operations, useValue: { modeLabel: () => 'Comunicaciones simuladas' } },
+        {
+          provide: Operations,
+          useValue: {
+            modeLabel: () => 'Comunicaciones simuladas',
+            paused: () => false,
+            operatorKey: signal(''),
+          },
+        },
       ],
     }).compileComponents();
   });

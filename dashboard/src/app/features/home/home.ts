@@ -36,10 +36,9 @@ export class Home {
   readonly selectedIncident = computed(() =>
     this.incidents().find((incident) => incident.id === this.selectedIncidentId()),
   );
-  readonly operatorKey = signal('');
+  readonly operatorKey = this.operations.operatorKey;
   readonly operatorMessage = signal('');
   readonly operatorBusy = signal(false);
-  readonly publicAddress = signal(false);
   readonly reviewedLocation = signal<string | null>(null);
   readonly latitude = signal('');
   readonly longitude = signal('');
@@ -66,12 +65,12 @@ export class Home {
     return JSON.stringify([report?.timestamp, report?.location, report?.resolution]);
   });
   readonly locationReviewed = computed(() => this.reviewedLocation() === this.locationVersion());
-  readonly paused = computed(() => this.operations.snapshot()?.agent?.mode === 'paused');
+  readonly paused = this.operations.paused;
   readonly hasQueuedOrders = computed(() =>
     this.reportTasks().some((task) => task.status === 'dispatching'),
   );
   readonly taskLabels: Record<string, string> = {
-    awaiting_approval: 'Pendiente de aprobación',
+    awaiting_approval: 'Pendiente de confirmación',
     proposed: 'En espera de recurso compatible',
     dispatching: 'Orden preparada, aún no enviada',
     dispatched: 'Orden enviada, respuesta pendiente',
@@ -121,11 +120,26 @@ export class Home {
     });
   }
 
+  /** Segundos que faltan para que salga una decisión automática, o null si ya no aplica. */
+  holdRemaining(task: OperationalTask): number | null {
+    if (!task.hold_until || task.status !== 'dispatching') return null;
+    const remaining = Date.parse(task.hold_until) - this.operations.now();
+    return Number.isFinite(remaining) && remaining > 0 ? Math.ceil(remaining / 1000) : null;
+  }
+
+  approximateLocation(task: OperationalTask): boolean {
+    const report = this.selectedReport();
+    return (
+      !!task.target_location &&
+      report?.resolution?.status === 'resolved' &&
+      report.location.lat == null
+    );
+  }
+
   selectIncident(id: string): void {
     if (this.incidents().some((incident) => incident.id === id)) {
       this.selectedUnitId.set(null);
       this.selectedIncidentId.set(id);
-      this.publicAddress.set(false);
       this.reviewedLocation.set(null);
       this.operatorMessage.set('');
       const coordinates = this.selectedIncident()?.coordinates;
@@ -136,16 +150,14 @@ export class Home {
 
   async searchLocation(): Promise<void> {
     const report = this.selectedReport();
-    if (!report || !this.publicAddress()) return;
-    await this.runOperatorAction(() => this.operations.geocode(report, this.operatorKey()));
+    if (!report) return;
+    await this.runOperatorAction(() => this.operations.geocode(report));
   }
 
   async chooseLocation(location: GeocodedPlace): Promise<void> {
     const report = this.selectedReport();
     if (!report) return;
-    await this.runOperatorAction(() =>
-      this.operations.confirmLocation(report, location, this.operatorKey()),
-    );
+    await this.runOperatorAction(() => this.operations.confirmLocation(report, location));
     this.reviewedLocation.set(null);
   }
 
@@ -174,12 +186,16 @@ export class Home {
   async approveTask(task: OperationalTask, approved: boolean): Promise<void> {
     if (approved && (!this.locationReviewed() || !task.target_location)) return;
     await this.runOperatorAction(() =>
-      this.operations.approve(task, approved, this.operatorKey(), this.locationReviewed()),
+      this.operations.approve(task, approved, this.locationReviewed()),
     );
   }
 
+  async cancelTask(task: OperationalTask): Promise<void> {
+    await this.runOperatorAction(() => this.operations.cancelTask(task));
+  }
+
   async resumeSimulated(): Promise<void> {
-    await this.runOperatorAction(() => this.operations.resumeSimulated(this.operatorKey()));
+    await this.runOperatorAction(() => this.operations.resumeSimulated());
   }
 
   private async runOperatorAction(action: () => Promise<unknown>): Promise<void> {
