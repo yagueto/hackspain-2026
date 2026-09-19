@@ -397,7 +397,7 @@ export const MOCK_COMMUNICATIONS: Communication[] = [
     vehicle: 'B-03',
     agent: 'A. Ruiz',
     incidentId: 'INC-001',
-    icon: 'fire',
+    icon: 'fire-truck',
   },
   {
     id: 'COM-005',
@@ -481,6 +481,6 @@ export const MOCK_COMMUNICATIONS: Communication[] = [
     vehicle: unit.id,
     agent: ['C. López', 'N. Vega', 'R. Santos', 'I. Romero', 'S. Díaz'][index % 5],
     incidentId: unit.incidentId ?? 'Sin asignar',
-    icon: unit.icon === 'fire-truck' ? 'fire' : unit.icon,
+    icon: unit.icon,
   })),
 ];

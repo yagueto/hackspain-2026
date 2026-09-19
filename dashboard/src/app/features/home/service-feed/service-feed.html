@@ -65,7 +65,7 @@
           [attr.aria-pressed]="item.vehicle === selectedUnitId()"
           (click)="unitSelected.emit(item.vehicle)"
         >
-          <app-icon class="service-icon" [name]="item.icon" />
+          <app-icon class="service-icon" [name]="resource(item.vehicle)?.icon ?? item.icon" />
           <span class="resource-code">{{ item.vehicle }}</span>
           <span class="resource-agent" [title]="item.agent || 'Sin asignar'">{{
             item.agent || 'Sin asignar'

@@ -115,6 +115,15 @@ describe('Dashboard redesign contracts', () => {
     expect(element.querySelector('.destination')?.textContent).toBe('En destino');
   });
 
+  it('uses the same resource icon as its map unit even when a message supplies another icon', async () => {
+    const fixture = TestBed.createComponent(ServiceFeed);
+    fixture.componentRef.setInput('communications', [{ ...MOCK_COMMUNICATIONS[0], icon: 'fire' }]);
+    fixture.componentRef.setInput('resources', MOCK_UNITS);
+    await fixture.whenStable();
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('.service-icon use')?.getAttribute('href')).toMatch(/#firetruck$/);
+  });
+
   it('persists theme, swaps actual map tiles and preserves marker geometry and selection', async () => {
     localStorage.setItem('dashboard-theme', 'dark');
     const theme = TestBed.inject(Theme);
