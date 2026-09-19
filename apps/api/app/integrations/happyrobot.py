@@ -5,13 +5,12 @@ Base: https://platform[.eu].happyrobot.ai/api/v2 — auth Bearer con la API key.
 Usamos:
 - POST /workflows/{id}/runs      -> disparar una llamada (un workflow por tipo de contacto)
 - GET  /runs/{id}                -> estado de la ejecución
-- GET  /runs/{id}/sessions       -> sesiones (transcripción, variables extraídas)
-- GET  /sessions/{id}/messages   -> mensajes de la conversación
+- POST /runs/{id}/cancel         -> abortar una conversación que ya no procede
 - POST /signals/                 -> inyectar contexto nuevo en sesiones activas ("cambió el viento")
-- GET  /contacts/resolve         -> memoria de contacto (qué sabe HappyRobot de ese teléfono)
 
 Los workflows, al terminar, llaman a nuestro webhook (POST /api/v1/webhooks/happyrobot) con las
-variables extraídas de la conversación.
+variables extraídas de la conversación, incluidos `session_id` y `transcript`: no hace falta
+leer las sesiones por nuestra cuenta.
 """
 
 from __future__ import annotations
@@ -104,16 +103,6 @@ class HappyRobotClient:
     async def get_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/runs/{run_id}")
 
-    async def get_run_sessions(self, run_id: str) -> list[dict[str, Any]]:
-        data = await self._request("GET", f"/runs/{run_id}/sessions")
-        return list(data.get("data", []))
-
-    async def get_session_messages(self, session_id: str) -> list[dict[str, Any]]:
-        data = await self._request(
-            "GET", f"/sessions/{session_id}/messages", params={"page_size": 200}
-        )
-        return list(data.get("data", []))
-
     async def cancel_run(self, run_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/runs/{run_id}/cancel")
 
@@ -131,22 +120,6 @@ class HappyRobotClient:
         if metadata:
             body["metadata"] = metadata
         return await self._request("POST", "/signals/", json=body)
-
-    # -------------------------------------------------------- contacts
-
-    async def resolve_contact(self, phone: str) -> dict[str, Any] | None:
-        try:
-            return await self._request(
-                "GET", "/contacts/resolve", params={"type": "phone", "value": phone}
-            )
-        except HappyRobotError as exc:
-            if " 404 " in str(exc):
-                return None
-            raise
-
-    async def contact_memories(self, contact_id: str) -> list[dict[str, Any]]:
-        data = await self._request("GET", f"/contacts/{contact_id}/memories")
-        return list(data.get("data", []))
 
     async def aclose(self) -> None:
         await self._client.aclose()

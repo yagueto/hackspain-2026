@@ -15,8 +15,6 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     for name in Settings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
-    monkeypatch.delenv("TWIN_POLL_SECONDS", raising=False)
-    monkeypatch.delenv("TWIN_BATCH_SIZE", raising=False)
     get_settings.cache_clear()
 
     async def no_network(self: AsyncHTTPTransport, request: Request) -> Response:

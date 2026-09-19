@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.domain.models import ActionKind, ActionStatus, AgentMode, now
+from app.domain.models import ActionStatus, AgentMode, now
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
 from app.integrations.happyrobot import HappyRobotClient
@@ -51,22 +51,21 @@ async def use_mock_transport(rt: Runtime, handler: Any) -> None:
     rt.executor.hr = rt.hr
 
 
-async def test_telegram_route_and_sms_alias_trigger_the_workflow(client: httpx.AsyncClient) -> None:
-    for path in ("telegram", "sms"):
-        denied = await client.post(f"/api/v1/control/{path}", json=AVISO)
-        assert denied.status_code == 401
-        response = await client.post(f"/api/v1/control/{path}", headers=HEADERS, json=AVISO)
-        assert response.status_code == 200
-        action = response.json()
-        assert action["kind"] == "telegram"
-        assert action["workflow"] == "send_telegram"
-        # Queda a la espera del resultado del workflow, no completada por haber salido.
-        assert action["status"] == "dispatched"
-        assert action["happyrobot_run_id"].startswith("fake_")
-        assert action["request"]["channel"] == "telegram"
-        # El chat lo resuelve HappyRobot: un teléfono no es un chat de Telegram.
-        assert "phone" not in action["request"]
-        assert "chat_id" not in action["request"]
+async def test_telegram_route_triggers_the_workflow(client: httpx.AsyncClient) -> None:
+    denied = await client.post("/api/v1/control/telegram", json=AVISO)
+    assert denied.status_code == 401
+    response = await client.post("/api/v1/control/telegram", headers=HEADERS, json=AVISO)
+    assert response.status_code == 200
+    action = response.json()
+    assert action["kind"] == "telegram"
+    assert action["workflow"] == "send_telegram"
+    # Queda a la espera del resultado del workflow, no completada por haber salido.
+    assert action["status"] == "dispatched"
+    assert action["happyrobot_run_id"].startswith("fake_")
+    assert action["request"]["channel"] == "telegram"
+    # El chat lo resuelve HappyRobot: un teléfono no es un chat de Telegram.
+    assert "phone" not in action["request"]
+    assert "chat_id" not in action["request"]
 
 
 async def test_workflow_receives_the_documented_payload() -> None:
@@ -152,15 +151,14 @@ async def test_callback_closes_the_aviso_without_moving_reliability(
     assert after == before, "un aviso no entregado no dice nada de si la persona responde"
 
 
-async def test_pending_legacy_sms_is_not_rerouted_to_telegram() -> None:
+async def test_aviso_with_foreign_workflow_fails_instead_of_switching_channel() -> None:
     rt = await seeded_runtime(Settings(agent_autostart=False))
     try:
         async with rt.orchestrator.edit() as candidate:
             action = await rt.executor.bind(candidate).message(
-                candidate.contacts["ct_camping"], "orden antigua"
+                candidate.contacts["ct_camping"], "orden incoherente"
             )
-            action.kind = ActionKind.sms
-            action.workflow = "sms"
+            action.workflow = "call_civilian"
         await rt.orchestrator.dispatch_pending()
         assert rt.state.actions[action.id].status == ActionStatus.failed
         assert rt.hr.calls == []  # type: ignore[attr-defined]

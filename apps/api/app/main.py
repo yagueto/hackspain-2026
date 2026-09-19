@@ -21,7 +21,6 @@ from app.integrations.happyrobot import FakeHappyRobotClient, HappyRobotClient
 from app.runtime import Runtime
 from app.store import persistence
 from app.store.postgres import PostgresStore
-from app.store.twin import TwinStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("crisis")
@@ -31,8 +30,6 @@ def build_runtime(
     settings: Settings, state: WorldState | None = None, store: persistence.Store | None = None
 ) -> Runtime:
     state = state or WorldState()
-    if settings.storage_backend == "twin" and not settings.happyrobot_api_key:
-        raise ValueError("Twin requiere HAPPYROBOT_API_KEY; usa STORAGE_BACKEND=memory para demo")
     if settings.happyrobot_mode == "live" and (
         not settings.happyrobot_api_key or not settings.happyrobot_webhook_secret
     ):
@@ -40,12 +37,11 @@ def build_runtime(
     if settings.happyrobot_mode == "live" and settings.storage_backend == "memory":
         log.warning("modo live con persistencia en memoria: el estado se pierde al reiniciar")
     if store is None:
-        if settings.storage_backend == "postgres":
-            store = PostgresStore(settings)
-        elif settings.storage_backend == "twin":
-            store = TwinStore(settings)
-        else:
-            store = persistence.MemoryStore()
+        store = (
+            PostgresStore(settings)
+            if settings.storage_backend == "postgres"
+            else persistence.MemoryStore()
+        )
     hr: HappyRobotClient = (
         HappyRobotClient(settings)
         if settings.happyrobot_mode == "live"
@@ -74,7 +70,7 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
         try:
             await rt.store.open()
             snapshot = await rt.store.load(settings.incident_id)
-            if snapshot is None and settings.storage_backend != "twin" and settings.seed_demo:
+            if snapshot is None and settings.seed_demo:
                 phones = json.loads(settings.seed_phones) if settings.seed_phones else None
                 seed_wildfire(rt.state, phones=phones)
                 if rt.state.incident:

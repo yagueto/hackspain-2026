@@ -17,7 +17,7 @@ y no llama a teléfonos. El estado se pierde al cerrar el proceso. `AGENT_AUTOST
 permite avanzar con `POST /api/v1/control/tick`; el polling de observaciones sigue activo.
 Pausar el agente conserva la sincronización y bloquea los nuevos envíos.
 
-### PostgreSQL (persistencia recomendada, sin Twin)
+### PostgreSQL (persistencia duradera)
 
 Desde `apps/api`:
 
@@ -52,10 +52,10 @@ HappyRobot atiende llamadas y avisos: configura los tres `HAPPYROBOT_WF_CALL_*` 
 URL pública antes de activar `HAPPYROBOT_MODE=live`. El entorno de workflows debe ser
 `development` durante pruebas.
 
-El adaptador Twin anterior se conserva por compatibilidad, pero PostgreSQL no llama a Twin
-ni necesita una API key de HappyRobot. `integrations.storage` refleja el estado del store.
+La persistencia no necesita una API key de HappyRobot: solo las llamadas y los avisos la usan.
+`integrations.storage` refleja el estado del store.
 
-### Avisos de Telegram por workflow (sustituye SMS)
+### Avisos de Telegram por workflow
 
 `POST /api/v1/control/telegram`, autenticado con `X-API-Key`, recibe:
 
@@ -63,9 +63,9 @@ ni necesita una API key de HappyRobot. `integrations.storage` refleja el estado 
 {"contact_id":"ct_camping","message":"Aviso de prueba"}
 ```
 
-`/control/sms` es un alias obsoleto del mismo envío. El `kind` de la acción es `telegram` y su
-`workflow` es `send_telegram`: el backend **no habla con la API de Telegram ni con un puente
-propio**, solo dispara el workflow con `HAPPYROBOT_WF_TELEGRAM` y espera el resultado.
+El `kind` de la acción es `telegram` y su `workflow` es `send_telegram`: el backend **no habla
+con la API de Telegram ni con un puente propio**, solo dispara el workflow con
+`HAPPYROBOT_WF_TELEGRAM` y espera el resultado. No queda ningún canal SMS.
 
 El aviso viaja por el mismo outbox que las llamadas, así que hereda expiración a diez minutos,
 reintentos acotados, `unknown` ante respuestas ambiguas y bloqueo mientras el agente está en
@@ -91,7 +91,7 @@ resuelve el workflow. La acción queda `dispatched` al disparar el run y solo pa
 `completed`/`failed` cuando llega la observación `message_outcome` del workflow, de modo que
 `POST /control/actions/{id}/reconcile` también sirve para un aviso. Un aviso entregado **no**
 mueve la fiabilidad del contacto: eso solo lo hacen las llamadas, porque pondera la selección
-de medios. Una orden histórica `sms` pendiente falla en vez de reenrutarse a otro canal.
+de medios. Una orden cuyo `workflow` no corresponde a su `kind` falla en vez de reenrutarse.
 
 ### Workflow en HappyRobot
 

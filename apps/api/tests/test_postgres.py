@@ -8,9 +8,7 @@ import httpx
 import psycopg
 import pytest
 from psycopg.conninfo import make_conninfo
-from psycopg.rows import dict_row
 from psycopg.sql import SQL, Identifier
-from pydantic import BaseModel
 
 from app.config import Settings
 from app.domain.models import (
@@ -35,74 +33,20 @@ from app.store.persistence import (
     StoreError,
     VersionConflict,
 )
-from app.store.postgres import PostgresStore
-from app.store.twin import TwinStore, json_literal, literal
+from app.store.postgres import PostgresStore, json_literal, literal
 
 
-class SQLBody(BaseModel):
-    sql: str
-
-
-@pytest.fixture(params=["twin", "postgres"])
-async def twin(request: pytest.FixtureRequest) -> AsyncIterator[TwinStore]:
+@pytest.fixture
+async def pg() -> AsyncIterator[PostgresStore]:
     dsn = os.environ.get("TEST_POSTGRES_DSN")
     if not dsn:
         pytest.skip("TEST_POSTGRES_DSN no configurado")
     schema = f"test_{uuid.uuid4().hex}"
     async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
         await conn.execute(SQL("CREATE SCHEMA {}").format(Identifier(schema)))
-
-    async def handle(request: httpx.Request) -> httpx.Response:
-        async with await psycopg.AsyncConnection.connect(
-            dsn, autocommit=True, row_factory=dict_row
-        ) as connection:
-            await connection.execute(SQL("SET search_path TO {}").format(Identifier(schema)))
-            if request.method == "GET":
-                assert request.url.path == "/api/v2/twin/schema"
-                cursor = await connection.execute(
-                    "SELECT table_name, column_name, data_type FROM information_schema.columns "
-                    "WHERE table_schema = %s",
-                    (schema,),
-                )
-                columns = await cursor.fetchall()
-                return httpx.Response(
-                    200,
-                    json=[
-                        {
-                            "name": table,
-                            "kind": "table",
-                            "columns": [
-                                {
-                                    "name": c["column_name"],
-                                    "type": c["data_type"],
-                                    "isPrimary": False,
-                                }
-                                for c in columns
-                                if c["table_name"] == table
-                            ],
-                        }
-                        for table in sorted({c["table_name"] for c in columns})
-                    ],
-                )
-            assert request.url.path == "/api/v2/twin/sql"
-            assert request.method == "POST"
-            body = SQLBody.model_validate_json(request.content)
-            try:
-                cursor = await connection.execute(SQL(body.sql))
-                rows = await cursor.fetchall() if cursor.description else []
-                return httpx.Response(200, json={"rows": rows, "truncated": False})
-            except psycopg.Error as exc:
-                return httpx.Response(400, json={"error": str(exc)})
-
-    if request.param == "postgres":
-        store: TwinStore = PostgresStore(
-            Settings(database_url=make_conninfo(dsn, options=f"-c search_path={schema}"))
-        )
-    else:
-        client = httpx.AsyncClient(
-            base_url="https://twin.test/api/v2", transport=httpx.MockTransport(handle)
-        )
-        store = TwinStore(Settings(), client)
+    store = PostgresStore(
+        Settings(database_url=make_conninfo(dsn, options=f"-c search_path={schema}"))
+    )
     await store.migrate()
     await store.open()
     try:
@@ -119,59 +63,59 @@ def snapshot() -> WorldSnapshot:
     return state.snapshot(full=True)
 
 
-async def test_migration_idempotent_and_schema_version_guard(twin: TwinStore) -> None:
-    await twin.migrate()
-    await twin.query("INSERT INTO crisis_schema_version(version) VALUES (2)")
+async def test_migration_idempotent_and_schema_version_guard(pg: PostgresStore) -> None:
+    await pg.migrate()
+    await pg.query("INSERT INTO crisis_schema_version(version) VALUES (2)")
     with pytest.raises(StoreError):
-        await twin.open()
+        await pg.open()
     with pytest.raises(StoreError):
-        await twin.migrate()
+        await pg.migrate()
 
 
-async def test_atomic_snapshot_receipt_assignment_outbox_and_cas(twin: TwinStore) -> None:
+async def test_atomic_snapshot_receipt_assignment_outbox_and_cas(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
+    await pg.create(initial)
     obs = Observation(
         incident_id=initial.incident.id,
         kind=EventKind.note,
         title="novedad",
     )
-    await twin.observe(obs)
+    await pg.observe(obs)
     updated = initial.model_copy(deep=True)
     updated.version = 1
     updated.resources[0].assigned_task_id = "task_a"
     updated.resources[0].status = ResourceStatus.reserved
     updated.recent_actions = [Action(kind=ActionKind.call, summary="orden pendiente")]
-    await twin.save(updated, 0, [Receipt(observation_id=obs.observation_id, status="applied")])
-    assert (await twin.load(initial.incident.id)).version == 1
-    assert await twin.pending(initial.incident.id, 20) == []
-    assert (await twin.query("SELECT status FROM crisis_commands")) == [{"status": "pending"}]
+    await pg.save(updated, 0, [Receipt(observation_id=obs.observation_id, status="applied")])
+    assert (await pg.load(initial.incident.id)).version == 1
+    assert await pg.pending(initial.incident.id, 20) == []
+    assert (await pg.query("SELECT status FROM crisis_commands")) == [{"status": "pending"}]
     assert any(
         row["task_id"] == "task_a"
-        for row in await twin.query("SELECT task_id FROM crisis_assignments")
+        for row in await pg.query("SELECT task_id FROM crisis_assignments")
     )
     with pytest.raises(VersionConflict):
-        await twin.save(updated, 0, [])
-    assert len(await twin.query("SELECT * FROM crisis_commands")) == 1
+        await pg.save(updated, 0, [])
+    assert len(await pg.query("SELECT * FROM crisis_commands")) == 1
 
 
-async def test_constraint_failure_rolls_back_all_writes(twin: TwinStore) -> None:
+async def test_constraint_failure_rolls_back_all_writes(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
+    await pg.create(initial)
     updated = initial.model_copy(deep=True)
     updated.version = 1
     updated.recent_actions = [Action(kind=ActionKind.call, summary="no debe persistir")]
     with pytest.raises(StoreError):
-        await twin.save(updated, 0, [Receipt(observation_id="missing", status="applied")])
-    assert (await twin.load(initial.incident.id)).version == 0
-    assert await twin.query("SELECT * FROM crisis_commands") == []
-    assert await twin.query("SELECT * FROM crisis_assignments") == []
+        await pg.save(updated, 0, [Receipt(observation_id="missing", status="applied")])
+    assert (await pg.load(initial.incident.id)).version == 0
+    assert await pg.query("SELECT * FROM crisis_commands") == []
+    assert await pg.query("SELECT * FROM crisis_assignments") == []
 
 
-async def test_pending_observations_block_atomic_send_claim(twin: TwinStore) -> None:
+async def test_pending_observations_block_atomic_send_claim(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
-    await twin.observe(
+    await pg.create(initial)
+    await pg.observe(
         Observation(
             incident_id=initial.incident.id, kind=EventKind.note, title="cambio concurrente"
         )
@@ -182,37 +126,37 @@ async def test_pending_observations_block_atomic_send_claim(twin: TwinStore) -> 
         Action(kind=ActionKind.call, summary="orden", status=ActionStatus.sending)
     ]
     with pytest.raises(VersionConflict):
-        await twin.save(updated, 0, [], require_synced=True)
-    assert (await twin.load(initial.incident.id)).version == 0
-    assert await twin.query("SELECT * FROM crisis_commands") == []
+        await pg.save(updated, 0, [], require_synced=True)
+    assert (await pg.load(initial.incident.id)).version == 0
+    assert await pg.query("SELECT * FROM crisis_commands") == []
 
 
-async def test_two_writers_only_one_commits(twin: TwinStore) -> None:
+async def test_two_writers_only_one_commits(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
+    await pg.create(initial)
     left, right = initial.model_copy(deep=True), initial.model_copy(deep=True)
     left.version = right.version = 1
     left.resources[0].assigned_task_id = "left"
     right.resources[0].assigned_task_id = "right"
     results = await asyncio.gather(
-        twin.save(left, 0, []),
-        twin.save(right, 0, []),
+        pg.save(left, 0, []),
+        pg.save(right, 0, []),
         return_exceptions=True,
     )
     assert sum(isinstance(result, VersionConflict) for result in results) == 1
     assert sum(result is None for result in results) == 1
-    stored = await twin.load(initial.incident.id)
+    stored = await pg.load(initial.incident.id)
     assert stored.resources[0].assigned_task_id in ("left", "right")
 
 
-async def test_polling_pages_quarantine_and_late_insertion(twin: TwinStore) -> None:
+async def test_polling_pages_quarantine_and_late_insertion(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
-    rt = build_runtime(Settings(agent_autostart=False), store=twin)
+    await pg.create(initial)
+    rt = build_runtime(Settings(agent_autostart=False), store=pg)
     rt.state.restore(initial)
     rt.orchestrator.batch_size = 2
     for index in range(5):
-        await twin.observe(
+        await pg.observe(
             Observation(
                 observation_id=f"observation_{index}",
                 incident_id=initial.incident.id,
@@ -220,12 +164,12 @@ async def test_polling_pages_quarantine_and_late_insertion(twin: TwinStore) -> N
                 title=f"nota {index}",
             )
         )
-    await twin.query(
+    await pg.query(
         "INSERT INTO crisis_observations(observation_id,incident_id,body) VALUES "
         f"('invalid',{literal(initial.incident.id)}, '{'{}'}'::jsonb)"
     )
     await rt.orchestrator.synchronize()
-    receipts = await twin.receipts(initial.incident.id)
+    receipts = await pg.receipts(initial.incident.id)
     assert len(receipts) == 6
     assert next(r for r in receipts if r.observation_id == "invalid").status == "invalid"
     obs = Observation(
@@ -235,63 +179,53 @@ async def test_polling_pages_quarantine_and_late_insertion(twin: TwinStore) -> N
         title="insertada después con fecha anterior",
         observed_at=now() - timedelta(days=1),
     )
-    await twin.query(
+    await pg.query(
         "INSERT INTO crisis_observations(observation_id,incident_id,received_at,body) VALUES "
         f"('late',{literal(initial.incident.id)},'2000-01-01',{json_literal(obs.model_dump(mode='json'))})"
     )
     await rt.orchestrator.synchronize()
-    assert len(await twin.receipts(initial.incident.id)) == 7
-    assert await twin.pending(initial.incident.id, 2) == []
+    assert len(await pg.receipts(initial.incident.id)) == 7
+    assert await pg.pending(initial.incident.id, 2) == []
     await rt.hr.aclose()
 
 
-async def test_idempotency_and_sql_escaping(twin: TwinStore) -> None:
+async def test_idempotency_and_sql_escaping(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
+    await pg.create(initial)
     obs = Observation(
         observation_id="obs'; DROP TABLE crisis_world; -- $crisis$",
         incident_id=initial.incident.id,
         kind=EventKind.note,
         title="' \\ $crisis$ $crisis_$ ¿fuego?",
     )
-    await twin.observe(obs)
-    await twin.observe(obs)
-    assert len(await twin.pending(initial.incident.id, 20)) == 1
+    await pg.observe(obs)
+    await pg.observe(obs)
+    assert len(await pg.pending(initial.incident.id, 20)) == 1
     with pytest.raises(StoreError):
-        await twin.observe(obs.model_copy(update={"title": "otro contenido"}))
-    assert (await twin.pending(initial.incident.id, 20))[0].body == obs.model_dump(mode="json")
-    assert await twin.load(initial.incident.id)
+        await pg.observe(obs.model_copy(update={"title": "otro contenido"}))
+    assert (await pg.pending(initial.incident.id, 20))[0].body == obs.model_dump(mode="json")
+    assert await pg.load(initial.incident.id)
 
 
-async def test_conflicting_observation_is_not_a_transient_store_error(twin: TwinStore) -> None:
+async def test_conflicting_observation_is_not_a_transient_store_error(pg: PostgresStore) -> None:
     initial = snapshot()
-    await twin.create(initial)
+    await pg.create(initial)
     obs = Observation(incident_id=initial.incident.id, kind=EventKind.note, title="aviso original")
-    await twin.observe(obs)
+    await pg.observe(obs)
     with pytest.raises(ObservationConflict):
-        await twin.observe(obs.model_copy(update={"title": "contenido diferente"}))
-    assert (await twin.pending(initial.incident.id, 10))[0].body == obs.model_dump(mode="json")
+        await pg.observe(obs.model_copy(update={"title": "contenido diferente"}))
+    assert (await pg.pending(initial.incident.id, 10))[0].body == obs.model_dump(mode="json")
 
 
-@pytest.mark.parametrize(
-    "response",
-    [
-        httpx.Response(200, json={"rows": [{}], "truncated": True}),
-        httpx.Response(200, json={}),
-        httpx.Response(401, json={"error": "unauthorized"}),
-        httpx.Response(503, json={"error": "unavailable"}),
-    ],
-)
-async def test_twin_contract_fails_closed(response: httpx.Response) -> None:
-    async with httpx.AsyncClient(
-        base_url="https://twin.test", transport=httpx.MockTransport(lambda request: response)
-    ) as client:
-        store = TwinStore(Settings(), client)
-        with pytest.raises(StoreError):
-            await store.load("incident")
+async def test_store_requires_dsn_and_fails_closed_when_unreachable() -> None:
+    with pytest.raises(ValueError):
+        PostgresStore(Settings())
+    unreachable = PostgresStore(Settings(database_url="postgresql://crisis@127.0.0.1:1/crisis"))
+    with pytest.raises(StoreError):
+        await unreachable.load("incident")
 
 
-async def test_restart_restores_all_actions_and_pending_commands(twin: TwinStore) -> None:
+async def test_restart_restores_all_actions_and_pending_commands(pg: PostgresStore) -> None:
     initial = snapshot()
     initial.recent_actions = [
         Action(kind=ActionKind.call, summary=f"anterior {i}", status=ActionStatus.completed)
@@ -307,26 +241,24 @@ async def test_restart_restores_all_actions_and_pending_commands(twin: TwinStore
         status=ActionStatus.sending,
     )
     initial.recent_actions.extend([pending, sending])
-    await twin.create(initial)
-    rt = build_runtime(Settings(agent_autostart=False), store=twin)
-    rt.state.restore(await twin.load(initial.incident.id))
+    await pg.create(initial)
+    rt = build_runtime(Settings(agent_autostart=False), store=pg)
+    rt.state.restore(await pg.load(initial.incident.id))
     await rt.orchestrator.recover()
     assert len(rt.state.actions) == 62
     assert rt.state.actions[sending.id].status == ActionStatus.unknown
     await rt.orchestrator.dispatch_pending()
     assert rt.state.actions[pending.id].status == ActionStatus.dispatched
     assert rt.state.actions[sending.id].attempts == 0
-    restored = await twin.load(initial.incident.id)
+    restored = await pg.load(initial.incident.id)
     assert len(restored.recent_actions) == 62
     await rt.hr.aclose()
 
 
-async def test_restart_api_on_postgres_without_happyrobot_key(twin: TwinStore) -> None:
-    if not isinstance(twin, PostgresStore):
-        return
+async def test_restart_api_on_postgres_without_happyrobot_key(pg: PostgresStore) -> None:
     settings = Settings(
         storage_backend="postgres",
-        database_url=twin._dsn,
+        database_url=pg._dsn,
         agent_autostart=False,
         happyrobot_api_key="",
         api_key="test",

@@ -23,7 +23,7 @@ async def happyrobot_webhook(
     await rt.orchestrator.synchronize()
     try:
         action = resolve_action(rt.state, body)
-        if action.kind not in (ActionKind.call, ActionKind.sms, ActionKind.telegram):
+        if action.kind not in (ActionKind.call, ActionKind.telegram):
             raise ValueError("la orden no corresponde a HappyRobot")
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -33,7 +33,7 @@ async def happyrobot_webhook(
         incident_id=rt.orchestrator.incident_id,
         kind=(
             EventKind.message_outcome
-            if action.kind in (ActionKind.sms, ActionKind.telegram)
+            if action.kind == ActionKind.telegram
             else EventKind.call_outcome
         ),
         command_id=action.id,

@@ -27,7 +27,7 @@ uv run uvicorn app.main:app --reload --port 8000
 
 Docs interactivas en http://localhost:8000/docs
 
-La persistencia duradera usa **HappyRobot Twin**. Los agentes insertan observaciones y el
+La persistencia duradera usa **PostgreSQL**. Los agentes insertan observaciones y el
 backend consolida el world state, reserva recursos y envía órdenes mediante una outbox.
 Configuración, migración y pruebas: [API](apps/api/README.md).
 Contrato de datos y decisiones: [arquitectura](docs/architecture.md).

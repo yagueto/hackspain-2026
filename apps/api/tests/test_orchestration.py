@@ -171,7 +171,7 @@ async def test_llm_cannot_allocate_incompatible_resource(runtime: Runtime) -> No
             assert rt.state.resources[rid].type in task.resource_types
 
 
-async def test_twin_failure_prevents_external_send_and_uncommitted_sse(runtime: Runtime) -> None:
+async def test_store_failure_prevents_external_send_and_uncommitted_sse(runtime: Runtime) -> None:
     rt = runtime
     queue = rt.state.subscribe()
     rt.store.save = AsyncMock(side_effect=StoreError("offline"))
@@ -279,9 +279,9 @@ async def test_polling_operates_while_agent_paused(runtime: Runtime) -> None:
 async def test_expired_command_is_not_sent(runtime: Runtime) -> None:
     async with runtime.orchestrator.edit() as state:
         action = Action(
-            kind=ActionKind.sms,
+            kind=ActionKind.telegram,
             summary="caducada",
-            workflow="sms",
+            workflow="send_telegram",
             expires_at=now() - timedelta(seconds=1),
         )
         state.upsert_action(action)

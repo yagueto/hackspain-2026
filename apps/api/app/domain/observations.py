@@ -87,7 +87,7 @@ def resolve_action(state: WorldState, body: CallOutcome) -> Action:
         candidates = [
             a
             for a in state.actions.values()
-            if a.task_id == body.task_id and a.kind in ("call", "sms")
+            if a.task_id == body.task_id and a.kind == ActionKind.call
         ]
         action = candidates[0] if len(candidates) == 1 else None
     if action is None:
