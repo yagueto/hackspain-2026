@@ -359,8 +359,7 @@ class Orchestrator:
                 return
             s = self.state.copy()
             action = s.actions[aid]
-            integration = "telegram" if action.kind == ActionKind.telegram else "happyrobot"
-            if not s.integrations.get(integration, True):
+            if not s.integrations.get("happyrobot", True):
                 continue
             if action.status != ActionStatus.pending:
                 continue

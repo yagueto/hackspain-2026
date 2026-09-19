@@ -40,7 +40,6 @@ async def runtime() -> AsyncIterator[Runtime]:
     rt = build_runtime(Settings(agent_autostart=False), state=state, store=store)
     yield rt
     await rt.hr.aclose()
-    await rt.telegram.aclose()
 
 
 def observation(rt: Runtime, kind: EventKind = EventKind.note, **kwargs: object) -> Observation:

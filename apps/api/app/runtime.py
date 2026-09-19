@@ -11,7 +11,6 @@ from app.agent.orchestrator import Orchestrator
 from app.config import Settings
 from app.domain.state import WorldState
 from app.integrations.happyrobot import HappyRobotClient
-from app.integrations.telegram import TelegramWebhookClient
 from app.store.persistence import Store
 
 
@@ -21,7 +20,6 @@ class Runtime:
     state: WorldState
     store: Store
     hr: HappyRobotClient
-    telegram: TelegramWebhookClient
     executor: Executor
     orchestrator: Orchestrator
 

@@ -25,7 +25,7 @@ Desde `apps/api`:
 docker compose up -d --wait postgres
 export STORAGE_BACKEND=postgres
 export DATABASE_URL=postgresql://crisis:local-dev-only@127.0.0.1:55433/crisis
-export HAPPYROBOT_MODE=simulated TELEGRAM_MODE=simulated AGENT_AUTOSTART=false
+export HAPPYROBOT_MODE=simulated AGENT_AUTOSTART=false
 uv run python -m app.store.migrate --apply
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
@@ -47,14 +47,15 @@ siguientes arranques restauran tareas, acciones, asignaciones, recibos e histór
 
 Para datos no simulados usa `SEED_DEMO=false` e inicializa el catálogo mediante
 `POST /api/v1/control/incident` con `X-API-Key`. El `incident.id` debe coincidir con `INCIDENT_ID`.
-HappyRobot queda dedicado a las llamadas: configura los tres `HAPPYROBOT_WF_CALL_*` /
-`HAPPYROBOT_WF_NOTIFY_AUTHORITY`, `HAPPYROBOT_WEBHOOK_SECRET` y una URL pública antes de
-activar `HAPPYROBOT_MODE=live`. El entorno de workflows debe ser `development` durante pruebas.
+HappyRobot atiende llamadas y avisos: configura los tres `HAPPYROBOT_WF_CALL_*` /
+`HAPPYROBOT_WF_NOTIFY_AUTHORITY`, `HAPPYROBOT_WF_TELEGRAM`, `HAPPYROBOT_WEBHOOK_SECRET` y una
+URL pública antes de activar `HAPPYROBOT_MODE=live`. El entorno de workflows debe ser
+`development` durante pruebas.
 
 El adaptador Twin anterior se conserva por compatibilidad, pero PostgreSQL no llama a Twin
 ni necesita una API key de HappyRobot. `integrations.storage` refleja el estado del store.
 
-### Telegram por webhook (sustituye SMS)
+### Avisos de Telegram por workflow (sustituye SMS)
 
 `POST /api/v1/control/telegram`, autenticado con `X-API-Key`, recibe:
 
@@ -62,16 +63,15 @@ ni necesita una API key de HappyRobot. `integrations.storage` refleja el estado 
 {"contact_id":"ct_camping","message":"Aviso de prueba"}
 ```
 
-`/control/sms` es un alias obsoleto del mismo envío; ya no inicia workflows SMS. El nuevo
-`kind` de la acción es `telegram`. `HAPPYROBOT_WF_SMS` ya no se utiliza.
+`/control/sms` es un alias obsoleto del mismo envío. El `kind` de la acción es `telegram` y su
+`workflow` es `send_telegram`: el backend **no habla con la API de Telegram ni con un puente
+propio**, solo dispara el workflow con `HAPPYROBOT_WF_TELEGRAM` y espera el resultado.
 
-Con `TELEGRAM_MODE=simulated` no se hace ninguna petición. Para usar un puente existente
-(por ejemplo n8n), configura localmente `TELEGRAM_MODE=live`, `TELEGRAM_WEBHOOK_URL` (HTTPS)
-y, si tu puente lo acepta, `TELEGRAM_WEBHOOK_SECRET` para el header `X-Webhook-Secret`.
-La URL y el secret no se incluyen en acciones, respuestas API ni logs de peticiones.
+El aviso viaja por el mismo outbox que las llamadas, así que hereda expiración a diez minutos,
+reintentos acotados, `unknown` ante respuestas ambiguas y bloqueo mientras el agente está en
+pausa. Con `HAPPYROBOT_MODE=simulated` no sale ninguna petición: el fake responde un `run_id`.
 
-Contrato JSON compartido por el backend y el borrador del workflow HappyRobot. El puente
-externo debe implementar este contrato; su URL y la resolución del chat siguen pendientes:
+Payload que recibe el trigger del workflow:
 
 ```json
 {
@@ -81,42 +81,50 @@ externo debe implementar este contrato; su URL y la resolución del chat siguen 
   "incident_id":"incendio-gredos-demo",
   "contact_id":"ct_camping",
   "contact_name":"Contacto del escenario",
-  "message":"Aviso de prueba"
+  "message":"Aviso de prueba",
+  "callback_url":"http://localhost:8000/api/v1/webhooks/happyrobot"
 }
 ```
 
-El POST incluye `Idempotency-Key: <command_id>`. El puente debe deduplicar por esa clave y
-resolver el chat de destino; un teléfono no es un chat_id de Telegram. Un HTTP 2xx completa
-la entrega **al webhook**, no acredita entrega en Telegram ni aceptación de una tarea:
-`result.delivery_confirmed` permanece `false`. No se guarda el cuerpo de respuesta del puente.
-Timeouts tras enviar y HTTP 5xx quedan `unknown`, sin reenvío automático. Fallos de conexión
-anteriores al envío y HTTP 429 se reintentan como máximo tres veces. No se siguen redirecciones.
-La pausa del agente también bloquea estos envíos. Una orden histórica `sms` pendiente no
-se transforma ni se reenvía silenciosamente a otro canal.
+No incluye teléfono ni `chat_id`: un teléfono no es un chat de Telegram y hoy el chat lo
+resuelve el workflow. La acción queda `dispatched` al disparar el run y solo pasa a
+`completed`/`failed` cuando llega la observación `message_outcome` del workflow, de modo que
+`POST /control/actions/{id}/reconcile` también sirve para un aviso. Un aviso entregado **no**
+mueve la fiabilidad del contacto: eso solo lo hacen las llamadas, porque pondera la selección
+de medios. Una orden histórica `sms` pendiente falla en vez de reenrutarse a otro canal.
 
-### Borrador equivalente en HappyRobot
+### Workflow en HappyRobot
 
-En el workflow `Crisis - SMS a contacto` (`01a0b95f-2b86-77e7-966b-5d295bc4b499`) se ha
-preparado la v2 `Telegram por webhook - pendiente de configurar`
-(`01a0b9c1-fd0f-7637-bcc9-2d72eb04ce7b`), **sin publicar**. La v1 publicada en development
-se ha conservado y todavía envía SMS; no usarla para probar Telegram.
+`Crisis - Aviso Telegram` (`01a0b9ec-2f1d-7881-b454-ddc2fd8b5f4b`, slug `5qqqelh3rij6`), v1
+**sin publicar**, en la carpeta de los workflows de crisis:
 
-El borrador contiene únicamente `Entrada de mensaje Telegram → Enviar Telegram por webhook`.
-Su trigger recibe los siete campos del JSON anterior; `channel` se fija a `telegram` en el POST.
-No necesita teléfono, credenciales SMS ni `callback_url`. No envía un resultado operativo al
-backend: un HTTP 2xx del puente no demuestra entrega al destinatario.
+```text
+Entrada de aviso → Enviar mensaje a Telegram → Reportar entrega al backend
+```
 
-Las variables del workflow `TELEGRAM_WEBHOOK_URL` y `TELEGRAM_WEBHOOK_SECRET` están ocultas
-y vacías en todos los entornos. Antes de publicar, configurar una URL HTTPS del puente y
-su secreto, si lo requiere. El nodo envía `Idempotency-Key: <command_id>` y
-`X-Webhook-Secret`; si el puente no utiliza secreto, se puede retirar este último header.
-El puente debe resolver el chat mediante `contact_id` y deduplicar por `command_id`.
+- `Enviar mensaje a Telegram`: POST a `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage`
+  con `{"chat_id":<TELEGRAM_CHAT_ID>,"text":<message>}`.
+- `Reportar entrega al backend`: POST al `callback_url` del trigger con `X-Webhook-Secret`,
+  `command_id`, `observation_id` estable (`tg-<command_id>`) y `outcome=accepted`.
 
-El backend continúa enviando directamente al puente; **no inicia este workflow**. Son dos
-entradas alternativas con el mismo contrato, no dos pasos consecutivos: no enviar una misma
-orden por ambas. La configuración de variables en HappyRobot es independiente de los dotenv
-del backend. No se han ejecutado envíos reales; falta validar el circuito con el puente
-cuando esté configurado y se autorice una prueba.
+Variables del workflow, ocultas y **vacías** en los tres entornos: `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID` y `WEBHOOK_SECRET` (debe coincidir con `HAPPYROBOT_WEBHOOK_SECRET` del
+backend). Hay que rellenarlas antes de publicar; se configuran en HappyRobot, no en los dotenv.
+
+El antiguo `Crisis - SMS a contacto` sigue con su v1 publicada enviando SMS y una v2 borrador
+que apuntaba al puente n8n descartado: no usarlo para avisos.
+
+Límites conocidos, pendientes de decidir:
+
+- `TELEGRAM_CHAT_ID` es único, así que **todos los avisos caen en el mismo chat** sea quien sea
+  el contacto; `contact_id` y `contact_name` viajan en el payload para poder mover el mapeo
+  contacto→chat al backend sin cambiar el contrato. Requiere dar de alta cada chat por `/start`.
+- El nodo de reporte envía `outcome=accepted` fijo. Si Telegram rechaza el mensaje (400 por
+  `chat not found`, 403 si el usuario bloqueó al bot), el run falla antes de reportar y la
+  acción se queda `dispatched`: ambigüedad honesta que se resuelve con `reconcile`, no un falso
+  éxito. Convertirlo en un `failed` explícito requiere ramificar por `status_code`.
+- `test_all` valida la estructura y las referencias de variables, no un envío real: no se ha
+  ejecutado ningún envío a Telegram.
 
 ## Prueba del circuito sin llamadas
 

@@ -26,3 +26,7 @@ dist/
 
 # Devin local config (contiene secretos)
 .devin/mcp_config.local.json
+.devin/*.local.json
+
+# Notas locales con credenciales
+api.md

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domain.apply import apply_event
 from app.domain.models import (
     Action,
+    ActionKind,
     ActionStatus,
     CallOutcome,
     EventKind,
@@ -120,7 +121,9 @@ def outcome(state: WorldState, obs: Observation) -> list[str]:
     action.happyrobot_run_id = action.happyrobot_run_id or body.run_id
     action.result["webhook"] = body.model_dump(mode="json")
     contact = state.contacts.get(action.contact_id or "")
-    if contact and not terminal:
+    if contact and not terminal and action.kind == ActionKind.call:
+        # La entrega de un aviso escrito no dice nada de si la persona responde: solo las
+        # llamadas mueven la fiabilidad, que a su vez pondera la selección de medios.
         contact.reliability = round(0.7 * contact.reliability + 0.3 * int(success), 3)
     if task:
         if task.status not in (TaskStatus.done, TaskStatus.cancelled):
