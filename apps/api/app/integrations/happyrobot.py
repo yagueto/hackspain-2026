@@ -1,0 +1,160 @@
+"""Cliente de la API pública de HappyRobot (v2).
+
+Base: https://platform[.eu].happyrobot.ai/api/v2 — auth Bearer con la API key.
+
+Usamos:
+- POST /workflows/{id}/runs      -> disparar una llamada / SMS / WhatsApp (un workflow por tipo)
+- GET  /runs/{id}                -> estado de la ejecución
+- GET  /runs/{id}/sessions       -> sesiones (transcripción, variables extraídas)
+- GET  /sessions/{id}/messages   -> mensajes de la conversación
+- POST /signals/                 -> inyectar contexto nuevo en sesiones activas ("cambió el viento")
+- GET  /contacts/resolve         -> memoria de contacto (qué sabe HappyRobot de ese teléfono)
+
+Los workflows, al terminar, llaman a nuestro webhook (POST /api/v1/webhooks/happyrobot) con las
+variables extraídas de la conversación.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from typing import Any, Literal
+
+import httpx
+
+from app.config import Settings
+
+log = logging.getLogger(__name__)
+
+WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority", "sms"]
+
+
+class HappyRobotError(RuntimeError):
+    pass
+
+
+class HappyRobotClient:
+    def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
+        self.settings = settings
+        self._client = client or httpx.AsyncClient(
+            base_url=settings.happyrobot_base_url,
+            headers={
+                "Authorization": f"Bearer {settings.happyrobot_api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.settings.happyrobot_api_key)
+
+    def workflow_id(self, kind: WorkflowKind) -> str:
+        s = self.settings
+        return {
+            "call_responder": s.happyrobot_wf_call_responder,
+            "call_civilian": s.happyrobot_wf_call_civilian,
+            "notify_authority": s.happyrobot_wf_notify_authority,
+            "sms": s.happyrobot_wf_sms,
+        }[kind]
+
+    async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
+        if not self.configured:
+            raise HappyRobotError("HAPPYROBOT_API_KEY no configurada")
+        try:
+            resp = await self._client.request(method, path, **kw)
+        except httpx.HTTPError as exc:
+            raise HappyRobotError(f"{method} {path}: {exc}") from exc
+        if resp.status_code >= 400:
+            raise HappyRobotError(f"{method} {path}: {resp.status_code} {resp.text[:300]}")
+        data: dict[str, Any] = resp.json() if resp.content else {}
+        return data
+
+    # ------------------------------------------------------------ runs
+
+    async def trigger_run(self, workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Dispara un workflow. `payload` llega al trigger del workflow como variables."""
+        if not workflow_id:
+            raise HappyRobotError("workflow id vacío: configura HAPPYROBOT_WF_*")
+        return await self._trigger(workflow_id, payload)
+
+    async def _trigger(self, workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        body = {"payload": payload, "environment": self.settings.happyrobot_environment}
+        return await self._request("POST", f"/workflows/{workflow_id}/runs", json=body)
+
+    async def trigger(self, kind: WorkflowKind, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.trigger_run(self.workflow_id(kind), payload)
+
+    async def get_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/runs/{run_id}")
+
+    async def get_run_sessions(self, run_id: str) -> list[dict[str, Any]]:
+        data = await self._request("GET", f"/runs/{run_id}/sessions")
+        return list(data.get("data", []))
+
+    async def get_session_messages(self, session_id: str) -> list[dict[str, Any]]:
+        data = await self._request(
+            "GET", f"/sessions/{session_id}/messages", params={"page_size": 200}
+        )
+        return list(data.get("data", []))
+
+    async def cancel_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/runs/{run_id}/cancel")
+
+    # --------------------------------------------------------- signals
+
+    async def publish_signal(
+        self, key: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Empuja información nueva a las sesiones activas suscritas a `key`."""
+        body: dict[str, Any] = {
+            "key": key,
+            "payload": payload,
+            "env": self.settings.happyrobot_environment,
+        }
+        if metadata:
+            body["metadata"] = metadata
+        return await self._request("POST", "/signals/", json=body)
+
+    # -------------------------------------------------------- contacts
+
+    async def resolve_contact(self, phone: str) -> dict[str, Any] | None:
+        try:
+            return await self._request(
+                "GET", "/contacts/resolve", params={"type": "phone", "value": phone}
+            )
+        except HappyRobotError as exc:
+            if " 404 " in str(exc):
+                return None
+            raise
+
+    async def contact_memories(self, contact_id: str) -> list[dict[str, Any]]:
+        data = await self._request("GET", f"/contacts/{contact_id}/memories")
+        return list(data.get("data", []))
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+class FakeHappyRobotClient(HappyRobotClient):
+    """Sin API key: simula la plataforma para poder demostrar el flujo end-to-end."""
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings, client=httpx.AsyncClient(base_url="http://fake.invalid"))
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def configured(self) -> bool:
+        return True
+
+    async def trigger_run(self, workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._trigger(workflow_id or "wf_fake", payload)
+
+    async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
+        self.calls.append({"method": method, "path": path, **kw})
+        log.info("FAKE HappyRobot %s %s %s", method, path, kw.get("json"))
+        if path.endswith("/runs") and method == "POST":
+            return {"run_id": f"fake_{uuid.uuid4().hex[:10]}", "status": "queued"}
+        if path == "/signals/":
+            return {"status": "published", "published_at": "now"}
+        return {"data": []}
