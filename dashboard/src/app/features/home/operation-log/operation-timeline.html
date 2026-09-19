@@ -1,13 +1,8 @@
 <section class="timeline-section" [attr.aria-labelledby]="'timeline-' + incidentId()">
   <div class="panel-heading">
     <div class="heading-title">
-      <app-icon name="radio" />
       <h2 [id]="'timeline-' + incidentId()">Línea temporal</h2>
-      <span class="count-badge">{{ events().length }}</span>
     </div>
-    @if (pending().length) {
-      <span class="pending-label" role="status">{{ pending().length }} pendientes</span>
-    }
   </div>
   <p class="sr-only" role="status">
     {{ events().length }} eventos. Último evento: {{ events().at(-1)?.title }}.
@@ -37,7 +32,6 @@
           } @else {
             <h3>{{ question ? 'Pregunta resuelta' : event.title }}</h3>
             <p>{{ event.description }}</p>
-            <span class="event-source">{{ event.source }}</span>
           }
         </div>
       </li>

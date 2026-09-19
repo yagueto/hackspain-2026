@@ -71,15 +71,6 @@ export class IncidentStore {
           description: `${incident.title}. ${incident.address}.`,
           source: 'Central 112',
         },
-        {
-          id: `${incident.id}:identified`,
-          incidentId: incident.id,
-          occurredAt: new Date(Date.parse(openedAt) + 60000).toISOString(),
-          title: 'Coordinación iniciada',
-          kind: 'action' as const,
-          description: `El agente activa la coordinación de ${incident.title.toLowerCase()}. Estado: ${incident.status}.`,
-          source: 'Agente de coordinación',
-        },
       ];
     }),
     ...MOCK_UNITS.filter((unit) => unit.kind === 'unit' && unit.incidentId).flatMap((unit) => {

@@ -1,15 +1,16 @@
 :host {
   display: block;
 }
-.incident-facts {
+.detail-facts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   margin: 16px 0;
 }
 .fact {
   display: flex;
   align-items: flex-start;
+  min-width: 0;
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -19,6 +20,7 @@
 .fact p {
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .fact span {
   display: block;
@@ -26,12 +28,8 @@
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 app-service-feed {
   margin: 16px 0;
-}
-@media (max-width: 1100px) {
-  .incident-facts {
-    grid-template-columns: 1fr;
-  }
 }

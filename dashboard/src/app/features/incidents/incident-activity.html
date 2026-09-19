@@ -1,4 +1,4 @@
-<div class="incident-facts">
+<div class="detail-facts incident-facts">
   <section class="fact" aria-label="Ubicación">
     <p>{{ incident().address }}</p>
   </section>
@@ -6,7 +6,7 @@
     <div>
       <p class="affected-count">
         {{ details()?.affected ?? 'Sin confirmar' }}
-        {{ details()?.affected == null ? '' : 'personas' }}
+        {{ details()?.affected == null ? '' : details()?.affected === 1 ? 'persona' : 'personas' }}
       </p>
       @if (details()?.assistanceNeeded != null) {
         <span>

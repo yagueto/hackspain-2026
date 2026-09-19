@@ -1,4 +1,4 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -28,9 +28,13 @@ const normalize = (value: string) =>
 
 @Component({
   selector: 'app-resources',
-  imports: [DatePipe, DecimalPipe, RouterLink, Icon, OperationalMap, OperationTimeline],
+  imports: [DatePipe, RouterLink, Icon, OperationalMap, OperationTimeline],
   templateUrl: './resources.html',
-  styleUrls: ['../incidents/incidents.css', './resources.css'],
+  styleUrls: [
+    '../incidents/incidents.css',
+    '../incidents/incident-activity.css',
+    './resources.css',
+  ],
   host: { '[class.embedded]': 'embedded()' },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

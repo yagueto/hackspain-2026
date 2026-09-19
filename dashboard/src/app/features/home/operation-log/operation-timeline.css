@@ -10,11 +10,6 @@
 h2 {
   font-size: 16px;
 }
-.heading-title > app-icon {
-  color: var(--muted);
-  width: 18px;
-}
-.pending-label,
 .human-label {
   color: var(--danger);
   font-size: 12px;
@@ -44,8 +39,7 @@ h2 {
   padding-top: 3px;
   font-variant-numeric: tabular-nums;
 }
-.timeline-event > time,
-.event-source {
+.timeline-event > time {
   font-size: 11px;
   line-height: 1.5;
   color: var(--muted);
@@ -82,10 +76,6 @@ p {
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-.event-source {
-  display: block;
-  margin-top: 6px;
 }
 .awaiting-human .event-content {
   padding: 12px;
