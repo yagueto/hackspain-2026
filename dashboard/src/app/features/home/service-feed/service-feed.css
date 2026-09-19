@@ -49,7 +49,7 @@
   font-size: 9px;
 }
 .feed-list {
-  --page-row-height: 72px;
+  --page-row-height: 60px;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -93,8 +93,6 @@
 .communication time {
   font-size: 10px;
   color: #b7c1cd;
-  align-self: start;
-  padding-top: 3px;
   font-variant-numeric: tabular-nums;
 }
 .communication-status {
@@ -121,7 +119,7 @@
 }
 .communication-body {
   display: grid;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
 }
 .message {
@@ -196,7 +194,7 @@
   .communication {
     grid-template-columns: 29px 20px minmax(0, 1fr) max-content;
     gap: 7px;
-    padding: 9px 8px;
+    padding: 4px 8px;
   }
   .communication-status {
     font-size: 7px;
@@ -207,7 +205,7 @@
   }
   .tags > span {
     font-size: 7px;
-    padding: 3px 4px;
+    padding: 2px 4px;
   }
   .message {
     font-size: 9px;
@@ -221,14 +219,10 @@
     margin-bottom: 7px;
   }
   .feed-list {
-    --page-row-height: 64px;
     gap: 5px;
   }
   .communication {
     padding: 4px 8px;
-  }
-  .communication-body {
-    gap: 5px;
   }
   .tags > span {
     padding-top: 2px;
@@ -253,14 +247,14 @@
 }
 @media (max-width: 800px) {
   .feed-list {
-    --page-row-height: 100px;
+    --page-row-height: 92px;
   }
 }
 @media (max-width: 480px) {
   .communication {
     grid-template-columns: 30px minmax(0, 1fr) max-content;
     gap: 7px;
-    padding: 10px 8px;
+    padding: 6px 8px;
   }
   .service-icon {
     display: none;
