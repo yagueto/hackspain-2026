@@ -95,8 +95,8 @@ de medios. Una orden histórica `sms` pendiente falla en vez de reenrutarse a ot
 
 ### Workflow en HappyRobot
 
-`Crisis - Aviso Telegram` (`01a0b9ec-2f1d-7881-b454-ddc2fd8b5f4b`, slug `5qqqelh3rij6`), v1
-**sin publicar**, en la carpeta de los workflows de crisis:
+`Crisis - Aviso Telegram` (`01a0b9ec-2f1d-7881-b454-ddc2fd8b5f4b`, slug `5qqqelh3rij6`), v2
+publicada en **development**, en la carpeta de los workflows de crisis:
 
 ```text
 Entrada de aviso → Enviar mensaje a Telegram → Reportar entrega al backend
@@ -104,27 +104,36 @@ Entrada de aviso → Enviar mensaje a Telegram → Reportar entrega al backend
 
 - `Enviar mensaje a Telegram`: POST a `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage`
   con `{"chat_id":<TELEGRAM_CHAT_ID>,"text":<message>}`.
-- `Reportar entrega al backend`: POST al `callback_url` del trigger con `X-Webhook-Secret`,
-  `command_id`, `observation_id` estable (`tg-<command_id>`) y `outcome=accepted`.
+- `Reportar entrega al backend`: POST al `callback_url` del trigger con `X-Webhook-Secret` y
+  `command_id`, `action_id`, `contact_id`, `observation_id` estable (`tg-<command_id>`),
+  `run_id`, `observed_at` y `outcome=accepted`. El `run_id` y el `contact_id` los verifica
+  el backend contra la orden, así que un callback descorrelacionado se rechaza.
 
-Variables del workflow, ocultas y **vacías** en los tres entornos: `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_CHAT_ID` y `WEBHOOK_SECRET` (debe coincidir con `HAPPYROBOT_WEBHOOK_SECRET` del
-backend). Hay que rellenarlas antes de publicar; se configuran en HappyRobot, no en los dotenv.
+Variables del workflow, ocultas: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` y `WEBHOOK_SECRET`
+(debe coincidir con `HAPPYROBOT_WEBHOOK_SECRET` del backend). Se configuran en HappyRobot, no
+en los dotenv, y por entorno.
 
-El antiguo `Crisis - SMS a contacto` sigue con su v1 publicada enviando SMS y una v2 borrador
-que apuntaba al puente n8n descartado: no usarlo para avisos.
+**Publicar es por entorno.** Una versión live en `production` no la usan los runs de
+`development`: el backend dispara con `HAPPYROBOT_ENVIRONMENT`, así que la versión debe estar
+publicada en ese entorno o seguirá ejecutándose la anterior. Para republicar hay que
+despublicar primero; `publish` falla con "Version is already live" si la versión ya está viva
+en otro entorno.
 
-Límites conocidos, pendientes de decidir:
+Límites conocidos:
 
 - `TELEGRAM_CHAT_ID` es único, así que **todos los avisos caen en el mismo chat** sea quien sea
   el contacto; `contact_id` y `contact_name` viajan en el payload para poder mover el mapeo
   contacto→chat al backend sin cambiar el contrato. Requiere dar de alta cada chat por `/start`.
-- El nodo de reporte envía `outcome=accepted` fijo. Si Telegram rechaza el mensaje (400 por
-  `chat not found`, 403 si el usuario bloqueó al bot), el run falla antes de reportar y la
-  acción se queda `dispatched`: ambigüedad honesta que se resuelve con `reconcile`, no un falso
-  éxito. Convertirlo en un `failed` explícito requiere ramificar por `status_code`.
-- `test_all` valida la estructura y las referencias de variables, no un envío real: no se ha
-  ejecutado ningún envío a Telegram.
+- El nodo de reporte envía `outcome=accepted` fijo, y es correcto: solo se ejecuta si el nodo
+  de Telegram tuvo éxito, así que nunca afirma una entrega que no ocurrió. Lo que falta es el
+  negativo: si Telegram rechaza (400 `chat not found`, 403 si bloqueó al bot) el run muere antes
+  de reportar y la acción se queda `dispatched`. `reconcile` la deja en `unknown` con el motivo,
+  no en `failed`. **No se puede ramificar** para arreglarlo: un nodo hijo solo se ejecuta si el
+  padre tuvo éxito, y el nodo POST solo expone `error` como variable, no `status_code` ni
+  `response`, al contrario de lo que anuncia la documentación del MCP.
+- `test_all` valida estructura y referencias de variables, no envíos reales; un nodo
+  "skipped — success" no se ha ejecutado. El circuito completo sí se ha verificado a mano con
+  envíos reales a Telegram y callback entrante por túnel público.
 
 ## Prueba del circuito sin llamadas
 
