@@ -124,7 +124,16 @@ describe('Dashboard redesign contracts', () => {
     expect(element.querySelector('.service-icon use')?.getAttribute('href')).toMatch(/#firetruck$/);
   });
 
-  it('persists theme, swaps actual map tiles and preserves marker geometry and selection', async () => {
+  it('persists theme and reuses OSM tiles while preserving marker geometry and selection', async () => {
+    const tiles: L.TileLayer[] = [];
+    const onAdd = L.TileLayer.prototype.onAdd;
+    vi.spyOn(L.TileLayer.prototype, 'onAdd').mockImplementation(function (
+      this: L.TileLayer,
+      map: L.Map,
+    ) {
+      tiles.push(this);
+      return onAdd.call(this, map);
+    });
     localStorage.setItem('dashboard-theme', 'dark');
     const theme = TestBed.inject(Theme);
     expect(theme.current()).toBe('dark');
@@ -134,7 +143,13 @@ describe('Dashboard redesign contracts', () => {
     await fixture.whenStable();
     const element: HTMLElement = fixture.nativeElement;
     const geometry = element.querySelector('.marker-symbol')?.innerHTML;
-    expect(element.querySelector('.leaflet-control-attribution')?.textContent).toContain('CARTO');
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].getTileUrl(Object.assign(L.point(0, 0), { z: 13 }))).toMatch(
+      /^https:\/\/tile\.openstreetmap\.org\//,
+    );
+    expect(element.querySelector('.leaflet-control-attribution')?.textContent).toContain(
+      'OpenStreetMap',
+    );
     theme.set('light');
     await fixture.whenStable();
     expect(localStorage.getItem('dashboard-theme')).toBe('light');
@@ -147,6 +162,11 @@ describe('Dashboard redesign contracts', () => {
     );
     expect(element.querySelector('.marker-symbol')?.innerHTML).toBe(geometry);
     expect(element.querySelector('.is-selected .marker-label')?.textContent).toBe('B-03');
+    theme.set('dark');
+    await fixture.whenStable();
+    expect(tiles).toHaveLength(1);
+    expect(localStorage.getItem('dashboard-theme')).toBe('dark');
+    expect(element.querySelector('.marker-symbol')?.innerHTML).toBe(geometry);
   });
 
   it('draws geographic halos only for incidents and filters units without losing incidents', async () => {

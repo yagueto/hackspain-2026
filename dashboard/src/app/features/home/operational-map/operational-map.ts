@@ -131,22 +131,13 @@ export class OperationalMap {
 
     effect(() => {
       if (!this.ready() || !this.map) return;
-      const dark = this.theme.current() === 'dark';
       this.tiles?.remove();
       this.tileError.set(false);
-      this.tiles = L.tileLayer(
-        dark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-          maxZoom: 19,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' +
-            (dark
-              ? ' &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>'
-              : ''),
-        },
-      ).addTo(this.map);
+      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+      }).addTo(this.map);
       this.tiles.on('tileerror', () => this.tileError.set(true));
     });
 

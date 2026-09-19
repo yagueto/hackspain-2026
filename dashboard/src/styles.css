@@ -164,6 +164,9 @@ h2 {
   font-family: inherit;
   background: var(--background);
 }
+:root[data-theme='dark'] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.15) brightness(0.82) contrast(0.9);
+}
 .leaflet-control-attribution {
   background: var(--panel) !important;
   color: var(--muted) !important;
