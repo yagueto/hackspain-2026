@@ -36,6 +36,7 @@ export class SplitPane {
   private readonly destroyRef = inject(DestroyRef);
   private container?: HTMLElement;
   private observer?: ResizeObserver;
+  private resizeFrame?: number;
   private dragging = false;
   private ratio = 0.44;
   private readonly minMap = 320;
@@ -46,11 +47,18 @@ export class SplitPane {
     afterNextRender(() => {
       this.container = this.host.parentElement ?? undefined;
       if (!this.container) return;
-      this.observer = new ResizeObserver(() => this.apply());
+      this.observer = new ResizeObserver(() => {
+        if (this.resizeFrame !== undefined) cancelAnimationFrame(this.resizeFrame);
+        this.resizeFrame = requestAnimationFrame(() => {
+          this.resizeFrame = undefined;
+          this.apply();
+        });
+      });
       this.observer.observe(this.container);
       this.apply();
       this.destroyRef.onDestroy(() => {
         this.observer?.disconnect();
+        if (this.resizeFrame !== undefined) cancelAnimationFrame(this.resizeFrame);
         this.restoreBody();
       });
     });
