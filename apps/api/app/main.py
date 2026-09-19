@@ -100,7 +100,11 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
 
     @app.exception_handler(persistence.StoreError)
     async def store_error(request: Request, exc: persistence.StoreError) -> JSONResponse:
-        status = 409 if isinstance(exc, persistence.VersionConflict) else 503
+        status = (
+            409
+            if isinstance(exc, (persistence.VersionConflict, persistence.ObservationConflict))
+            else 503
+        )
         return JSONResponse(status_code=status, content={"detail": str(exc)})
 
     @app.exception_handler(ValueError)

@@ -161,3 +161,27 @@ async def test_documented_observation_and_receipt_contract(client: AsyncClient) 
     )
     current = (await client.get("/api/v1/state")).json()
     assert current["zones"] == updated["zones"]
+
+
+async def test_callback_id_conflict_is_permanent_and_preserves_state(client: AsyncClient) -> None:
+    await client.post("/api/v1/control/tick", headers=HEADERS)
+    action = next(a for a in (await client.get("/api/v1/actions")).json() if a["kind"] == "call")
+    body = {
+        "command_id": action["id"],
+        "observation_id": "immutable-callback",
+        "outcome": "accepted",
+        "summary": "recibido",
+    }
+    assert (await client.post("/api/v1/webhooks/happyrobot", json=body)).status_code == 202
+    before = (await client.get("/api/v1/state")).json()
+    changed = {**body, "summary": "distinto contenido"}
+    result = await client.post("/api/v1/webhooks/happyrobot", json=changed)
+    assert result.status_code == 409
+    assert "observation_id" in result.json()["detail"]
+    after = (await client.get("/api/v1/state")).json()
+    assert after["version"] == before["version"]
+    assert after["tasks"] == before["tasks"]
+    assert after["resources"] == before["resources"]
+    assert (await client.post("/api/v1/webhooks/happyrobot", json=body)).status_code == 202
+    receipts = (await client.get("/api/v1/receipts", headers=HEADERS)).json()
+    assert sum(r["observation_id"] == body["observation_id"] for r in receipts) == 1

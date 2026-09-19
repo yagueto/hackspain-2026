@@ -8,7 +8,7 @@ from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
 from app.config import Settings
 from app.domain.models import Observation, ObservationRow, Receipt, WorldSnapshot
-from app.store.persistence import Store, StoreError, VersionConflict
+from app.store.persistence import ObservationConflict, Store, StoreError, VersionConflict
 
 
 def literal(value: str) -> str:
@@ -186,7 +186,7 @@ class TwinStore(Store):
             f" WHERE crisis_observations.body = {body} RETURNING observation_id"
         )
         if not rows:
-            raise StoreError("observation_id reutilizado con otro contenido")
+            raise ObservationConflict("observation_id reutilizado con otro contenido")
 
     async def pending(self, incident_id: str, limit: int) -> list[ObservationRow]:
         rows = await self.query(

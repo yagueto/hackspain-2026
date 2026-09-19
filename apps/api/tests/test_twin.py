@@ -27,7 +27,13 @@ from app.domain.models import (
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
 from app.main import build_runtime
-from app.store.persistence import MemoryStore, Store, StoreError, VersionConflict
+from app.store.persistence import (
+    MemoryStore,
+    ObservationConflict,
+    Store,
+    StoreError,
+    VersionConflict,
+)
 from app.store.twin import TwinStore, json_literal, literal
 
 
@@ -248,6 +254,16 @@ async def test_idempotency_and_sql_escaping(twin: TwinStore) -> None:
         await twin.observe(obs.model_copy(update={"title": "otro contenido"}))
     assert (await twin.pending(initial.incident.id, 20))[0].body == obs.model_dump(mode="json")
     assert await twin.load(initial.incident.id)
+
+
+async def test_conflicting_observation_is_not_a_transient_store_error(twin: TwinStore) -> None:
+    initial = snapshot()
+    await twin.create(initial)
+    obs = Observation(incident_id=initial.incident.id, kind=EventKind.note, title="aviso original")
+    await twin.observe(obs)
+    with pytest.raises(ObservationConflict):
+        await twin.observe(obs.model_copy(update={"title": "contenido diferente"}))
+    assert (await twin.pending(initial.incident.id, 10))[0].body == obs.model_dump(mode="json")
 
 
 @pytest.mark.parametrize(

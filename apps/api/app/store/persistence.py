@@ -15,6 +15,10 @@ class VersionConflict(StoreError):
     pass
 
 
+class ObservationConflict(StoreError):
+    pass
+
+
 class Store(ABC):
     @abstractmethod
     async def open(self) -> None: ...
@@ -107,7 +111,7 @@ class MemoryStore(Store):
     async def observe(self, observation: Observation) -> None:
         existing = self.observations.get(observation.observation_id)
         if existing and existing != observation:
-            raise StoreError("observation_id reutilizado con otro contenido")
+            raise ObservationConflict("observation_id reutilizado con otro contenido")
         self.observations[observation.observation_id] = observation.model_copy(deep=True)
 
     async def pending(self, incident_id: str, limit: int) -> list[ObservationRow]:
