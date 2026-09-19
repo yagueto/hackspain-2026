@@ -179,14 +179,21 @@ def outcome(state: WorldState, obs: Observation) -> list[str]:
                 )
             )
     if body.road_blocked:
-        if body.road_blocked not in state.roads:
-            raise ValueError("road_blocked debe ser un id de carretera conocido")
+        road_id = body.road_blocked
+        if road_id not in state.roads:
+            name = road_id.strip().lower()
+            matches = [r for r in state.roads.values() if r.name.lower() == name]
+            if not matches:
+                matches = [r for r in state.roads.values() if name and name in r.name.lower()]
+            if len(matches) != 1:
+                raise ValueError("road_blocked debe ser un id o nombre de carretera conocido")
+            road_id = matches[0].id
         derived.append(
             obs.model_copy(
                 update={
                     "observation_id": f"{obs.observation_id}:road",
                     "kind": EventKind.road_blocked,
-                    "payload": {"road_id": body.road_blocked, "reason": body.summary},
+                    "payload": {"road_id": road_id, "reason": body.summary},
                 }
             )
         )
