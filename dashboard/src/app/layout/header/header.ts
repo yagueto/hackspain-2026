@@ -20,8 +20,8 @@ import { Icon } from '../../shared/icon/icon';
 export class Header {
   protected readonly navigation = [
     { label: 'Inicio', path: '/', available: true },
-    { label: 'Incidencias', path: '/incidencias', available: false },
-    { label: 'Recursos', path: '/recursos', available: false },
+    { label: 'Incidencias', path: '/incidencias', available: true },
+    { label: 'Recursos', path: '/recursos', available: true },
     { label: 'Logs', path: '/logs', available: false },
   ];
   private readonly destroyRef = inject(DestroyRef);

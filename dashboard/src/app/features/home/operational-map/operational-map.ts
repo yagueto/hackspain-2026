@@ -41,7 +41,6 @@ export class OperationalMap {
   protected readonly missingAddresses = signal<string[]>([]);
   protected readonly lookupFailed = signal(false);
   protected readonly tileError = signal(false);
-  protected readonly centerLabel = signal('40.7340° N · 3.8760° O');
   private readonly sourceLocations = signal<readonly MapLocation[]>([]);
   protected readonly resolvedLocations = computed(() =>
     this.sourceLocations().map((location) => this.simulation.project(location)),
@@ -111,12 +110,6 @@ export class OperationalMap {
         .addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
-      this.map.on('moveend', () => {
-        const { lat, lng } = this.map!.getCenter();
-        this.centerLabel.set(
-          `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lng).toFixed(4)}° ${lng >= 0 ? 'E' : 'O'}`,
-        );
-      });
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);

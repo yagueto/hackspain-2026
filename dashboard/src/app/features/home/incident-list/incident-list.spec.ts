@@ -13,6 +13,7 @@ describe('IncidentList', () => {
     const buttons = fixture.nativeElement.querySelectorAll(
       '.incident-row',
     ) as NodeListOf<HTMLButtonElement>;
+    expect(fixture.nativeElement.querySelector('.section-label')).toBeNull();
     expect(buttons.length).toBe(4);
     expect(buttons[0].getAttribute('aria-pressed')).toBe('true');
     buttons[1].click();

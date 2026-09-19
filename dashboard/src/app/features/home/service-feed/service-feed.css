@@ -23,15 +23,15 @@
   gap: 5px;
   border: 1px solid #454c52;
   border-radius: 4px;
-  padding: 5px 8px;
+  padding: 6px 9px;
   color: #c9d0d7;
   background: #2a2f33;
-  font-size: 10px;
+  font-size: 13px;
   cursor: pointer;
 }
 .filter-button app-icon {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 .filter-button:hover,
 .filter-button.is-active {
@@ -43,13 +43,13 @@
   place-items: center;
   background: #168eeb;
   color: white;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  font-size: 9px;
+  font-size: 11px;
 }
 .feed-list {
-  --page-row-height: 60px;
+  --page-row-height: 96px;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -60,12 +60,12 @@
 }
 .communication {
   display: grid;
-  grid-template-columns: 34px 25px minmax(0, 1fr) max-content;
+  grid-template-columns: 40px 25px minmax(0, 1fr) max-content;
   height: var(--page-row-height);
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 6px 11px;
+  padding: 8px 11px;
   border: 1px solid #3c4349;
   border-left: 3px solid #8c99a5;
   border-radius: 5px;
@@ -91,13 +91,13 @@
   background: #154163;
 }
 .communication time {
-  font-size: 10px;
+  font-size: 12px;
   color: #b7c1cd;
   font-variant-numeric: tabular-nums;
 }
 .communication-status {
-  font-size: 8px;
-  padding: 4px 5px;
+  font-size: 11px;
+  padding: 5px 6px;
   text-align: center;
   border-radius: 5px;
   background: #ffffff0d;
@@ -119,7 +119,7 @@
 }
 .communication-body {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 .message {
@@ -127,8 +127,8 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 10px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.4;
 }
 .tags {
   display: flex;
@@ -141,7 +141,7 @@
   border: 1px solid #485059;
   border-radius: 20px;
   padding: 3px 6px;
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.1;
   color: #9da9b5;
   white-space: nowrap;
@@ -174,7 +174,7 @@
   border-radius: 999px;
   background: transparent;
   color: #c6d1db;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   cursor: pointer;
 }
@@ -190,25 +190,32 @@
 .category-chip.is-active:hover {
   background: #2499ed;
 }
-@media (max-width: 1200px) and (min-width: 801px) {
+@media (max-width: 1200px) {
+  .feed-list {
+    --page-row-height: 112px;
+  }
   .communication {
-    grid-template-columns: 29px 20px minmax(0, 1fr) max-content;
-    gap: 7px;
-    padding: 4px 8px;
+    grid-template-columns: 36px 22px minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 4px;
+    padding: 8px;
   }
   .communication-status {
-    font-size: 7px;
+    grid-column: 1 / 3;
+    grid-row: 2;
+    justify-self: stretch;
+    white-space: normal;
+  }
+  .communication-body {
+    grid-column: 3;
+    grid-row: 1 / 3;
   }
   .service-icon {
-    width: 20px;
-    height: 20px;
-  }
-  .tags > span {
-    font-size: 7px;
-    padding: 2px 4px;
+    width: 22px;
+    height: 22px;
   }
   .message {
-    font-size: 9px;
+    font-size: 13px;
   }
 }
 @media (max-height: 760px) and (min-width: 801px) {
@@ -221,22 +228,15 @@
   .feed-list {
     gap: 5px;
   }
-  .communication {
-    padding: 4px 8px;
-  }
-  .tags > span {
-    padding-top: 2px;
-    padding-bottom: 2px;
-  }
 }
 @media (max-height: 600px) and (min-width: 801px) {
   .filters {
     position: absolute;
     z-index: 2;
-    top: 43px;
+    top: 48px;
     left: 8px;
     right: 8px;
-    max-height: min(110px, calc(100% - 54px));
+    max-height: min(110px, calc(100% - 59px));
     padding: 10px;
     margin: 0;
     background: #222b33;
@@ -245,24 +245,20 @@
     box-shadow: 0 6px 18px #0005;
   }
 }
-@media (max-width: 800px) {
-  .feed-list {
-    --page-row-height: 92px;
-  }
-}
 @media (max-width: 480px) {
   .communication {
-    grid-template-columns: 30px minmax(0, 1fr) max-content;
-    gap: 7px;
-    padding: 6px 8px;
+    grid-template-columns: 66px minmax(0, 1fr);
   }
   .service-icon {
     display: none;
   }
-  .communication-status {
-    font-size: 7px;
+  .communication-body {
+    grid-column: 2;
   }
-  .category-chip {
-    padding: 8px 11px;
+  .communication-status {
+    grid-column: 1;
+  }
+  .tags > span {
+    padding: 2px 5px;
   }
 }

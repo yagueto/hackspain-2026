@@ -1,0 +1,254 @@
+<div class="incidents-workspace">
+  <section class="panel list-panel" aria-labelledby="resources-heading">
+    <div class="list-toolbar">
+      <div class="panel-heading">
+        <div class="heading-title">
+          <h1 id="resources-heading">Recursos</h1>
+          <span
+            class="count-badge"
+            aria-live="polite"
+            [attr.aria-label]="filteredUnits().length + ' recursos'"
+            >{{ filteredUnits().length }}</span
+          >
+        </div>
+        @if (hasFilters()) {
+          <button type="button" class="text-button" (click)="clearFilters()">
+            Limpiar filtros
+          </button>
+        }
+      </div>
+      <label class="search-field"
+        ><span class="sr-only">Buscar recursos</span
+        ><svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          aria-hidden="true"
+        >
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" /></svg
+        ><input
+          type="search"
+          placeholder="Buscar recurso, agente o ubicación…"
+          [value]="filters().query"
+          (input)="setFilter('query', $any($event.target).value)"
+      /></label>
+      <div class="filters">
+        <label
+          ><span class="sr-only">Servicio</span
+          ><select
+            name="service"
+            [value]="filters().service"
+            (change)="setFilter('service', $any($event.target).value)"
+          >
+            <option value="">Servicio</option>
+            @for (service of services(); track service) {
+              <option [value]="service">{{ service }}</option>
+            }
+          </select></label
+        >
+        <label
+          ><span class="sr-only">Estado</span
+          ><select
+            name="status"
+            [value]="filters().status"
+            (change)="setFilter('status', $any($event.target).value)"
+          >
+            <option value="">Estado</option>
+            @for (status of statuses; track status) {
+              <option [value]="status">{{ status }}</option>
+            }
+          </select></label
+        >
+        <label
+          ><span class="sr-only">Incidencia asignada</span
+          ><select
+            name="incident"
+            [value]="filters().incident"
+            (change)="setFilter('incident', $any($event.target).value)"
+          >
+            <option value="">Incidencia</option>
+            <option value="unassigned">Sin asignar</option>
+            @for (incident of store.incidents(); track incident.id) {
+              <option [value]="incident.id">{{ incident.id }}</option>
+            }
+          </select></label
+        >
+      </div>
+    </div>
+    <div class="incident-scroll" tabindex="0" aria-label="Lista de recursos">
+      @for (unit of filteredUnits(); track unit.id) {
+        <button
+          type="button"
+          class="incident-card resource-card"
+          [class.selected]="selectedUnit()?.id === unit.id"
+          [attr.aria-pressed]="selectedUnit()?.id === unit.id"
+          aria-controls="resource-detail"
+          (click)="selectResource(unit.id)"
+        >
+          <span class="card-top"
+            ><span class="incident-icon"><app-icon [name]="unit.icon" /></span
+            ><span class="card-title"
+              ><strong>{{ unit.label }}</strong
+              ><span>{{ serviceName(unit) }}</span></span
+            ><app-icon class="chevron" name="chevron"
+          /></span>
+          <span class="address"
+            ><app-icon name="pin" /><span>{{ unit.address }}</span></span
+          >
+          <span class="badges"
+            ><span class="badge" [class.en-route]="unit.route?.status === 'active'">{{
+              status(unit)
+            }}</span
+            ><span class="badge">{{ unit.incidentId ?? 'Sin incidencia' }}</span></span
+          >
+        </button>
+      } @empty {
+        <div class="empty-state">
+          <app-icon name="filter" />
+          <h2>No hay coincidencias</h2>
+        </div>
+      }
+    </div>
+  </section>
+  <section id="resource-detail" class="panel detail-panel" aria-label="Detalle del recurso">
+    @if (selectedUnit(); as unit) {
+      <header class="detail-heading">
+        <div class="heading-title">
+          <span class="incident-icon active"><app-icon [name]="unit.icon" /></span>
+          <h2>{{ unit.label }} · {{ serviceName(unit) }}</h2>
+        </div>
+        <span class="badge" [class.en-route]="unit.route?.status === 'active'">{{
+          status(unit)
+        }}</span>
+      </header>
+      <div class="detail-scroll">
+        <div class="detail-map">
+          <app-operational-map
+            [locations]="mapLocations()"
+            [selectedUnitId]="unit.id"
+            (incidentSelected)="openIncident($event)"
+          />
+        </div>
+        <div class="resource-summary">
+          <div class="resource-fact">
+            <app-icon name="pin" />
+            <div>
+              <p>{{ unit.address }}</p>
+              <span
+                >{{ unit.coordinates.lat | number: '1.4-4' }},
+                {{ unit.coordinates.lng | number: '1.4-4' }}</span
+              >
+            </div>
+          </div>
+          <div class="resource-fact">
+            <app-icon name="walk" />
+            <div>
+              <p>
+                {{ communication()?.agent ?? 'Responsable sin confirmar' }}
+                @if (profile(); as info) {
+                  · {{ info.crew }} efectivos
+                }
+              </p>
+              <span>{{ profile()?.type ?? serviceName(unit) }}</span>
+            </div>
+          </div>
+        </div>
+        @if (profile(); as info) {
+          <div class="capabilities">
+            @for (capability of info.capabilities; track capability) {
+              <span class="badge">{{ capability }}</span>
+            }
+          </div>
+          <p class="base">
+            <app-icon name="shelter" /><span>{{ info.base }}</span>
+          </p>
+        }
+        @if (unit.route; as route) {
+          <div class="journey">
+            <app-icon name="locate" />
+            <div>
+              <p>{{ route.destinationLabel ?? 'Destino asignado' }}</p>
+              <span
+                >{{ route.destination.lat | number: '1.4-4' }},
+                {{ route.destination.lng | number: '1.4-4' }}</span
+              >
+            </div>
+            @if (arrival(); as eta) {
+              <span class="badge" title="Estimación por carretera, sin tráfico en tiempo real">{{
+                eta
+              }}</span>
+            } @else {
+              <span class="badge">Ruta finalizada</span>
+            }
+          </div>
+        }
+        <section class="assignment-section" aria-labelledby="assignment-heading">
+          <h2 id="assignment-heading">Incidencia actual</h2>
+          @if (currentIncident(); as incident) {
+            <a
+              class="incident-link current-assignment"
+              routerLink="/incidencias"
+              [queryParams]="{ incidencia: incident.id }"
+              ><app-icon [name]="incident.icon" /><span
+                ><strong>{{ incident.id }} · {{ incident.title }}</strong
+                ><span>{{ incident.area }}</span></span
+              ><span class="badge">{{ incident.priority }} · {{ incident.status }}</span
+              ><app-icon class="chevron" name="chevron"
+            /></a>
+          } @else {
+            <p class="empty-state">
+              {{
+                unit.incidentId
+                  ? 'Incidencia ' + unit.incidentId + ' no disponible.'
+                  : 'Sin incidencia asignada.'
+              }}
+            </p>
+          }
+        </section>
+        @if (communication(); as item) {
+          <div class="last-message">
+            <app-icon name="radio" />
+            <div>
+              <p>{{ item.message }}</p>
+              <span>{{ item.time }} · {{ item.status }}</span>
+            </div>
+          </div>
+        }
+        <section class="history-section" aria-labelledby="history-heading">
+          <div class="heading-title">
+            <h2 id="history-heading">Intervenciones previas</h2>
+            <span class="count-badge">{{ history().length }}</span>
+          </div>
+          <ol class="history-list">
+            @for (entry of history(); track entry.incidentId + entry.completedAt) {
+              <li>
+                <time [attr.datetime]="entry.completedAt" title="Fin de la intervención">{{
+                  entry.completedAt | date: 'dd/MM · HH:mm' : '+0200'
+                }}</time>
+                <div>
+                  @if (entry.incident; as incident) {
+                    <a routerLink="/incidencias" [queryParams]="{ incidencia: incident.id }"
+                      >{{ incident.id }} · {{ incident.title }}<app-icon name="chevron"
+                    /></a>
+                  } @else {
+                    <strong>{{ entry.incidentId }}</strong>
+                  }
+                  <p>{{ entry.summary }}</p>
+                </div>
+              </li>
+            } @empty {
+              <li class="empty-state">Sin intervenciones anteriores registradas.</li>
+            }
+          </ol>
+        </section>
+      </div>
+    } @else {
+      <div class="empty-state detail-empty">
+        <span class="empty-symbol"><app-icon name="truck" /></span>
+        <h2>Selecciona un recurso</h2>
+      </div>
+    }
+  </section>
+</div>

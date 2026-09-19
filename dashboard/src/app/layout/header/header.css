@@ -40,7 +40,7 @@ nav button {
   background: none;
   text-decoration: none;
   color: #a5aab2;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
 }
 nav a.active {
@@ -71,7 +71,7 @@ nav button:disabled {
   align-items: center;
   gap: 7px;
   color: #a1aab1;
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .demo-indicator > span {
@@ -88,7 +88,7 @@ nav button:disabled {
 }
 .date {
   color: #9198a0;
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .profile {
@@ -104,12 +104,8 @@ nav button:disabled {
   text-align: right;
 }
 .profile-name strong {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
-}
-.profile-name > span {
-  color: #858d97;
-  font-size: 9px;
 }
 .avatar {
   width: 32px;
@@ -142,9 +138,6 @@ nav button:disabled {
     width: 28px;
     height: 28px;
   }
-  .profile-name > span {
-    display: none;
-  }
 }
 @media (max-width: 800px) {
   .topbar {
@@ -163,7 +156,7 @@ nav button:disabled {
   }
   nav a,
   nav button {
-    font-size: 12px;
+    font-size: 14px;
   }
   .header-meta {
     min-height: 40px;
@@ -172,11 +165,11 @@ nav button:disabled {
     border-top: 1px solid #ffffff08;
   }
   .demo-indicator {
-    font-size: 9px;
+    font-size: 11px;
   }
   .date {
     margin-left: auto;
-    font-size: 10px;
+    font-size: 12px;
   }
   .profile {
     padding-left: 12px;

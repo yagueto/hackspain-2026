@@ -32,7 +32,12 @@ describe('OperationalMap', () => {
     await vi.waitFor(() => expect(geocode).toHaveBeenCalledTimes(1));
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(2);
-    expect(fixture.nativeElement.textContent).toContain('2 puntos en el mapa');
+    expect(
+      fixture.nativeElement.querySelector('.map-provider, .map-sector, .map-footer'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.leaflet-control-attribution')?.textContent,
+    ).toContain('OpenStreetMap');
   });
 
   it('toggles unit visibility and emits selections from markers', async () => {
@@ -50,7 +55,9 @@ describe('OperationalMap', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(0);
     expect(geocode).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('0 puntos en el mapa');
+    expect(
+      fixture.nativeElement.querySelectorAll('.map-legend button')[1].getAttribute('aria-pressed'),
+    ).toBe('false');
   });
 
   it('reports addresses without a match rather than displaying a guessed location', async () => {

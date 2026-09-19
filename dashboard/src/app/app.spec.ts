@@ -43,7 +43,11 @@ describe('App', () => {
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('nav a')?.textContent).toContain('Inicio');
-    expect(element.querySelectorAll('nav button:disabled').length).toBe(3);
+    expect(element.querySelector('nav a[href="/incidencias"]')?.textContent).toContain(
+      'Incidencias',
+    );
+    expect(element.querySelector('nav a[href="/recursos"]')?.textContent).toContain('Recursos');
+    expect(element.querySelectorAll('nav button:disabled').length).toBe(1);
     expect(element.querySelector('main router-outlet')).not.toBeNull();
     expect(element.textContent).not.toContain('Congratulations');
   });

@@ -17,7 +17,7 @@
   margin: 0 3px 12px;
 }
 .incident-list {
-  --page-row-height: 60px;
+  --page-row-height: 80px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -83,12 +83,12 @@
   display: flex;
   align-items: baseline;
   gap: 7px;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.4;
   flex-wrap: wrap;
 }
 .incident-name strong {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
   letter-spacing: 0.15px;
   white-space: nowrap;
@@ -98,7 +98,7 @@
 }
 .incident-area {
   color: #99a4ae;
-  font-size: 10px;
+  font-size: 12px;
 }
 .status-badge {
   margin-left: auto;
@@ -106,7 +106,7 @@
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
-  font-size: 9px;
+  font-size: 12px;
   border-radius: 5px;
   background: #ffffff0c;
   color: #c2c9d0;
@@ -126,36 +126,40 @@
   background: #55b6ff;
 }
 .row-chevron {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   color: #75808b;
 }
 .selected .row-chevron {
   color: #50b5ff;
 }
-@media (max-width: 1150px) and (min-width: 801px) {
+@media (max-width: 1150px) {
+  .incident-list {
+    --page-row-height: 104px;
+  }
   .incident-row {
-    padding: 9px 10px;
-    gap: 9px;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 4px;
+    padding: 8px 10px;
   }
   .incident-icon {
-    width: 35px;
-    height: 35px;
-  }
-  .incident-name {
-    gap: 4px;
-    font-size: 10px;
-  }
-  .incident-name strong {
-    font-size: 11px;
+    grid-row: span 2;
+    width: 36px;
+    height: 36px;
   }
   .status-badge {
-    font-size: 8px;
-    padding: 5px 6px;
-    gap: 4px;
+    grid-column: 2;
+    margin-left: 0;
+    justify-self: start;
+    padding: 3px 7px;
   }
   .row-chevron {
     display: none;
+  }
+  .incident-name {
+    gap: 4px;
   }
 }
 @media (max-height: 760px) and (min-width: 801px) {
@@ -166,50 +170,6 @@
     margin-bottom: 7px;
   }
   .incident-list {
-    --page-row-height: 48px;
     gap: 5px;
-  }
-  .incident-row {
-    padding: 4px 8px;
-    gap: 10px;
-  }
-  .incident-icon {
-    width: 32px;
-    height: 32px;
-  }
-  .incident-icon app-icon {
-    width: 22px;
-    height: 22px;
-  }
-  .incident-info {
-    gap: 2px;
-  }
-  .incident-area {
-    font-size: 9px;
-  }
-}
-@media (max-width: 800px) {
-  .incident-list {
-    --page-row-height: 72px;
-  }
-}
-@media (max-width: 420px) {
-  .incident-row {
-    padding: 10px 8px;
-    gap: 8px;
-  }
-  .incident-icon {
-    width: 34px;
-    height: 34px;
-  }
-  .row-chevron {
-    display: none;
-  }
-  .incident-name {
-    gap: 4px;
-    font-size: 10px;
-  }
-  .status-badge {
-    font-size: 8px;
   }
 }

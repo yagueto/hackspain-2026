@@ -11,6 +11,16 @@ describe('ServiceFeed', () => {
     return fixture;
   }
 
+  it('shows resource metadata without repeating field labels', async () => {
+    const fixture = await setup();
+    const tags = (fixture.nativeElement as HTMLElement).querySelector('.tags')!;
+    expect(tags.textContent).toContain('Bomberos');
+    expect(tags.textContent).toContain('B-03');
+    expect(tags.textContent).toContain('A. Ruiz');
+    expect(tags.textContent).toContain('INC-001');
+    expect(tags.textContent).not.toMatch(/Servicio:|Vehículo:|Agente:|Incidencia:/);
+  });
+
   it('highlights communications related to the selected incident', async () => {
     const fixture = await setup();
     expect(fixture.nativeElement.querySelectorAll('.communication').length).toBe(6);

@@ -47,7 +47,7 @@
     min-height: 380px;
   }
   .operations-column {
-    grid-template-rows: 500px 760px;
+    grid-template-rows: 660px 860px;
     gap: 12px;
   }
 }
