@@ -1,0 +1,132 @@
+:host {
+  display: block;
+}
+.question-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid #b2535e;
+  border-radius: 8px;
+  background: linear-gradient(120deg, #3c252c, #27242b);
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.question-incident {
+  font-weight: 650;
+  color: #f2d3d7;
+}
+.urgency {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e5697520;
+  color: #ffb0b9;
+}
+.countdown {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 650;
+  color: #ffd4a1;
+}
+.last-seconds {
+  color: #ff8a98;
+}
+h3 {
+  margin: 10px 0;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+fieldset {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.answer-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #65515c;
+  border-radius: 5px;
+  background: #161e2733;
+  color: #dce4eb;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.answer-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.answer-option.chosen {
+  border-color: #329fed;
+  background: #1a416166;
+}
+input {
+  margin: 2px 0 0;
+  accent-color: #329fed;
+}
+.custom-answer {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: #c4cbd4;
+  font-size: 12px;
+}
+textarea {
+  resize: vertical;
+  min-height: 70px;
+  max-height: 160px;
+  width: 100%;
+  padding: 8px;
+  background: #192027;
+  border: 1px solid #5e6672;
+  border-radius: 5px;
+  color: #ecf1f5;
+  font: inherit;
+  line-height: 1.5;
+}
+textarea:focus-visible {
+  outline: 2px solid #76c6ff;
+  outline-offset: 2px;
+}
+.default-answer {
+  margin: 10px 0;
+  color: #b8abb4;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.default-answer > span {
+  color: #d6b8c0;
+}
+.submit-answer {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #278edc;
+  border-radius: 5px;
+  color: #edf7ff;
+  background: #176296;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.submit-answer:hover:not(:disabled) {
+  background: #247bae;
+}
+.submit-answer:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.answer-error {
+  margin-bottom: 8px;
+  color: #ffb0b9;
+  font-size: 12px;
+}

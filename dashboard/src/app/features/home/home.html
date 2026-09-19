@@ -1,26 +1,62 @@
 <h1 class="sr-only">Centro de coordinación de emergencias</h1>
-<div class="dashboard-grid">
-  <app-operational-map
-    [addresses]="addresses()"
-    [locations]="locations()"
-    [selectedIncidentId]="selectedIncidentId()"
-    [selectedUnitId]="selectedUnitId()"
-    (unitSelected)="selectUnit($event)"
-    (incidentSelected)="selectIncident($event)"
-  />
-  <app-split-pane />
-  <div class="operations-column">
-    <app-incident-list
-      [incidents]="incidents()"
-      [selectedId]="selectedIncidentId()"
-      (incidentSelected)="selectIncident($event)"
-    />
-    <app-service-feed
-      [communications]="communications()"
-      [resources]="projectedUnits()"
+<p class="sr-only" role="alert" aria-atomic="true">{{ log.notification() }}</p>
+<div class="home-workspace" [class.log-open]="log.open()" [class.log-overlay]="logOverlay()">
+  <div class="dashboard-grid">
+    <app-operational-map
+      [addresses]="addresses()"
+      [locations]="locations()"
       [selectedIncidentId]="selectedIncidentId()"
       [selectedUnitId]="selectedUnitId()"
       (unitSelected)="selectUnit($event)"
+      (incidentSelected)="selectIncident($event)"
     />
+    <app-split-pane />
+    <div class="operations-column">
+      <app-incident-list
+        [incidents]="log.prioritizedIncidents()"
+        [selectedId]="selectedIncidentId()"
+        [attention]="log.attention()"
+        (incidentSelected)="selectIncident($event)"
+        (responseRequested)="log.openForIncident($event)"
+      />
+      <app-service-feed
+        [communications]="communications()"
+        [resources]="projectedUnits()"
+        [selectedIncidentId]="selectedIncidentId()"
+        [selectedUnitId]="selectedUnitId()"
+        (unitSelected)="selectUnit($event)"
+      />
+    </div>
   </div>
+  @if (log.open()) {
+    @if (logOverlay()) {
+      <button
+        type="button"
+        class="log-backdrop"
+        aria-label="Cerrar registro"
+        tabindex="-1"
+        (click)="closeLog()"
+      ></button>
+    }
+    <div class="log-column">
+      <app-operation-log-panel [modal]="logOverlay()" (closeRequested)="closeLog()" />
+    </div>
+  }
+  <button
+    #logToggle
+    type="button"
+    class="log-toggle"
+    [class.has-pending]="log.pending().length > 0"
+    [attr.aria-expanded]="log.open()"
+    aria-controls="operation-log"
+    [attr.aria-label]="'Registro operativo. ' + log.pending().length + ' preguntas pendientes'"
+    [attr.tabindex]="log.open() && logOverlay() ? -1 : 0"
+    title="Abrir o cerrar registro · Ctrl + I genera una pregunta"
+    (click)="toggleLog()"
+  >
+    <app-icon name="log" /><span class="toggle-label">Registro</span>
+    @if (log.pending().length) {
+      <span class="log-count">{{ log.pending().length }}</span>
+    }
+  </button>
 </div>

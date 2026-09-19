@@ -14,7 +14,13 @@
     #pager="paginatedList"
   >
     @for (incident of pager.visibleItems(); track incident.id) {
-      <article class="incident-row" [class.selected]="selectedId() === incident.id">
+      @let pending = attention().get(incident.id);
+      <article
+        class="incident-row"
+        [class.selected]="selectedId() === incident.id"
+        [class.awaiting-human]="!!pending"
+        [attr.data-urgency]="pending?.urgency"
+      >
         <button
           type="button"
           class="incident-select"
@@ -35,15 +41,27 @@
             <span class="incident-area">{{ incident.area }}</span>
           </span>
         </button>
-        <a
-          class="detail-link"
-          routerLink="/incidencias"
-          [queryParams]="{ incidencia: incident.id }"
-          [attr.aria-label]="'Ver detalles de ' + incident.id"
-          title="Ver detalles"
-        >
-          <span>Detalles</span><app-icon name="chevron" />
-        </a>
+        <div class="incident-actions">
+          @if (pending) {
+            <button
+              type="button"
+              class="respond-button"
+              [attr.aria-label]="'Responder ' + pending.count + ' preguntas de ' + incident.id"
+              (click)="responseRequested.emit(incident.id)"
+            >
+              Responder <span>{{ pending.count }}</span>
+            </button>
+          }
+          <a
+            class="detail-link"
+            routerLink="/incidencias"
+            [queryParams]="{ incidencia: incident.id }"
+            [attr.aria-label]="'Ver detalles de ' + incident.id"
+            title="Ver detalles"
+          >
+            <span>Detalles</span><app-icon name="chevron" />
+          </a>
+        </div>
       </article>
     } @empty {
       <p class="empty-state">No hay incidencias en seguimiento.</p>

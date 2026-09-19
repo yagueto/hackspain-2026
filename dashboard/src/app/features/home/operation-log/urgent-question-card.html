@@ -1,0 +1,83 @@
+<article
+  class="question-card"
+  [attr.data-question-id]="question().id"
+  [attr.data-urgency]="question().urgency"
+  [attr.aria-labelledby]="'prompt-' + question().id"
+>
+  <header>
+    <span class="question-incident">{{ question().incidentId }}</span>
+    <span class="urgency">{{ urgencyLabels[question().urgency] }}</span>
+    <time
+      class="countdown"
+      [class.last-seconds]="seconds() <= 15"
+      [attr.datetime]="question().expiresAt"
+      aria-label="Tiempo restante"
+      aria-live="off"
+      >{{ countdown() }}</time
+    >
+  </header>
+  <h3 [id]="'prompt-' + question().id">{{ question().prompt }}</h3>
+  <form (submit)="submit($event)">
+    @if (question().input !== 'text') {
+      <fieldset>
+        <legend class="sr-only">
+          {{ question().multiple ? 'Selecciona las opciones' : 'Selecciona una respuesta' }}
+        </legend>
+        @for (option of question().options; track option.id) {
+          <label
+            class="answer-option"
+            [class.chosen]="!draft().custom && draft().optionIds.includes(option.id)"
+          >
+            <input
+              #choice
+              [type]="question().multiple ? 'checkbox' : 'radio'"
+              [name]="'answer-' + question().id"
+              [value]="option.id"
+              [checked]="!draft().custom && draft().optionIds.includes(option.id)"
+              (change)="choose(option.id, choice.checked)"
+            />
+            <span>{{ option.label }}</span>
+          </label>
+        }
+        @if (question().input === 'mixed') {
+          <label class="answer-option" [class.chosen]="draft().custom">
+            <input
+              type="radio"
+              [name]="'answer-' + question().id"
+              [checked]="draft().custom"
+              (change)="chooseCustom()"
+            />
+            <span>Otra respuesta</span>
+          </label>
+        }
+      </fieldset>
+    }
+    @if (draft().custom) {
+      <label class="custom-answer"
+        >Tu respuesta
+        <textarea
+          #answer
+          rows="3"
+          maxlength="1000"
+          placeholder="Escribe las instrucciones…"
+          [value]="draft().text"
+          (input)="changeText(answer.value)"
+          [attr.aria-describedby]="'default-' + question().id"
+        ></textarea>
+      </label>
+    }
+    <p class="default-answer" [id]="'default-' + question().id">
+      <span>Al vencer el plazo:</span> {{ log.answerLabel(question(), question().defaultAnswer) }}
+    </p>
+    @if (log.errors()[question().id]) {
+      <p class="answer-error" role="alert">{{ log.errors()[question().id] }}</p>
+    }
+    <button
+      class="submit-answer"
+      type="submit"
+      [disabled]="!seconds() || !log.validAnswer(question(), draft())"
+    >
+      Enviar respuesta
+    </button>
+  </form>
+</article>
