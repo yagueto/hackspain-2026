@@ -3,7 +3,7 @@
 Base: https://platform[.eu].happyrobot.ai/api/v2 — auth Bearer con la API key.
 
 Usamos:
-- POST /workflows/{id}/runs      -> disparar una llamada / SMS / WhatsApp (un workflow por tipo)
+- POST /workflows/{id}/runs      -> disparar una llamada (un workflow por tipo de contacto)
 - GET  /runs/{id}                -> estado de la ejecución
 - GET  /runs/{id}/sessions       -> sesiones (transcripción, variables extraídas)
 - GET  /sessions/{id}/messages   -> mensajes de la conversación

@@ -70,7 +70,8 @@ Con `TELEGRAM_MODE=simulated` no se hace ninguna petición. Para usar un puente 
 y, si tu puente lo acepta, `TELEGRAM_WEBHOOK_SECRET` para el header `X-Webhook-Secret`.
 La URL y el secret no se incluyen en acciones, respuestas API ni logs de peticiones.
 
-Contrato propuesto para el puente, pendiente de confirmar con su implementación:
+Contrato JSON compartido por el backend y el borrador del workflow HappyRobot. El puente
+externo debe implementar este contrato; su URL y la resolución del chat siguen pendientes:
 
 ```json
 {
@@ -92,6 +93,30 @@ Timeouts tras enviar y HTTP 5xx quedan `unknown`, sin reenvío automático. Fall
 anteriores al envío y HTTP 429 se reintentan como máximo tres veces. No se siguen redirecciones.
 La pausa del agente también bloquea estos envíos. Una orden histórica `sms` pendiente no
 se transforma ni se reenvía silenciosamente a otro canal.
+
+### Borrador equivalente en HappyRobot
+
+En el workflow `Crisis - SMS a contacto` (`01a0b95f-2b86-77e7-966b-5d295bc4b499`) se ha
+preparado la v2 `Telegram por webhook - pendiente de configurar`
+(`01a0b9c1-fd0f-7637-bcc9-2d72eb04ce7b`), **sin publicar**. La v1 publicada en development
+se ha conservado y todavía envía SMS; no usarla para probar Telegram.
+
+El borrador contiene únicamente `Entrada de mensaje Telegram → Enviar Telegram por webhook`.
+Su trigger recibe los siete campos del JSON anterior; `channel` se fija a `telegram` en el POST.
+No necesita teléfono, credenciales SMS ni `callback_url`. No envía un resultado operativo al
+backend: un HTTP 2xx del puente no demuestra entrega al destinatario.
+
+Las variables del workflow `TELEGRAM_WEBHOOK_URL` y `TELEGRAM_WEBHOOK_SECRET` están ocultas
+y vacías en todos los entornos. Antes de publicar, configurar una URL HTTPS del puente y
+su secreto, si lo requiere. El nodo envía `Idempotency-Key: <command_id>` y
+`X-Webhook-Secret`; si el puente no utiliza secreto, se puede retirar este último header.
+El puente debe resolver el chat mediante `contact_id` y deduplicar por `command_id`.
+
+El backend continúa enviando directamente al puente; **no inicia este workflow**. Son dos
+entradas alternativas con el mismo contrato, no dos pasos consecutivos: no enviar una misma
+orden por ambas. La configuración de variables en HappyRobot es independiente de los dotenv
+del backend. No se han ejecutado envíos reales; falta validar el circuito con el puente
+cuando esté configurado y se autorice una prueba.
 
 ## Prueba del circuito sin llamadas
 

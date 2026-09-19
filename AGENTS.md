@@ -7,5 +7,6 @@
 - Las pruebas aíslan Settings de ambos dotenv y del entorno, y bloquean el transporte HTTP real. Usar ASGITransport o MockTransport; no desactivar esta protección para hacer pasar un test.
 - Nunca activar comunicaciones reales durante verificaciones automáticas. Mantener `HAPPYROBOT_MODE=simulated`, `TELEGRAM_MODE=simulated`, `AGENT_AUTOSTART=false`; vaciar `OPENAI_API_KEY` en el proceso para pruebas completamente locales.
 - Telegram sustituye SMS mediante un puente HTTP configurable. `/control/sms` es un alias obsoleto de `/control/telegram`. Una respuesta 2xx del puente no confirma entrega al destinatario ni aceptación de una tarea.
+- En HappyRobot, los POST nuevos usan `webhookSchemaVersion=2` y `body={schemaVersion:2,contentType:"application/json",raw:...}` con tokens `{{$var:group_id.variable_id}}`. Si MCP rechaza los strings de `url`/headers, usar arrays Plate con nodos `variable`; la conversión automática anunciada puede fallar.
 - No detener la API antigua con almacenamiento memory sin conservar su estado o pedir confirmación. No eliminar volúmenes de PostgreSQL.
 - `apps/simulator` puede contener trabajo sin versionar del usuario; no incluirlo en commits ajenos. No hacer push sin petición explícita.

@@ -157,7 +157,10 @@ El estado de una acción describe la **comunicación**. Una llamada aceptada pue
 El payload del workflow incluye `command_id` (= `action_id`), `task_id`, `resource_ids`,
 `incident_id`, `world_state_version`, contacto/teléfono, instrucciones, clima, carreteras,
 `observations_table` y `callback_url`. Workflows: `call_responder`, `call_civilian`,
-`notify_authority`, `sms`.
+`notify_authority`. Los mensajes se envían directamente al puente Telegram por webhook,
+sin iniciar un workflow HappyRobot. El workflow Telegram de la plataforma puede usar el
+mismo contrato del puente como entrada alternativa, nunca en paralelo para una misma orden.
+Un HTTP 2xx del puente no confirma entrega en Telegram ni aceptación de una tarea.
 
 Preferentemente el agente inserta la observación en Twin. Como alternativa, envía
 `POST /api/v1/webhooks/happyrobot` con `X-Webhook-Secret`:
@@ -210,7 +213,8 @@ Todos los endpoints cuelgan de `/api/v1`:
   descargar `/state`. No aplicar snapshots más antiguos que el que ya se muestra.
 - `/control/pause`, `/resume`, `/tick`, `/agent`.
 - `/control/tasks`, `/tasks/{id}/approve`, `/priority`, `/status`.
-- `/control/call`, `/sms`, `/note`, `/actions/{id}/reconcile`.
+- `/control/call`, `/telegram`, `/sms` (alias obsoleto de Telegram), `/note`,
+  `/actions/{id}/reconcile`.
 - `/control/incident`: inicialización explícita, solo si no hay incidente activo.
 - `/history/runs`, `/history/runs/{id}/journal`, `/history/lessons`.
 
