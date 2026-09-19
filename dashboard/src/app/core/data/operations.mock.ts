@@ -48,10 +48,15 @@ export const MOCK_UNITS: MapLocation[] = [
     id: 'B-03',
     label: 'B-03',
     address: 'Acceso a La Pedriza',
-    coordinates: { lat: 40.744, lng: -3.8897 },
+    coordinates: { lat: 40.742231, lng: -3.886485 },
     icon: 'fire-truck',
     kind: 'unit',
     incidentId: 'INC-001',
+    route: {
+      status: 'active',
+      destination: { lat: 40.749944, lng: -3.895344 },
+      destinationLabel: 'Acceso al incendio · Canto Cochino',
+    },
   },
   {
     id: 'B-07',
@@ -75,10 +80,15 @@ export const MOCK_UNITS: MapLocation[] = [
     id: 'BUS-04',
     label: 'BUS-04',
     address: 'Punto de recogida · Zona oeste',
-    coordinates: { lat: 40.7307, lng: -3.8839 },
+    coordinates: { lat: 40.729925, lng: -3.883957 },
     icon: 'bus',
     kind: 'unit',
     incidentId: 'INC-002',
+    route: {
+      status: 'active',
+      destination: { lat: 40.727079, lng: -3.864886 },
+      destinationLabel: 'Punto de recogida · Plaza del Pueblo',
+    },
   },
   {
     id: 'BUS-05',
@@ -97,6 +107,11 @@ export const MOCK_UNITS: MapLocation[] = [
     icon: 'medical',
     kind: 'unit',
     incidentId: 'INC-003',
+    route: {
+      status: 'completed',
+      destination: { lat: 40.7234, lng: -3.8603 },
+      destinationLabel: 'Puesto de atención a residentes',
+    },
   },
   {
     id: 'P-01',

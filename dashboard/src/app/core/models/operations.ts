@@ -25,6 +25,19 @@ export interface Coordinates {
   lng: number;
 }
 
+export interface ResourceRoute {
+  status: 'active' | 'completed';
+  destination: Coordinates;
+  destinationLabel?: string;
+  via?: readonly Coordinates[];
+}
+
+export interface CalculatedRoute {
+  path: readonly Coordinates[];
+  durationSeconds: number;
+  distanceMeters: number;
+}
+
 export interface MapLocation {
   id: string;
   label: string;
@@ -33,6 +46,7 @@ export interface MapLocation {
   icon: IconName;
   kind: 'incident' | 'unit' | 'place';
   incidentId?: string;
+  route?: ResourceRoute;
 }
 
 export interface Incident {
