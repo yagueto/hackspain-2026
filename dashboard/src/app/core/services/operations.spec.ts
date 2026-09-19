@@ -238,6 +238,33 @@ describe('World snapshot mapping', () => {
     expect(data.incidents[0].address).toBe('Junto al río');
   });
 
+  it('distinguishes every stage of an automatic decision instead of a generic status', () => {
+    const state = snapshot();
+    const task = {
+      id: 'intake-1',
+      title: 'Automático: Bomberos',
+      zone_id: null,
+      resource_ids: [],
+      status: 'proposed',
+      autonomous: true,
+      incoming_call_id: 'call-1',
+      outcome: 'Sin medios o contacto compatibles y accesibles; en espera.',
+    };
+    state.tasks = [task];
+    // Decidida pero sin unidad libre: no puede confundirse con un aviso recién recibido.
+    expect(toOperations(state).incidents[0].status).toBe('Automático · sin unidad disponible');
+    task.status = 'dispatching';
+    expect(toOperations(state).incidents[0].status).toBe('Automático · orden preparada');
+    task.status = 'dispatched';
+    expect(toOperations(state).incidents[0].status).toBe('Enviada automáticamente');
+    task.status = 'awaiting_approval';
+    expect(toOperations(state).incidents[0].status).toBe('CRÍTICO · confirmar');
+    state.tasks = [{ ...task, status: 'proposed', blocked_reason: 'Ubicación no resoluble' }];
+    expect(toOperations(state).incidents[0].status).toContain('Bloqueada');
+    state.tasks = [];
+    expect(toOperations(state).incidents[0].status).toBe('Recibida');
+  });
+
   it('does not treat an unconfirmed coordinate or a null coordinate as a confirmed location', () => {
     const state = snapshot();
     state.incoming_calls[0].location.confirmed = false;

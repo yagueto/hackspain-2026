@@ -149,7 +149,10 @@ export function toOperations(state: WorldSnapshot): {
               ? 'Automático · orden preparada'
               : tasks.some((task) => task.status === 'dispatched')
                 ? 'Enviada automáticamente'
-                : 'Recibida',
+                : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
+                  tasks.some((task) => task.status === 'proposed')
+                  ? 'Automático · sin unidad disponible'
+                  : 'Recibida',
       coordinates: point,
       icon: emergencyIcons[call.emergency_type] ?? 'pin',
       locationStatus,

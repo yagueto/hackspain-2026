@@ -71,7 +71,7 @@ export class Home {
   );
   readonly taskLabels: Record<string, string> = {
     awaiting_approval: 'Pendiente de confirmación',
-    proposed: 'En espera de recurso compatible',
+    proposed: 'Decidida; esperando una unidad disponible',
     dispatching: 'Orden preparada, aún no enviada',
     dispatched: 'Orden enviada, respuesta pendiente',
     accepted: 'Aceptada por el recurso',
