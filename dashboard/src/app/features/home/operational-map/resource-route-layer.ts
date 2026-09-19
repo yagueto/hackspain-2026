@@ -90,11 +90,11 @@ export class ResourceRouteLayer {
       }
       if (shape.selected !== selected) {
         shape.outline.setStyle({
-          color: selected ? '#07447a' : '#25333e',
+          color: 'var(--panel)',
           weight: selected ? 8 : 5,
         });
         shape.line.setStyle({
-          color: selected ? '#169bff' : '#8ca9ba',
+          color: selected ? 'var(--en-route)' : 'var(--icon)',
           weight: selected ? 5 : 3,
           opacity: selected ? 1 : 0.65,
         });

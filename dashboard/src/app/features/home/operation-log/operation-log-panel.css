@@ -23,7 +23,7 @@
   gap: 8px;
 }
 .heading-title > app-icon {
-  color: #8ccaf5;
+  color: var(--muted);
   width: 18px;
   height: 18px;
 }
@@ -33,17 +33,17 @@ h2 {
 .close-log {
   display: grid;
   place-items: center;
-  border: 1px solid #45515b;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #ffffff05;
-  color: #c5d1dc;
+  background: var(--tag);
+  color: var(--muted);
   width: 30px;
   height: 30px;
   cursor: pointer;
 }
 .close-log:hover {
-  background: #3e343e;
-  color: white;
+  background: var(--tag);
+  color: var(--muted);
 }
 .close-log app-icon {
   width: 17px;
@@ -57,10 +57,10 @@ h2 {
 select {
   width: 100%;
   padding: 9px 8px;
-  border: 1px solid #46525d;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #192129;
-  color: #dce6ee;
+  background: var(--tag);
+  color: var(--muted);
   font-size: 12px;
 }
 .section-heading {
@@ -68,7 +68,7 @@ select {
   align-items: center;
   gap: 7px;
   margin-bottom: 8px;
-  color: #adbcc8;
+  color: var(--muted);
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -80,8 +80,8 @@ h3 {
 .pending-count {
   border-radius: 20px;
   padding: 1px 6px;
-  background: #bf4f5c33;
-  color: #ffafbc;
+  background: var(--danger-surface);
+  color: var(--danger);
 }
 .pending-section {
   display: flex;
@@ -91,7 +91,7 @@ h3 {
   flex: 0 1 auto;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #3c444d;
+  border-bottom: 1px solid var(--border);
 }
 .pending-scroll {
   min-height: 0;
@@ -121,8 +121,8 @@ h3 {
 }
 .log-entry {
   padding: 10px;
-  background: #ffffff04;
-  border: 1px solid #35414a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 .event-meta {
@@ -131,7 +131,7 @@ h3 {
   justify-content: space-between;
   margin-bottom: 5px;
   font-size: 10px;
-  color: #879aa9;
+  color: var(--muted);
 }
 .event-source {
   min-width: 0;
@@ -146,7 +146,7 @@ time {
 .log-entry p {
   font-size: 13px;
   line-height: 1.5;
-  color: #d0dce6;
+  color: var(--muted);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -155,48 +155,44 @@ time {
   padding: 0;
   margin: 0 0 4px;
   border: 0;
-  color: #78bdeb;
+  color: var(--muted);
   font-size: 11px;
   cursor: pointer;
 }
-.answer-entry {
-  background: #113a5326;
-  border-color: #2b5b7b;
-}
-.question-entry {
-  border-color: #68515c;
-  background: #60314113;
+.log-entry.related {
+  background: var(--selected);
+  font-weight: 700;
 }
 .resolution-label {
   display: block;
   margin-bottom: 4px;
-  color: #95bdd8;
+  color: var(--muted);
   font-size: 10px;
 }
 .new-events {
   margin-top: 8px;
   padding: 7px;
-  border: 1px solid #347daf;
-  background: #173b55;
+  border: 1px solid var(--border);
+  background: var(--tag);
   border-radius: 5px;
-  color: #cceaff;
+  color: var(--muted);
   font-size: 12px;
   cursor: pointer;
 }
 .other-pending {
   margin: 0 0 10px;
   padding: 7px;
-  border: 1px solid #874554;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #4b29334d;
-  color: #f5b4c0;
+  background: var(--tag);
+  color: var(--muted);
   font-size: 11px;
   cursor: pointer;
   flex-shrink: 0;
 }
 .stream-error {
   margin: 0 0 8px;
-  color: #f1bf85;
+  color: var(--danger);
   font-size: 12px;
 }
 @media (max-width: 800px) {

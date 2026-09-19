@@ -108,6 +108,7 @@ export class Resources {
             icon: incident.icon,
             kind: 'incident',
             incidentId: incident.id,
+            radiusMeters: incident.radiusMeters,
           },
         ]
       : [unit];

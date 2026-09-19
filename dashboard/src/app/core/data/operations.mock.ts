@@ -10,6 +10,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'Activa',
     icon: 'fire',
     coordinates: { lat: 40.7505, lng: -3.8963 },
+    radiusMeters: 650,
   },
   {
     id: 'INC-002',
@@ -20,6 +21,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'En coordinación',
     icon: 'walk',
     coordinates: { lat: 40.7271, lng: -3.8649 },
+    radiusMeters: 350,
   },
   {
     id: 'INC-003',
@@ -30,6 +32,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'En atención',
     icon: 'heart',
     coordinates: { lat: 40.7272, lng: -3.8524 },
+    radiusMeters: 180,
   },
   {
     id: 'INC-004',
@@ -40,6 +43,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'Confirmada',
     icon: 'barrier',
     coordinates: { lat: 40.7431, lng: -3.8798 },
+    radiusMeters: 280,
   },
   {
     id: 'INC-005',
@@ -50,6 +54,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'En atención',
     icon: 'barrier',
     coordinates: { lat: 40.721, lng: -3.872 },
+    radiusMeters: 150,
   },
   {
     id: 'INC-006',
@@ -60,6 +65,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'Activa',
     icon: 'fire',
     coordinates: { lat: 40.7422, lng: -3.8865 },
+    radiusMeters: 450,
   },
   {
     id: 'INC-007',
@@ -70,6 +76,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'En atención',
     icon: 'heart',
     coordinates: { lat: 40.7105, lng: -3.91 },
+    radiusMeters: 200,
   },
   {
     id: 'INC-008',
@@ -80,6 +87,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'Confirmada',
     icon: 'barrier',
     coordinates: { lat: 40.725, lng: -3.921 },
+    radiusMeters: 100,
   },
   {
     id: 'INC-009',
@@ -90,6 +98,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'En coordinación',
     icon: 'walk',
     coordinates: { lat: 40.739, lng: -3.852 },
+    radiusMeters: 350,
   },
   {
     id: 'INC-010',
@@ -100,6 +109,7 @@ export const MOCK_INCIDENTS: Incident[] = [
     status: 'Activa',
     icon: 'shield',
     coordinates: { lat: 40.759, lng: -3.87 },
+    radiusMeters: 600,
   },
 ];
 

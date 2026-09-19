@@ -24,16 +24,7 @@
       </div>
       <label class="search-field">
         <span class="sr-only">Buscar incidencias</span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.7"
-          aria-hidden="true"
-        >
-          <circle cx="10.5" cy="10.5" r="6.5" />
-          <path d="m16 16 5 5" />
-        </svg>
+        <app-icon name="search" />
         <input
           type="search"
           placeholder="Buscar por ID, tipo o ubicación…"
@@ -105,8 +96,9 @@
           >
           <span class="badges"
             ><span class="badge">{{ category(incident) }}</span
-            ><span class="badge priority" [attr.data-priority]="incident.priority"
-              >{{ incident.priority }} · {{ severity[incident.priority] }}</span
+            ><span class="badge priority" [attr.data-priority]="incident.priority">{{
+              incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
+            }}</span
             ><span class="badge">{{ incident.status }}</span></span
           >
           <span class="card-bottom"
@@ -164,9 +156,9 @@
           <div>
             <dt class="sr-only">Gravedad</dt>
             <dd>
-              <span class="badge priority" [attr.data-priority]="incident.priority"
-                >{{ incident.priority }} · {{ severity[incident.priority] }}</span
-              >
+              <span class="badge priority" [attr.data-priority]="incident.priority">{{
+                incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
+              }}</span>
             </dd>
           </div>
           <div>

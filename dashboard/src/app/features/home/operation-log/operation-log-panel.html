@@ -49,7 +49,10 @@
       </div>
       <div class="pending-scroll">
         @for (question of log.visiblePending(); track question.id) {
-          <app-urgent-question-card [question]="question" />
+          <app-urgent-question-card
+            [question]="question"
+            [class.related]="question.incidentId === selectedIncidentId()"
+          />
         }
       </div>
     </section>
@@ -69,6 +72,7 @@
       @for (event of log.history(); track event.incidentId + ':' + event.id) {
         <li
           class="log-entry"
+          [class.related]="event.incidentId === selectedIncidentId()"
           [class.answer-entry]="event.kind === 'answer'"
           [class.question-entry]="event.kind === 'question'"
           [attr.data-event-id]="event.id"

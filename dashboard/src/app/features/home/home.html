@@ -7,6 +7,7 @@
       [locations]="locations()"
       [selectedIncidentId]="selectedIncidentId()"
       [selectedUnitId]="selectedUnitId()"
+      [visibleUnitIds]="visibleUnitIds()"
       (unitSelected)="selectUnit($event)"
       (incidentSelected)="selectIncident($event)"
     />
@@ -25,6 +26,7 @@
         [selectedIncidentId]="selectedIncidentId()"
         [selectedUnitId]="selectedUnitId()"
         (unitSelected)="selectUnit($event)"
+        (visibleUnitsChanged)="visibleUnitIds.set($event)"
       />
     </div>
   </div>
@@ -39,24 +41,11 @@
       ></button>
     }
     <div class="log-column">
-      <app-operation-log-panel [modal]="logOverlay()" (closeRequested)="closeLog()" />
+      <app-operation-log-panel
+        [modal]="logOverlay()"
+        [selectedIncidentId]="selectedIncidentId()"
+        (closeRequested)="closeLog()"
+      />
     </div>
   }
-  <button
-    #logToggle
-    type="button"
-    class="log-toggle"
-    [class.has-pending]="log.pending().length > 0"
-    [attr.aria-expanded]="log.open()"
-    aria-controls="operation-log"
-    [attr.aria-label]="'Registro operativo. ' + log.pending().length + ' preguntas pendientes'"
-    [attr.tabindex]="log.open() && logOverlay() ? -1 : 0"
-    title="Abrir o cerrar registro · Ctrl + I genera una pregunta"
-    (click)="toggleLog()"
-  >
-    <app-icon name="log" /><span class="toggle-label">Registro</span>
-    @if (log.pending().length) {
-      <span class="log-count">{{ log.pending().length }}</span>
-    }
-  </button>
 </div>

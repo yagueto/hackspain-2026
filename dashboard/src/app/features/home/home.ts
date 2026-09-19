@@ -4,11 +4,9 @@ import {
   Component,
   computed,
   DestroyRef,
-  ElementRef,
   effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
 import { MapLocation } from '../../core/models/operations';
@@ -17,14 +15,13 @@ import { OperationalMap } from './operational-map/operational-map';
 import { ServiceFeed } from './service-feed/service-feed';
 import { SplitPane } from '../../shared/split-pane/split-pane';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
-import { Icon } from '../../shared/icon/icon';
 import { IncidentStore } from '../incidents/incident-store';
 import { OperationLogStore } from './operation-log/operation-log-store';
 import { OperationLogPanel } from './operation-log/operation-log-panel';
 
 @Component({
   selector: 'app-home',
-  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, Icon, OperationLogPanel],
+  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, OperationLogPanel],
   host: { '(window:keydown)': 'handleKeyboard($event)' },
   templateUrl: './home.html',
   styleUrl: './home.css',
@@ -36,7 +33,6 @@ export class Home {
   private readonly destroyRef = inject(DestroyRef);
   protected readonly log = inject(OperationLogStore);
   protected readonly logOverlay = signal(false);
-  private readonly logToggle = viewChild<ElementRef<HTMLButtonElement>>('logToggle');
   readonly incidents = this.store.incidents;
   readonly units = this.store.units;
   readonly communications = computed(() =>
@@ -51,6 +47,7 @@ export class Home {
   );
   readonly selectedIncidentId = signal<string | null>(null);
   readonly selectedUnitId = signal<string | null>(null);
+  readonly visibleUnitIds = signal<readonly string[] | null>(null);
   readonly locations = computed<MapLocation[]>(() => [
     ...this.incidents().map((incident) => ({
       id: incident.id,
@@ -60,6 +57,7 @@ export class Home {
       icon: incident.icon,
       kind: 'incident' as const,
       incidentId: incident.id,
+      radiusMeters: incident.radiusMeters,
     })),
     ...this.units(),
   ]);
@@ -82,17 +80,9 @@ export class Home {
     });
   }
 
-  protected toggleLog(): void {
-    if (this.log.open()) this.closeLog();
-    else {
-      this.log.focusedQuestionId.set(null);
-      this.log.open.set(true);
-    }
-  }
-
   protected closeLog(): void {
     this.log.open.set(false);
-    queueMicrotask(() => this.logToggle()?.nativeElement.focus({ preventScroll: true }));
+    queueMicrotask(() => document.getElementById('log-toggle')?.focus({ preventScroll: true }));
   }
 
   protected handleKeyboard(event: KeyboardEvent): void {

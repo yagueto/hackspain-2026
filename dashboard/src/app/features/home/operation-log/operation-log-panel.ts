@@ -25,6 +25,7 @@ import { UrgentQuestionCard } from './urgent-question-card';
 })
 export class OperationLogPanel {
   readonly modal = input(false);
+  readonly selectedIncidentId = input<string | null>(null);
   readonly closeRequested = output<void>();
   protected readonly log = inject(OperationLogStore);
   protected readonly unread = signal(0);

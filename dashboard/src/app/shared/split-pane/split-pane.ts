@@ -1,4 +1,12 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, signal } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+} from '@angular/core';
 
 @Component({
   selector: 'app-split-pane',
@@ -23,16 +31,16 @@ import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, Elemen
   },
 })
 export class SplitPane {
-  protected readonly percentage = signal(50);
+  protected readonly percentage = signal(44);
   private readonly host = inject(ElementRef<HTMLElement>).nativeElement;
   private readonly destroyRef = inject(DestroyRef);
   private container?: HTMLElement;
   private observer?: ResizeObserver;
   private dragging = false;
-  private ratio = 0.5;
+  private ratio = 0.44;
   private readonly minMap = 320;
   private readonly minPanels = 360;
-  private readonly separatorWidth = 14;
+  private readonly separatorWidth = 20;
 
   constructor() {
     afterNextRender(() => {
@@ -66,7 +74,8 @@ export class SplitPane {
   protected stopResize(event: PointerEvent): void {
     if (!this.dragging) return;
     this.dragging = false;
-    if (this.host.hasPointerCapture(event.pointerId)) this.host.releasePointerCapture(event.pointerId);
+    if (this.host.hasPointerCapture(event.pointerId))
+      this.host.releasePointerCapture(event.pointerId);
     this.restoreBody();
   }
 
@@ -84,7 +93,7 @@ export class SplitPane {
   }
 
   protected reset(): void {
-    this.ratio = 0.5;
+    this.ratio = 0.44;
     this.apply();
   }
 
@@ -101,11 +110,14 @@ export class SplitPane {
     if (!this.desktop()) {
       this.container.style.removeProperty('grid-template-columns');
       this.container.style.removeProperty('column-gap');
-      this.percentage.set(50);
+      this.percentage.set(44);
       return;
     }
     const available = this.contentWidth() - this.separatorWidth;
-    const mapWidth = Math.max(this.minMap, Math.min(available * this.ratio, available - this.minPanels));
+    const mapWidth = Math.max(
+      this.minMap,
+      Math.min(available * this.ratio, available - this.minPanels),
+    );
     this.ratio = mapWidth / available;
     this.percentage.set(Math.round(this.ratio * 100));
     this.container.style.gridTemplateColumns = `${mapWidth}px ${this.separatorWidth}px minmax(${this.minPanels}px, 1fr)`;
@@ -115,7 +127,11 @@ export class SplitPane {
   private contentWidth(): number {
     if (!this.container) return 0;
     const style = getComputedStyle(this.container);
-    return this.container.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+    return (
+      this.container.clientWidth -
+      (parseFloat(style.paddingLeft) || 0) -
+      (parseFloat(style.paddingRight) || 0)
+    );
   }
 
   private restoreBody(): void {

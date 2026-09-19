@@ -16,7 +16,8 @@ import {
 import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
-import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
+import { Icon, createIconSvg } from '../../../shared/icon/icon';
+import { Theme } from '../../../core/services/theme';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
 import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
@@ -33,6 +34,7 @@ export class OperationalMap {
   readonly locations = input<readonly MapLocation[]>([]);
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
+  readonly visibleUnitIds = input<readonly string[] | null>(null);
   readonly incidentSelected = output<string>();
   readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
@@ -54,6 +56,13 @@ export class OperationalMap {
   private readonly geocoding = inject(Geocoding);
   private readonly routing = inject(Routing);
   private readonly simulation = inject(DemoRouteSimulation);
+  private readonly theme = inject(Theme);
+  private readonly haloLocations = computed(
+    () => this.resolvedLocations().filter((location) => location.kind === 'incident'),
+    {
+      equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
+    },
+  );
   private readonly fetchedRouteStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
   private readonly routeStates = computed(() => {
     const states = new Map(this.fetchedRouteStates());
@@ -85,6 +94,7 @@ export class OperationalMap {
   private map?: L.Map;
   private tiles?: L.TileLayer;
   private markerLayer?: L.LayerGroup;
+  private haloLayer?: L.LayerGroup;
   private resizeObserver?: ResizeObserver;
   private lastLocationKey = '';
   private lastSelection: string | null = null;
@@ -98,16 +108,18 @@ export class OperationalMap {
         maxZoom: 19,
         zoomSnap: 0.25,
       }).setView([40.734, -3.876], 13);
-      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
-      }).addTo(this.map);
-      this.tiles.on('tileerror', () => this.tileError.set(true));
       this.map.attributionControl.setPrefix(false);
       L.control
-        .zoom({ position: 'bottomright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' })
+        .zoom({
+          position: 'bottomright',
+          zoomInTitle: 'Acercar',
+          zoomOutTitle: 'Alejar',
+          zoomInText: createIconSvg('plus').outerHTML,
+          zoomOutText: createIconSvg('minus').outerHTML,
+        })
         .addTo(this.map);
+      this.map.createPane('incident-halos').style.zIndex = '350';
+      this.haloLayer = L.layerGroup().addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
       if (typeof ResizeObserver !== 'undefined') {
@@ -115,6 +127,59 @@ export class OperationalMap {
         this.resizeObserver.observe(this.canvas().nativeElement);
       }
       this.ready.set(true);
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.map) return;
+      const dark = this.theme.current() === 'dark';
+      this.tiles?.remove();
+      this.tileError.set(false);
+      this.tiles = L.tileLayer(
+        dark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>' +
+            (dark
+              ? ' &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>'
+              : ''),
+        },
+      ).addTo(this.map);
+      this.tiles.on('tileerror', () => this.tileError.set(true));
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.haloLayer) return;
+      const locations = this.haloLocations();
+      const selected = this.selectedIncidentId();
+      const dark = this.theme.current() === 'dark';
+      const visible = this.showIncidents();
+      this.haloLayer.clearLayers();
+      if (!visible) return;
+      for (const location of locations) {
+        if (
+          !location.radiusMeters ||
+          !Number.isFinite(location.radiusMeters) ||
+          location.radiusMeters <= 0
+        )
+          continue;
+        const active = location.incidentId === selected;
+        const color = dark ? '#e5e5e5' : '#666666';
+        for (const scale of [1, 0.7]) {
+          L.circle([location.coordinates.lat, location.coordinates.lng], {
+            radius: location.radiusMeters * scale,
+            pane: 'incident-halos',
+            interactive: false,
+            color,
+            weight: active ? 1.5 : 1,
+            opacity: active ? 0.65 : 0.25,
+            fillColor: color,
+            fillOpacity: active ? 0.12 : 0.045,
+          }).addTo(this.haloLayer);
+        }
+      }
     });
 
     effect((onCleanup) => {
@@ -156,7 +221,12 @@ export class OperationalMap {
       if (!this.ready()) return;
       const locations = this.resolvedLocations();
       const states = this.routeStates();
-      this.routeLayer?.render(locations, states, this.selectedUnitId(), this.showUnits());
+      this.routeLayer?.render(
+        locations.filter((location) => this.isVisible(location, true, true)),
+        states,
+        this.selectedUnitId(),
+        this.showUnits(),
+      );
       for (const location of locations) {
         const marker = this.markers.get(location.id);
         if (!marker?.isPopupOpen()) continue;
@@ -405,7 +475,12 @@ export class OperationalMap {
   }
 
   private isVisible(location: MapLocation, incidents: boolean, units: boolean): boolean {
-    return location.kind === 'place' || (location.kind === 'incident' ? incidents : units);
+    return (
+      location.kind === 'place' ||
+      (location.kind === 'incident'
+        ? incidents
+        : units && (this.visibleUnitIds() === null || this.visibleUnitIds()!.includes(location.id)))
+    );
   }
 
   private isSelected(
@@ -428,26 +503,12 @@ export class OperationalMap {
     element.className = `map-marker kind-${location.kind}${related ? ' is-related' : ''}${selected ? ' is-selected' : ''}`;
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    for (const [name, value] of Object.entries({
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': '1.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
-      'aria-hidden': 'true',
-    }))
-      svg.setAttribute(name, value);
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', ICON_PATHS[location.icon]);
-    svg.append(path);
-    symbol.append(svg);
+    symbol.append(createIconSvg(location.icon));
     const label = document.createElement('span');
     label.className = 'marker-label';
     label.textContent = location.label;
     element.append(symbol, label);
-    const size = location.kind === 'incident' ? 52 : 40;
+    const size = location.kind === 'incident' ? 46 : 34;
     return L.divIcon({
       html: element,
       className: 'operation-marker',

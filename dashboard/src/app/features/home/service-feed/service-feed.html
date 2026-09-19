@@ -47,16 +47,9 @@
       }
     </div>
   }
-  <div
-    id="resources-list"
-    class="feed-list"
-    [appPaginatedList]="filteredCommunications()"
-    [itemKey]="resourceKey"
-    [selectedKey]="selectedUnitId()"
-    #pager="paginatedList"
-  >
-    @for (item of pager.visibleItems(); track item.id) {
-      @let unit = resource(item.vehicle);
+  <div id="resources-list" class="feed-list" tabindex="0" aria-label="Lista de recursos">
+    @for (item of filteredCommunications(); track item.id) {
+      @let status = resourceStatus(item);
       <article
         class="communication"
         [class.related]="
@@ -73,42 +66,35 @@
           (click)="unitSelected.emit(item.vehicle)"
         >
           <app-icon class="service-icon" [name]="item.icon" />
-          <span class="communication-body">
-            <strong class="resource-code">{{ item.vehicle }}</strong>
-            <span class="resource-meta">
-              <span>{{ item.incidentId }}</span>
-              <span>{{ unit?.address ?? 'Ubicación no disponible' }}</span>
-              <span class="communication-status">{{ resourceStatus(item) }}</span>
-            </span>
-          </span>
+          <span class="resource-code">{{ item.vehicle }}</span>
+          <span class="resource-agent" [title]="item.agent || 'Sin asignar'">{{
+            item.agent || 'Sin asignar'
+          }}</span>
+          <span class="resource-mission" [title]="item.message">{{ item.message }}</span>
+          <span class="incident-tag">{{ item.incidentId || 'Sin asignar' }}</span>
+          <span
+            class="communication-status"
+            [class.destination]="status === 'En destino'"
+            [class.en-route]="status === 'En ruta'"
+            >{{ status }}</span
+          >
         </button>
         <a
           class="detail-link"
           routerLink="/recursos"
           [queryParams]="{ recurso: item.vehicle }"
           [attr.aria-label]="'Ver detalles de ' + item.vehicle"
-          title="Ver detalles"
-        >
-          <span>Detalles</span><app-icon name="chevron" />
-        </a>
+          ><span>Detalles</span><app-icon name="chevron"
+        /></a>
       </article>
     } @empty {
-      <div class="empty-state">
-        <p>
-          {{
-            communications().length
-              ? 'No hay recursos en las categorías seleccionadas.'
-              : 'No hay recursos disponibles.'
-          }}
-        </p>
-      </div>
+      <p class="empty-state">
+        {{
+          communications().length
+            ? 'No hay recursos en las categorías seleccionadas.'
+            : 'No hay recursos disponibles.'
+        }}
+      </p>
     }
   </div>
-  <app-pagination
-    [page]="pager.pageIndex()"
-    [pageCount]="pager.pageCount()"
-    label="recursos"
-    controls="resources-list"
-    (pageChanged)="pager.goToPage($event)"
-  />
 </section>

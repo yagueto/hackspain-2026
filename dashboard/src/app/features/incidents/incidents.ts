@@ -35,12 +35,13 @@ export class Incidents {
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
   protected readonly filters = signal({ query: '', category: '', priority: '', status: '' });
-  protected readonly severity: Record<Incident['priority'], string> = {
+  protected readonly severity: Record<NonNullable<Incident['priority']>, string> = {
     P0: 'Crítica',
     P1: 'Grave',
     P2: 'Moderada',
+    P3: 'Baja',
   };
-  protected readonly priorities = ['P0', 'P1', 'P2'] as const;
+  protected readonly priorities = ['P0', 'P1', 'P2', 'P3'] as const;
   private readonly selectedId = signal<string | null>(null);
   private readonly unitId = signal<string | null>(null);
   private readonly detailMap = viewChild<ElementRef<HTMLElement>>('detailMap');
@@ -101,6 +102,7 @@ export class Incidents {
             icon: incident.icon,
             kind: 'incident',
             incidentId: incident.id,
+            radiusMeters: incident.radiusMeters,
           },
           ...this.services(),
         ]
