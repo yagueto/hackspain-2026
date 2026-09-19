@@ -6,7 +6,6 @@ import {
   HumanQuestion,
   IncomingQuestion,
   IncidentAttention,
-  OperationLogEvent,
   OperationLogUpdate,
   QuestionAction,
   QuestionAnswer,
@@ -34,10 +33,6 @@ export class OperationLogStore {
   readonly answers$ = this.responseEvents.asObservable();
   readonly questions = this.questionState.asReadonly();
   readonly now = signal(Date.now());
-  readonly open = signal(false);
-  readonly incidentFilter = signal<string | null>(null);
-  readonly focusedQuestionId = signal<string | null>(null);
-  readonly focusRequest = signal(0);
   readonly notification = signal('');
   readonly incomingError = signal(false);
   readonly drafts = signal<Readonly<Record<string, QuestionAnswer>>>({});
@@ -49,24 +44,6 @@ export class OperationLogStore {
   readonly pending = computed(() =>
     this.questions().filter((question) => question.status === 'pending'),
   );
-  readonly visiblePending = computed(() =>
-    this.pending().filter(
-      (question) => !this.incidentFilter() || question.incidentId === this.incidentFilter(),
-    ),
-  );
-  readonly history = computed(() => {
-    const pending = new Set(this.pending().map((question) => question.id));
-    return this.incidents
-      .events()
-      .filter(
-        (event) =>
-          (!this.incidentFilter() || event.incidentId === this.incidentFilter()) &&
-          !(event.kind === 'question' && event.questionId && pending.has(event.questionId)),
-      )
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      );
-  });
   readonly attention = computed<ReadonlyMap<string, IncidentAttention>>(() => {
     const result = new Map<string, IncidentAttention>();
     for (const question of this.pending()) {
@@ -146,6 +123,8 @@ export class OperationLogStore {
       typeof incoming.prompt !== 'string' ||
       !incoming.prompt.trim() ||
       incoming.prompt.length > 2000 ||
+      (incoming.context !== undefined &&
+        (typeof incoming.context !== 'string' || incoming.context.length > 1000)) ||
       this.questions().some((item) => item.id === incoming.id)
     )
       return false;
@@ -231,18 +210,6 @@ export class OperationLogStore {
       this.incidents.units().map((unit) => this.simulation.project(unit)),
     );
     if (question) this.receiveQuestion(question);
-  }
-
-  openForIncident(incidentId: string): void {
-    this.incidentFilter.set(incidentId);
-    this.focusedQuestionId.set(this.attention().get(incidentId)?.questionId ?? null);
-    this.open.set(true);
-    this.focusRequest.update((value) => value + 1);
-  }
-
-  setFilter(id: string): void {
-    this.incidentFilter.set(id || null);
-    this.focusedQuestionId.set(null);
   }
 
   draft(question: HumanQuestion): QuestionAnswer {

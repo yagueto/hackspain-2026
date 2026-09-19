@@ -7,27 +7,18 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Icon } from '../../shared/icon/icon';
 import { Theme } from '../../core/services/theme';
-import { OperationLogStore } from '../../features/home/operation-log/operation-log-store';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, RouterLinkActive, Icon],
+  imports: [Icon],
   templateUrl: './header.html',
   styleUrl: './header.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Header {
-  protected readonly navigation = [
-    { label: 'Inicio', path: '/', available: true },
-    { label: 'Incidencias', path: '/incidencias', available: true },
-    { label: 'Recursos', path: '/recursos', available: true },
-  ];
   protected readonly theme = inject(Theme);
-  protected readonly log = inject(OperationLogStore);
-  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dateFormatter = new Intl.DateTimeFormat('es-ES', {
     day: '2-digit',
@@ -48,10 +39,5 @@ export class Header {
       const timer = setInterval(() => this.now.set(new Date()), 1000);
       this.destroyRef.onDestroy(() => clearInterval(timer));
     });
-  }
-
-  protected async openLog(): Promise<void> {
-    await this.router.navigate(['/']);
-    this.log.open.set(!this.log.open());
   }
 }

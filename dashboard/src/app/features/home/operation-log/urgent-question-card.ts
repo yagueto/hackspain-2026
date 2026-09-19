@@ -13,6 +13,13 @@ export class UrgentQuestionCard {
   protected readonly log = inject(OperationLogStore);
   protected readonly urgencyLabels = URGENCY_LABELS;
   protected readonly draft = computed(() => this.log.draft(this.question()));
+  protected readonly context = computed(() => {
+    if (this.question().context) return this.question().context;
+    const incident = this.log.incidents
+      .incidents()
+      .find((item) => item.id === this.question().incidentId);
+    return incident ? `${incident.title} en ${incident.area}. Estado: ${incident.status}.` : '';
+  });
   protected readonly seconds = computed(() =>
     Math.max(0, Math.ceil((Date.parse(this.question().expiresAt) - this.log.now()) / 1000)),
   );

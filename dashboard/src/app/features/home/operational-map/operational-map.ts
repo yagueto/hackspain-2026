@@ -35,6 +35,7 @@ export class OperationalMap {
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
   readonly visibleUnitIds = input<readonly string[] | null>(null);
+  readonly focusedLocationId = input<string | null>(null);
   readonly incidentSelected = output<string>();
   readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
@@ -98,6 +99,7 @@ export class OperationalMap {
   private resizeObserver?: ResizeObserver;
   private lastLocationKey = '';
   private lastSelection: string | null = null;
+  private lastFocus: string | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -195,6 +197,7 @@ export class OperationalMap {
 
     effect(() => {
       if (this.selectedUnitId()) this.showUnits.set(true);
+      if (this.selectedIncidentId()) this.showIncidents.set(true);
     });
 
     effect(() => {
@@ -379,6 +382,7 @@ export class OperationalMap {
       marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
       if (selected) selectedMarker = marker;
     }
+    const focusId = this.focusedLocationId();
     const locationKey = locations.map((location) => location.id).join('|');
     const selectionKey = selectedUnitId
       ? `unit:${selectedUnitId}`
@@ -387,12 +391,24 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      untracked(() => this.fitLocations());
+      if (!focusId) untracked(() => this.fitLocations());
     } else if (selectionKey !== this.lastSelection && selectedMarker) {
       this.map.panTo(selectedMarker.getLatLng(), { animate: false });
       selectedMarker.openPopup();
     }
     this.lastSelection = selectionKey;
+    const focused = visible.find((location) => location.id === focusId);
+    if (focusId !== this.lastFocus) {
+      if (focused) {
+        this.map.setView([focused.coordinates.lat, focused.coordinates.lng], 15, {
+          animate: false,
+        });
+        this.lastFocus = focusId;
+      } else if (!focusId && this.lastFocus) {
+        untracked(() => this.fitLocations());
+        this.lastFocus = null;
+      }
+    }
   }
 
   private async loadRoutes(locations: readonly MapLocation[], signal: AbortSignal): Promise<void> {

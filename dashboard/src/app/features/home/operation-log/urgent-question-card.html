@@ -16,6 +16,7 @@
       >{{ countdown() }}</time
     >
   </header>
+  <p class="question-context">{{ context() }}</p>
   <h3 [id]="'prompt-' + question().id">{{ question().prompt }}</h3>
   <form (submit)="submit($event)">
     @if (question().input !== 'text') {

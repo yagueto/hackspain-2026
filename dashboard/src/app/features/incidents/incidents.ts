@@ -6,6 +6,8 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
@@ -26,11 +28,14 @@ const normalize = (value: string) =>
 @Component({
   selector: 'app-incidents',
   imports: [DatePipe, Icon, OperationalMap, IncidentActivity],
+  host: { '[class.embedded]': 'embedded()' },
   templateUrl: './incidents.html',
   styleUrl: './incidents.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Incidents {
+  readonly embedded = input(false);
+  readonly unitLocated = output<string>();
   protected readonly store = inject(IncidentStore);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
@@ -149,7 +154,14 @@ export class Incidents {
   protected selectUnit(id: string): void {
     if (!this.services().some((unit) => unit.id === id)) return;
     this.unitId.set(id);
+    this.unitLocated.emit(id);
     this.detailMap()?.nativeElement.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+  }
+
+  protected returnHome(event: MouseEvent): void {
+    if (!this.router || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void this.router.navigate(['/']);
   }
 
   protected category(incident: Incident): string {

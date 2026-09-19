@@ -7,45 +7,8 @@
   height: 52px;
   display: flex;
   align-items: center;
-  gap: 24px;
   padding: 0 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-}
-.brand {
-  display: inline-flex;
-  color: var(--muted);
-}
-.brand app-icon {
-  width: 23px;
-  height: 23px;
-}
-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-nav a,
-nav button {
-  color: var(--muted);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 6px 12px;
-  text-decoration: none;
-  font-size: 15px;
-  line-height: 1.2;
-  white-space: nowrap;
-  cursor: pointer;
-}
-nav :is(a, button):hover {
-  color: var(--text);
-  background: var(--tag);
-}
-nav .active {
-  color: var(--text);
-  background: var(--selected);
-  border-color: var(--separator);
+  background: var(--background);
 }
 .header-meta {
   display: flex;
@@ -55,17 +18,6 @@ nav .active {
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
-}
-.demo-indicator {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.demo-indicator > span {
-  height: 6px;
-  width: 6px;
-  border-radius: 50%;
-  background: var(--icon);
 }
 .date {
   display: flex;
@@ -132,22 +84,10 @@ nav .active {
 .profile-menu button[aria-pressed='true'] {
   background: var(--selected);
 }
-.pending-count {
-  display: inline-block;
-  border-radius: 3px;
-  padding: 1px 4px;
-  font-size: 11px;
-  color: var(--danger);
-  background: var(--danger-surface);
-  font-variant-numeric: tabular-nums;
-}
 @media (max-width: 1000px) {
   .topbar {
     gap: 14px;
     padding: 0 16px;
-  }
-  nav {
-    gap: 2px;
   }
   .header-meta {
     gap: 16px;
@@ -161,29 +101,12 @@ nav .active {
 }
 @media (max-width: 700px) {
   .topbar {
-    height: auto;
-    min-height: 52px;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 12px;
-  }
-  nav {
-    order: 3;
-    width: 100%;
-    justify-content: space-between;
-  }
-  nav a,
-  nav button {
-    font-size: 14px;
+    padding: 0 12px;
   }
   .date {
     font-size: 10px;
   }
   .header-meta {
     gap: 12px;
-  }
-  .demo-indicator {
-    font-size: 10px;
-    gap: 4px;
   }
 }

@@ -48,6 +48,12 @@ h3 {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.question-context {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 fieldset {
   display: grid;
   gap: 6px;

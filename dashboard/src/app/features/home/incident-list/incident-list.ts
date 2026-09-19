@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Incident } from '../../../core/models/operations';
-import { IncidentAttention } from '../../../core/models/operation-log';
+import { IncidentAttention, URGENCY_RANK } from '../../../core/models/operation-log';
 import { Icon } from '../../../shared/icon/icon';
 
 @Component({
@@ -28,7 +28,18 @@ export class IncidentList {
   readonly responseRequested = output<string>();
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly sortedIncidents = computed(() =>
-    [...this.incidents()].sort((a, b) => this.priorityRank(a) - this.priorityRank(b)),
+    [...this.incidents()].sort((a, b) => {
+      const left = this.attention().get(a.id);
+      const right = this.attention().get(b.id);
+      if (left && right) {
+        return (
+          URGENCY_RANK[left.urgency] - URGENCY_RANK[right.urgency] ||
+          left.firstSequence - right.firstSequence
+        );
+      }
+      if (left || right) return left ? -1 : 1;
+      return this.priorityRank(a) - this.priorityRank(b);
+    }),
   );
 
   constructor() {

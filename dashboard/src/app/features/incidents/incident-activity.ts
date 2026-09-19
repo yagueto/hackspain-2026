@@ -1,9 +1,9 @@
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { IconName, Incident, MapLocation } from '../../core/models/operations';
 import { Icon } from '../../shared/icon/icon';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { IncidentDetails, IncidentEvent } from './incidents.mock';
+import { OperationTimeline } from '../home/operation-log/operation-timeline';
 
 const SERVICE_NAMES: Partial<Record<IconName, string>> = {
   'fire-truck': 'Bomberos',
@@ -17,7 +17,7 @@ const SERVICE_NAMES: Partial<Record<IconName, string>> = {
 
 @Component({
   selector: 'app-incident-activity',
-  imports: [DatePipe, Icon],
+  imports: [Icon, OperationTimeline],
   templateUrl: './incident-activity.html',
   styleUrl: './incident-activity.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

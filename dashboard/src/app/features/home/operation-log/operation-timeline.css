@@ -1,0 +1,138 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.timeline-section {
+  padding: 16px 0 4px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+h2 {
+  font-size: 16px;
+}
+.heading-title > app-icon {
+  color: var(--muted);
+  width: 18px;
+}
+.pending-label,
+.human-label {
+  color: var(--danger);
+  font-size: 12px;
+}
+.human-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.human-label app-icon {
+  width: 16px;
+  height: 16px;
+}
+.timeline {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+.timeline-event {
+  display: grid;
+  grid-template-columns: 92px 14px minmax(0, 1fr);
+  gap: 10px;
+}
+.timeline-event > time {
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-event > time,
+.event-source {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.timeline-dot {
+  position: relative;
+  width: 1px;
+  margin: 6px auto -6px;
+  background: var(--border);
+}
+.timeline-dot::before {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  left: -3px;
+  border-radius: 50%;
+  background: var(--icon);
+}
+.timeline-event:last-child .timeline-dot {
+  background: transparent;
+}
+.event-content {
+  min-width: 0;
+  margin-bottom: 20px;
+}
+h3 {
+  margin: 0 0 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.event-source {
+  display: block;
+  margin-top: 6px;
+}
+.awaiting-human .event-content {
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 7px;
+  background: var(--danger-surface);
+  animation: awaiting-response 1.8s ease-in-out infinite;
+}
+.awaiting-human .timeline-dot,
+.awaiting-human .timeline-dot::before {
+  background: var(--danger);
+}
+.awaiting-human > time,
+.update-error {
+  color: var(--danger);
+}
+.update-error {
+  margin-top: 12px;
+}
+@keyframes awaiting-response {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--danger-surface);
+    border-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .awaiting-human .event-content {
+    animation: none;
+  }
+}
+@media (max-width: 600px) {
+  .timeline-event {
+    grid-template-columns: 12px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .timeline-event > time {
+    grid-column: 2;
+  }
+  .timeline-dot {
+    grid-column: 1;
+    grid-row: span 2;
+  }
+  .event-content {
+    grid-column: 2;
+  }
+}

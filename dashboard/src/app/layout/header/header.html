@@ -1,47 +1,5 @@
 <header class="topbar">
-  <a
-    class="brand"
-    routerLink="/"
-    aria-label="Centro de coordinación"
-    title="Centro de coordinación"
-  >
-    <app-icon name="radio" />
-  </a>
-  <nav aria-label="Navegación principal">
-    @for (item of navigation; track item.path) {
-      <a
-        [routerLink]="item.path"
-        routerLinkActive="active"
-        [routerLinkActiveOptions]="{
-          paths: 'exact',
-          queryParams: 'ignored',
-          matrixParams: 'ignored',
-          fragment: 'ignored',
-        }"
-        ariaCurrentWhenActive="page"
-        >{{ item.label }}</a
-      >
-    }
-    <button
-      id="log-toggle"
-      type="button"
-      [class.active]="log.open()"
-      [attr.aria-expanded]="log.open()"
-      aria-controls="operation-log"
-      (click)="openLog()"
-    >
-      Logs
-      @if (log.pending().length) {
-        <span
-          class="pending-count"
-          [attr.aria-label]="log.pending().length + ' preguntas pendientes'"
-          >{{ log.pending().length }}</span
-        >
-      }
-    </button>
-  </nav>
   <div class="header-meta">
-    <span class="demo-indicator"><span></span> Modo demo</span>
     <time class="date" [attr.datetime]="now().toISOString()"
       >{{ date() }} <span class="clock">{{ time() }}</span></time
     >

@@ -1,123 +1,128 @@
 <div class="incidents-workspace">
-  <section class="panel list-panel" aria-labelledby="incidents-heading">
-    <div class="list-toolbar">
-      <div class="panel-heading">
-        <div class="heading-title">
-          <h1 id="incidents-heading">Incidencias</h1>
-          <span
-            class="count-badge"
-            aria-live="polite"
-            [attr.aria-label]="filteredIncidents().length + ' incidencias'"
-            >{{ filteredIncidents().length }}</span
+  @if (!embedded()) {
+    <section class="panel list-panel" aria-labelledby="incidents-heading">
+      <div class="list-toolbar">
+        <a class="back-link" href="/" (click)="returnHome($event)"
+          ><app-icon name="chevron" /> Volver a Inicio</a
+        >
+        <div class="panel-heading">
+          <div class="heading-title">
+            <h1 id="incidents-heading">Incidencias</h1>
+            <span
+              class="count-badge"
+              aria-live="polite"
+              [attr.aria-label]="filteredIncidents().length + ' incidencias'"
+              >{{ filteredIncidents().length }}</span
+            >
+          </div>
+          @if (hasFilters()) {
+            <button
+              type="button"
+              class="text-button"
+              data-testid="clear-filters"
+              (click)="clearFilters()"
+            >
+              Limpiar filtros
+            </button>
+          }
+        </div>
+        <label class="search-field">
+          <span class="sr-only">Buscar incidencias</span>
+          <app-icon name="search" />
+          <input
+            type="search"
+            placeholder="Buscar por ID, tipo o ubicación…"
+            [value]="filters().query"
+            (input)="setFilter('query', $any($event.target).value)"
+          />
+        </label>
+        <div class="filters">
+          <label
+            ><span class="sr-only">Categoría / tipo</span
+            ><select
+              name="category"
+              [value]="filters().category"
+              (change)="setFilter('category', $any($event.target).value)"
+            >
+              <option value="">Tipo</option>
+              @for (category of categories(); track category) {
+                <option [value]="category">{{ category }}</option>
+              }
+            </select></label
+          >
+          <label
+            ><span class="sr-only">Gravedad</span
+            ><select
+              name="priority"
+              [value]="filters().priority"
+              (change)="setFilter('priority', $any($event.target).value)"
+            >
+              <option value="">Gravedad</option>
+              @for (priority of priorities; track priority) {
+                <option [value]="priority">{{ priority }} · {{ severity[priority] }}</option>
+              }
+            </select></label
+          >
+          <label
+            ><span class="sr-only">Estado</span
+            ><select
+              name="status"
+              [value]="filters().status"
+              (change)="setFilter('status', $any($event.target).value)"
+            >
+              <option value="">Estado</option>
+              @for (status of statuses(); track status) {
+                <option [value]="status">{{ status }}</option>
+              }
+            </select></label
           >
         </div>
-        @if (hasFilters()) {
+      </div>
+      <div class="incident-scroll" tabindex="0" aria-label="Lista de incidencias">
+        @for (incident of filteredIncidents(); track incident.id) {
           <button
             type="button"
-            class="text-button"
-            data-testid="clear-filters"
-            (click)="clearFilters()"
+            class="incident-card"
+            [class.selected]="selectedIncident()?.id === incident.id"
+            [attr.aria-pressed]="selectedIncident()?.id === incident.id"
+            aria-controls="incident-detail"
+            (click)="selectIncident(incident.id)"
           >
-            Limpiar filtros
+            <span class="card-top"
+              ><span class="incident-icon"><app-icon [name]="incident.icon" /></span
+              ><span class="card-title"
+                ><strong>{{ incident.id }}</strong
+                ><span>{{ incident.title }}</span></span
+              ><app-icon class="chevron" name="chevron"
+            /></span>
+            <span class="address"
+              ><app-icon name="pin" /><span>{{ incident.address }}</span></span
+            >
+            <span class="badges"
+              ><span class="badge">{{ category(incident) }}</span
+              ><span class="badge priority" [attr.data-priority]="incident.priority">{{
+                incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
+              }}</span
+              ><span class="badge">{{ incident.status }}</span></span
+            >
+            <span class="card-bottom"
+              ><span
+                >{{ store.details()[incident.id]?.affected ?? 'Sin confirmar' }}
+                {{ store.details()[incident.id]?.affected == null ? '' : 'implicados' }}</span
+              ><time [attr.datetime]="store.details()[incident.id]?.openedAt">{{
+                store.details()[incident.id]?.openedAt | date: 'dd/MM · HH:mm' : '+0200'
+              }}</time></span
+            >
           </button>
+        } @empty {
+          <div class="empty-state">
+            <app-icon name="filter" />
+            <h2>No hay coincidencias</h2>
+          </div>
         }
       </div>
-      <label class="search-field">
-        <span class="sr-only">Buscar incidencias</span>
-        <app-icon name="search" />
-        <input
-          type="search"
-          placeholder="Buscar por ID, tipo o ubicación…"
-          [value]="filters().query"
-          (input)="setFilter('query', $any($event.target).value)"
-        />
-      </label>
-      <div class="filters">
-        <label
-          ><span class="sr-only">Categoría / tipo</span
-          ><select
-            name="category"
-            [value]="filters().category"
-            (change)="setFilter('category', $any($event.target).value)"
-          >
-            <option value="">Tipo</option>
-            @for (category of categories(); track category) {
-              <option [value]="category">{{ category }}</option>
-            }
-          </select></label
-        >
-        <label
-          ><span class="sr-only">Gravedad</span
-          ><select
-            name="priority"
-            [value]="filters().priority"
-            (change)="setFilter('priority', $any($event.target).value)"
-          >
-            <option value="">Gravedad</option>
-            @for (priority of priorities; track priority) {
-              <option [value]="priority">{{ priority }} · {{ severity[priority] }}</option>
-            }
-          </select></label
-        >
-        <label
-          ><span class="sr-only">Estado</span
-          ><select
-            name="status"
-            [value]="filters().status"
-            (change)="setFilter('status', $any($event.target).value)"
-          >
-            <option value="">Estado</option>
-            @for (status of statuses(); track status) {
-              <option [value]="status">{{ status }}</option>
-            }
-          </select></label
-        >
-      </div>
-    </div>
-    <div class="incident-scroll" tabindex="0" aria-label="Lista de incidencias">
-      @for (incident of filteredIncidents(); track incident.id) {
-        <button
-          type="button"
-          class="incident-card"
-          [class.selected]="selectedIncident()?.id === incident.id"
-          [attr.aria-pressed]="selectedIncident()?.id === incident.id"
-          aria-controls="incident-detail"
-          (click)="selectIncident(incident.id)"
-        >
-          <span class="card-top"
-            ><span class="incident-icon"><app-icon [name]="incident.icon" /></span
-            ><span class="card-title"
-              ><strong>{{ incident.id }}</strong
-              ><span>{{ incident.title }}</span></span
-            ><app-icon class="chevron" name="chevron"
-          /></span>
-          <span class="address"
-            ><app-icon name="pin" /><span>{{ incident.address }}</span></span
-          >
-          <span class="badges"
-            ><span class="badge">{{ category(incident) }}</span
-            ><span class="badge priority" [attr.data-priority]="incident.priority">{{
-              incident.priority ? incident.priority + ' · ' + severity[incident.priority] : '—'
-            }}</span
-            ><span class="badge">{{ incident.status }}</span></span
-          >
-          <span class="card-bottom"
-            ><span
-              >{{ store.details()[incident.id]?.affected ?? 'Sin confirmar' }}
-              {{ store.details()[incident.id]?.affected == null ? '' : 'implicados' }}</span
-            ><time [attr.datetime]="store.details()[incident.id]?.openedAt">{{
-              store.details()[incident.id]?.openedAt | date: 'dd/MM · HH:mm' : '+0200'
-            }}</time></span
-          >
-        </button>
-      } @empty {
-        <div class="empty-state">
-          <app-icon name="filter" />
-          <h2>No hay coincidencias</h2>
-        </div>
-      }
-    </div>
-  </section>
+    </section>
+  }
   <section id="incident-detail" class="panel detail-panel" aria-label="Detalle de la incidencia">
     @if (selectedIncident(); as incident) {
       <header class="detail-heading">
@@ -137,15 +142,17 @@
         >
       </header>
       <div class="detail-scroll">
-        <div #detailMap class="detail-map">
-          <app-operational-map
-            [locations]="locations()"
-            [selectedIncidentId]="incident.id"
-            [selectedUnitId]="selectedUnitId()"
-            (incidentSelected)="selectIncident($event)"
-            (unitSelected)="selectUnit($event)"
-          />
-        </div>
+        @if (!embedded()) {
+          <div #detailMap class="detail-map">
+            <app-operational-map
+              [locations]="locations()"
+              [selectedIncidentId]="incident.id"
+              [selectedUnitId]="selectedUnitId()"
+              (incidentSelected)="selectIncident($event)"
+              (unitSelected)="selectUnit($event)"
+            />
+          </div>
+        }
         <dl class="classification">
           <div>
             <dt class="sr-only">Categoría / tipo</dt>
