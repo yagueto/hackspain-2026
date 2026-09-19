@@ -359,6 +359,97 @@ h2 {
   color: #b9e1ff;
   cursor: pointer;
 }
+app-home .dashboard-grid .incident-panel,
+app-home .dashboard-grid .resources-panel,
+app-home .dashboard-grid .map-panel {
+  padding: 3px;
+}
+app-home .dashboard-grid .panel-heading {
+  margin: 2px 2px 4px;
+}
+app-home .dashboard-grid .incident-list {
+  --page-row-height: 52px;
+  gap: 3px;
+}
+app-home .dashboard-grid .feed-list {
+  --page-row-height: 72px;
+  gap: 3px;
+}
+app-home .dashboard-grid .incident-row,
+app-home .dashboard-grid .communication {
+  padding: 2px 4px;
+  gap: 6px;
+}
+app-home .dashboard-grid .communication {
+  border-left-width: 1px;
+}
+app-home .dashboard-grid .communication.related {
+  border-left-color: #1366a3;
+}
+app-home .dashboard-grid .incident-info {
+  gap: 1px;
+}
+app-home .dashboard-grid .incident-name {
+  gap: 4px;
+}
+app-home .dashboard-grid .communication-body,
+app-home .dashboard-grid .tags {
+  gap: 2px;
+}
+app-home .dashboard-grid .status-badge,
+app-home .dashboard-grid .communication-status,
+app-home .dashboard-grid .communication .tags > span {
+  padding: 1px 4px;
+}
+app-home .dashboard-grid .filter-button,
+app-home .dashboard-grid .category-chip {
+  padding: 3px 6px;
+}
+app-home .dashboard-grid .filters {
+  gap: 4px;
+  padding: 2px 0 4px;
+  margin-bottom: 4px;
+}
+app-home .dashboard-grid app-pagination {
+  padding-top: 3px;
+}
+app-home .dashboard-grid .pagination {
+  gap: 6px;
+}
+app-home .dashboard-grid .map-legend,
+app-home .dashboard-grid .map-notice,
+app-home .dashboard-grid .tile-notice {
+  padding: 4px 6px;
+}
+@media (max-width: 1200px) {
+  app-home .dashboard-grid .feed-list {
+    --page-row-height: 80px;
+  }
+  app-home .dashboard-grid .communication {
+    row-gap: 2px;
+  }
+}
+@media (max-width: 1150px) {
+  app-home .dashboard-grid .incident-list {
+    --page-row-height: 72px;
+  }
+  app-home .dashboard-grid .incident-row {
+    row-gap: 2px;
+  }
+}
+@media (max-width: 800px) {
+  app-home .dashboard-grid .operations-column {
+    grid-template-rows: 450px 610px;
+  }
+}
+@media (max-height: 600px) and (min-width: 801px) {
+  app-home .dashboard-grid .filters {
+    top: 36px;
+    left: 3px;
+    right: 3px;
+    padding: 5px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
