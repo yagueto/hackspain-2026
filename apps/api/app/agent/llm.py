@@ -96,8 +96,12 @@ def _compact_snapshot(s: WorldSnapshot) -> dict[str, Any]:
 
 
 class LLMReviewer:
-    def __init__(self, api_key: str, model: str) -> None:
-        self.client = AsyncOpenAI(api_key=api_key, timeout=20, max_retries=0) if api_key else None
+    def __init__(self, api_key: str, model: str, base_url: str = "") -> None:
+        self.client = (
+            AsyncOpenAI(api_key=api_key, base_url=base_url or None, timeout=20, max_retries=0)
+            if api_key
+            else None
+        )
         self.model = model
 
     @property

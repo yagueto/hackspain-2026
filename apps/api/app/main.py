@@ -46,7 +46,7 @@ def build_runtime(
         else FakeHappyRobotClient(settings)
     )
     executor = Executor(state, hr, store, public_base_url=settings.public_base_url)
-    reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model)
+    reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model, settings.openai_base_url)
     orchestrator = Orchestrator(
         state,
         executor,

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = ""  # vacío = OpenAI; p.ej. https://api.deepseek.com
     agent_tick_seconds: float = Field(default=10.0, ge=0.1)
     agent_autostart: bool = True
 
