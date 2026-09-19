@@ -16,8 +16,10 @@ import {
 import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
-import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
+import { Icon, createIconSvg } from '../../../shared/icon/icon';
+import { Theme } from '../../../core/services/theme';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
+import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
 
 @Component({
@@ -32,6 +34,7 @@ export class OperationalMap {
   readonly locations = input<readonly MapLocation[]>([]);
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
+  readonly visibleUnitIds = input<readonly string[] | null>(null);
   readonly incidentSelected = output<string>();
   readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
@@ -40,8 +43,10 @@ export class OperationalMap {
   protected readonly missingAddresses = signal<string[]>([]);
   protected readonly lookupFailed = signal(false);
   protected readonly tileError = signal(false);
-  protected readonly centerLabel = signal('40.7340° N · 3.8760° O');
-  protected readonly resolvedLocations = signal<readonly MapLocation[]>([]);
+  private readonly sourceLocations = signal<readonly MapLocation[]>([]);
+  protected readonly resolvedLocations = computed(() =>
+    this.sourceLocations().map((location) => this.simulation.project(location)),
+  );
   protected readonly visibleLocations = computed(() =>
     this.resolvedLocations().filter((location) =>
       this.isVisible(location, this.showIncidents(), this.showUnits()),
@@ -50,9 +55,38 @@ export class OperationalMap {
   private readonly canvas = viewChild.required<ElementRef<HTMLDivElement>>('mapCanvas');
   private readonly geocoding = inject(Geocoding);
   private readonly routing = inject(Routing);
-  private readonly routeStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
+  private readonly simulation = inject(DemoRouteSimulation);
+  private readonly theme = inject(Theme);
+  private readonly haloLocations = computed(
+    () => this.resolvedLocations().filter((location) => location.kind === 'incident'),
+    {
+      equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
+    },
+  );
+  private readonly fetchedRouteStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
+  private readonly routeStates = computed(() => {
+    const states = new Map(this.fetchedRouteStates());
+    for (const location of this.resolvedLocations()) {
+      if (location.route?.navigation) states.set(location.id, location.route.navigation);
+    }
+    return states;
+  });
+  private readonly unmanagedLocations = computed(
+    () =>
+      this.locations().filter(
+        (location) =>
+          location.kind === 'unit' &&
+          location.route?.status === 'active' &&
+          !location.route.navigation &&
+          !this.simulation.isManaged(location),
+      ),
+    {
+      equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
+    },
+  );
   private readonly routeRetryVersion = signal(0);
   private readonly markers = new Map<string, L.Marker>();
+  private readonly markerAppearances = new Map<string, string>();
   private routeLayer?: ResourceRouteLayer;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
@@ -60,7 +94,9 @@ export class OperationalMap {
   private map?: L.Map;
   private tiles?: L.TileLayer;
   private markerLayer?: L.LayerGroup;
+  private haloLayer?: L.LayerGroup;
   private resizeObserver?: ResizeObserver;
+  private fitFrame?: number;
   private lastLocationKey = '';
   private lastSelection: string | null = null;
 
@@ -73,29 +109,69 @@ export class OperationalMap {
         maxZoom: 19,
         zoomSnap: 0.25,
       }).setView([40.734, -3.876], 13);
-      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
-      }).addTo(this.map);
-      this.tiles.on('tileerror', () => this.tileError.set(true));
       this.map.attributionControl.setPrefix(false);
       L.control
-        .zoom({ position: 'bottomright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' })
+        .zoom({
+          position: 'bottomright',
+          zoomInTitle: 'Acercar',
+          zoomOutTitle: 'Alejar',
+          zoomInText: createIconSvg('plus').outerHTML,
+          zoomOutText: createIconSvg('minus').outerHTML,
+        })
         .addTo(this.map);
+      this.map.createPane('incident-halos').style.zIndex = '350';
+      this.haloLayer = L.layerGroup().addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
-      this.map.on('moveend', () => {
-        const { lat, lng } = this.map!.getCenter();
-        this.centerLabel.set(
-          `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lng).toFixed(4)}° ${lng >= 0 ? 'E' : 'O'}`,
-        );
-      });
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);
       }
       this.ready.set(true);
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.map) return;
+      this.tiles?.remove();
+      this.tileError.set(false);
+      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+      }).addTo(this.map);
+      this.tiles.on('tileerror', () => this.tileError.set(true));
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.haloLayer) return;
+      const locations = this.haloLocations();
+      const selected = this.selectedIncidentId();
+      const dark = this.theme.current() === 'dark';
+      const visible = this.showIncidents();
+      this.haloLayer.clearLayers();
+      if (!visible) return;
+      for (const location of locations) {
+        if (
+          !location.radiusMeters ||
+          !Number.isFinite(location.radiusMeters) ||
+          location.radiusMeters <= 0
+        )
+          continue;
+        const active = location.incidentId === selected;
+        const color = dark ? '#e5e5e5' : '#666666';
+        for (const scale of [1, 0.7]) {
+          L.circle([location.coordinates.lat, location.coordinates.lng], {
+            radius: location.radiusMeters * scale,
+            pane: 'incident-halos',
+            interactive: false,
+            color,
+            weight: active ? 1.5 : 1,
+            opacity: active ? 0.65 : 0.25,
+            fillColor: color,
+            fillOpacity: active ? 0.12 : 0.045,
+          }).addTo(this.haloLayer);
+        }
+      }
     });
 
     effect((onCleanup) => {
@@ -110,7 +186,7 @@ export class OperationalMap {
 
     effect((onCleanup) => {
       if (!this.ready()) return;
-      const locations = this.locations();
+      const locations = this.unmanagedLocations();
       const visible = this.showUnits();
       this.routeRetryVersion();
       const controller = new AbortController();
@@ -137,15 +213,23 @@ export class OperationalMap {
       if (!this.ready()) return;
       const locations = this.resolvedLocations();
       const states = this.routeStates();
-      this.routeLayer?.render(locations, states, this.selectedUnitId(), this.showUnits());
+      this.routeLayer?.render(
+        locations.filter((location) => this.isVisible(location, true, true)),
+        states,
+        this.selectedUnitId(),
+        this.showUnits(),
+      );
       for (const location of locations) {
-        this.markers
-          .get(location.id)
-          ?.setPopupContent(this.popupContent(location, states.get(location.id)));
+        const marker = this.markers.get(location.id);
+        if (!marker?.isPopupOpen()) continue;
+        const content = this.popupContent(location, states.get(location.id));
+        const previous = marker.getPopup()?.getContent() as HTMLElement | undefined;
+        if (previous?.textContent !== content.textContent) marker.setPopupContent(content);
       }
     });
 
     this.destroyRef.onDestroy(() => {
+      if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
       this.resizeObserver?.disconnect();
       this.routeLayer?.remove();
       this.map?.remove();
@@ -155,6 +239,7 @@ export class OperationalMap {
   protected fitLocations(): void {
     const visible = this.visibleLocations();
     if (visible.length && this.map) {
+      this.map.invalidateSize({ pan: false });
       const points = visible.map((location) => location.coordinates);
       for (const location of visible) {
         const state = this.routeStates().get(location.id);
@@ -195,7 +280,7 @@ export class OperationalMap {
     const pending = uniqueAddresses.filter((address) => !known.has(normalizeAddress(address)));
     const resolved = [...locations];
     const missing: string[] = [];
-    this.resolvedLocations.set([...resolved]);
+    this.sourceLocations.set([...resolved]);
     this.missingAddresses.set([]);
     this.lookupFailed.set(false);
     this.locating.set(pending.length > 0);
@@ -223,7 +308,7 @@ export class OperationalMap {
       }
     }
     if (!signal.aborted) {
-      this.resolvedLocations.set([...resolved]);
+      this.sourceLocations.set([...resolved]);
       this.missingAddresses.set(missing);
       this.locating.set(false);
     }
@@ -237,42 +322,67 @@ export class OperationalMap {
     unitsVisible: boolean,
   ): void {
     if (!this.map || !this.markerLayer) return;
-    const openMarker = [...this.markers].find(([, marker]) => marker.isPopupOpen())?.[0];
-    this.markerLayer.clearLayers();
-    this.markers.clear();
-    let selectedMarker: L.Marker | undefined;
-    let selectedLocationId: string | undefined;
-    for (const location of locations) {
-      if (!this.isVisible(location, incidentsVisible, unitsVisible)) continue;
-      const selected = this.isSelected(location, selectedId, selectedUnitId);
-      const marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
-        icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
-        title: `${location.label} · ${location.address}`,
-        alt: location.label,
-        keyboard: true,
-        zIndexOffset: selected ? 1000 : location.kind === 'incident' ? 500 : 0,
-      }).addTo(this.markerLayer);
-      this.markers.set(location.id, marker);
-      marker.bindPopup(
-        this.popupContent(
-          location,
-          untracked(() => this.routeStates().get(location.id)),
-        ),
-        { maxWidth: 250 },
-      );
-      marker.on('click', () => {
-        if (location.kind === 'unit') this.unitSelected.emit(location.id);
-        else if (location.kind === 'incident' && location.incidentId)
-          this.incidentSelected.emit(location.incidentId);
-      });
-      if (selected) {
-        selectedMarker = marker;
-        selectedLocationId = location.id;
-      }
+    const visible = locations.filter((location) =>
+      this.isVisible(location, incidentsVisible, unitsVisible),
+    );
+    const ids = new Set(visible.map((location) => location.id));
+    for (const [id, marker] of this.markers) {
+      if (ids.has(id)) continue;
+      this.markerLayer.removeLayer(marker);
+      this.markers.delete(id);
+      this.markerAppearances.delete(id);
     }
-    const locationKey = locations
-      .map((location) => `${location.id}:${location.coordinates.lat}:${location.coordinates.lng}`)
-      .join('|');
+    let selectedMarker: L.Marker | undefined;
+    for (const location of visible) {
+      const selected = this.isSelected(location, selectedId, selectedUnitId);
+      const related = !selectedUnitId && !!selectedId && location.incidentId === selectedId;
+      const appearance = JSON.stringify([
+        location.kind,
+        location.icon,
+        location.label,
+        selected,
+        related,
+      ]);
+      let marker = this.markers.get(location.id);
+      if (!marker) {
+        marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
+          icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
+          title: `${location.label} · ${location.address}`,
+          alt: location.label,
+          keyboard: true,
+        }).addTo(this.markerLayer);
+        this.markers.set(location.id, marker);
+        this.markerAppearances.set(location.id, appearance);
+        marker.bindPopup(
+          this.popupContent(
+            location,
+            untracked(() => this.routeStates().get(location.id)),
+          ),
+          { maxWidth: 250 },
+        );
+        marker.on('click', () => {
+          if (location.kind === 'unit') this.unitSelected.emit(location.id);
+          else if (location.kind === 'incident' && location.incidentId)
+            this.incidentSelected.emit(location.incidentId);
+        });
+        marker.on('popupopen', () => {
+          const current = this.resolvedLocations().find((item) => item.id === location.id);
+          if (current)
+            marker!.setPopupContent(this.popupContent(current, this.routeStates().get(current.id)));
+        });
+      } else {
+        if (this.markerAppearances.get(location.id) !== appearance) {
+          marker.setIcon(this.createIcon(location, selectedUnitId ? null : selectedId, selected));
+          this.markerAppearances.set(location.id, appearance);
+        }
+        const point = L.latLng(location.coordinates.lat, location.coordinates.lng);
+        if (!marker.getLatLng().equals(point)) marker.setLatLng(point);
+        marker.getElement()?.setAttribute('title', `${location.label} · ${location.address}`);
+      }
+      marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
+      if (selected) selectedMarker = marker;
+    }
+    const locationKey = locations.map((location) => location.id).join('|');
     const selectionKey = selectedUnitId
       ? `unit:${selectedUnitId}`
       : selectedId
@@ -280,12 +390,17 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      untracked(() => this.fitLocations());
+      if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
+      this.fitFrame = requestAnimationFrame(() => {
+        this.fitFrame = undefined;
+        if (!this.destroyRef.destroyed) untracked(() => this.fitLocations());
+      });
     } else if (selectionKey !== this.lastSelection && selectedMarker) {
+      if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
+      this.fitFrame = undefined;
       this.map.panTo(selectedMarker.getLatLng(), { animate: false });
       selectedMarker.openPopup();
     }
-    if (selectedMarker && selectedLocationId === openMarker) selectedMarker.openPopup();
     this.lastSelection = selectionKey;
   }
 
@@ -296,7 +411,7 @@ export class OperationalMap {
     const states = new Map<string, ResourceRouteState>(
       units.map((unit) => [unit.id, { status: 'loading' }]),
     );
-    this.routeStates.set(new Map(states));
+    this.fetchedRouteStates.set(new Map(states));
     for (const [index, unit] of units.entries()) {
       try {
         const route = await this.routing.calculate(unit.coordinates, unit.route!, signal);
@@ -305,10 +420,10 @@ export class OperationalMap {
       } catch {
         if (signal.aborted) return;
         for (const pending of units.slice(index)) states.set(pending.id, { status: 'error' });
-        this.routeStates.set(new Map(states));
+        this.fetchedRouteStates.set(new Map(states));
         return;
       }
-      this.routeStates.set(new Map(states));
+      this.fetchedRouteStates.set(new Map(states));
     }
   }
 
@@ -355,14 +470,22 @@ export class OperationalMap {
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.textContent = 'Reintentar ruta';
-      retry.addEventListener('click', () => this.routeRetryVersion.update((value) => value + 1));
+      retry.addEventListener('click', () => {
+        if (location.route?.navigation) this.simulation.retry(location.id);
+        else this.routeRetryVersion.update((value) => value + 1);
+      });
       popup.append(retry);
     }
     return popup;
   }
 
   private isVisible(location: MapLocation, incidents: boolean, units: boolean): boolean {
-    return location.kind === 'place' || (location.kind === 'incident' ? incidents : units);
+    return (
+      location.kind === 'place' ||
+      (location.kind === 'incident'
+        ? incidents
+        : units && (this.visibleUnitIds() === null || this.visibleUnitIds()!.includes(location.id)))
+    );
   }
 
   private isSelected(
@@ -385,26 +508,12 @@ export class OperationalMap {
     element.className = `map-marker kind-${location.kind}${related ? ' is-related' : ''}${selected ? ' is-selected' : ''}`;
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    for (const [name, value] of Object.entries({
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': '1.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
-      'aria-hidden': 'true',
-    }))
-      svg.setAttribute(name, value);
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', ICON_PATHS[location.icon]);
-    svg.append(path);
-    symbol.append(svg);
+    symbol.append(createIconSvg(location.icon));
     const label = document.createElement('span');
     label.className = 'marker-label';
     label.textContent = location.label;
     element.append(symbol, label);
-    const size = location.kind === 'incident' ? 52 : 40;
+    const size = location.kind === 'incident' ? 46 : 34;
     return L.divIcon({
       html: element,
       className: 'operation-marker',

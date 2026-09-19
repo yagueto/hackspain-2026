@@ -2,6 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import { provideRouter } from '@angular/router';
+import { HumanQuestion } from '../models/operation-log';
+import { IncidentStore } from '../../features/incidents/incident-store';
+import { OperationLogStore } from '../../features/home/operation-log/operation-log-store';
+import { OperationLogPanel } from '../../features/home/operation-log/operation-log-panel';
 import { WorldSnapshot } from '../models/world';
 import { Operations, STREAM_FACTORY, toOperations } from './operations';
 
@@ -207,6 +212,72 @@ describe('Operations API integration', () => {
     expect(operations.snapshot()?.version).toBe(1);
     expect(operations.error()).toContain('inválida');
   });
+
+  it('rejects malformed nested timeline and question data before publishing a snapshot', () => {
+    start();
+    for (const invalid of [
+      { recent_events: [{ id: 'event', ts: 'invalid', payload: [] }] },
+      { coordination_questions: [{ id: 'question', status: 'pending' }] },
+      { recent_decisions: [{ id: 'decision', priorities: null }] },
+      { tasks: [{ id: 'task', resource_ids: null }] },
+    ]) {
+      stream.send('snapshot', { ...snapshot(2), ...invalid });
+      expect(operations.snapshot()?.version).toBe(1);
+      expect(operations.connection()).not.toBe('live');
+    }
+  });
+
+  it('retries metadata and falls back to HTTP after an invalid SSE snapshot', () => {
+    vi.useFakeTimers();
+    operations.start();
+    http.expectOne('/api/v1/meta').flush({}, { status: 503, statusText: 'Unavailable' });
+    http.expectOne('/api/v1/state').flush(snapshot());
+    stream.send('snapshot', snapshot(2));
+    stream.send('snapshot', { invalid: true });
+    vi.advanceTimersByTime(5000);
+    http.expectOne('/api/v1/meta').flush({ seed_demo: true, happyrobot_mode: 'simulated' });
+    http.expectOne('/api/v1/state').flush(snapshot(3));
+    expect(operations.meta()?.happyrobot_mode).toBe('simulated');
+    expect(operations.snapshot()?.version).toBe(3);
+  });
+
+  it('recovers failed metadata even while the state stream stays healthy', () => {
+    vi.useFakeTimers();
+    operations.start();
+    http.expectOne('/api/v1/meta').flush({}, { status: 503, statusText: 'Unavailable' });
+    http.expectOne('/api/v1/state').flush(snapshot());
+    stream.send('snapshot', snapshot(2));
+    vi.advanceTimersByTime(5000);
+    http.expectOne('/api/v1/meta').flush({ seed_demo: true, happyrobot_mode: 'simulated' });
+    http.expectOne('/api/v1/state').flush(snapshot(3));
+    expect(operations.modeLabel()).toContain('Salidas simuladas');
+  });
+
+  it('sends task versions on cancellation and priority overrides', async () => {
+    const task = {
+      id: 'task/version',
+      title: 'Revisión',
+      zone_id: null,
+      resource_ids: [],
+      status: 'dispatching',
+      updated_at: '2026-09-19T12:00:00Z',
+    };
+    operations.operatorKey.set('operator-test');
+    const cancellation = operations.cancelTask(task);
+    const request = http.expectOne('/api/v1/control/tasks/task%2Fversion/status');
+    expect(request.request.body.expected_updated_at).toBe(task.updated_at);
+    request.flush({ ...task, status: 'cancelled' });
+    await cancellation;
+    const priority = operations.prioritizeTask(task, 90, 'Revisión');
+    const update = http.expectOne('/api/v1/control/tasks/task%2Fversion/priority');
+    expect(update.request.body).toEqual({
+      priority: 90,
+      reason: 'Revisión',
+      expected_updated_at: task.updated_at,
+    });
+    update.flush(task);
+    await priority;
+  });
 });
 
 describe('World snapshot mapping', () => {
@@ -288,5 +359,274 @@ describe('World snapshot mapping', () => {
     expect(data.communications[0].vehicle).toBe('res-1');
     expect(data.communications[0].status).toBe('Reservado');
     expect(data.communications[0].message).toContain('pendiente');
+  });
+});
+
+function question(
+  id: string,
+  sequence: number,
+  urgency: HumanQuestion['urgency'] = 'high',
+): HumanQuestion {
+  return {
+    id,
+    sequence,
+    incidentId: 'call:call-1',
+    prompt: '¿Mantener la coordinación?',
+    urgency,
+    input: 'mixed',
+    options: [{ id: 'maintain', label: 'Mantener', action: { type: 'none' } }],
+    defaultAnswer: { custom: false, optionIds: ['maintain'], text: '' },
+    receivedAt: '2026-09-19T12:00:00Z',
+    expiresAt: '2026-09-19T12:02:00Z',
+    status: 'pending',
+  };
+}
+
+describe('Backend-backed incident and coordination stores', () => {
+  let operations: Operations;
+  let http: HttpTestingController;
+  let stream: FakeStream;
+  beforeEach(() => {
+    stream = new FakeStream();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: STREAM_FACTORY, useValue: () => stream },
+      ],
+    });
+    operations = TestBed.inject(Operations);
+    http = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => {
+    operations.stop();
+    http.verify();
+    vi.useRealTimers();
+  });
+  function setup(state = snapshot()) {
+    const log = TestBed.inject(OperationLogStore);
+    log.start();
+    http.expectOne('/api/v1/meta').flush({ seed_demo: true, happyrobot_mode: 'simulated' });
+    http.expectOne('/api/v1/state').flush(state);
+    return log;
+  }
+
+  it('never starts a mock catalog or fabricated log while the API is unavailable', () => {
+    const log = TestBed.inject(OperationLogStore);
+    http.expectOne('/api/v1/meta').flush({}, { status: 503, statusText: 'Unavailable' });
+    http.expectOne('/api/v1/state').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(log.incidents.incidents()).toEqual([]);
+    expect(log.incidents.units()).toEqual([]);
+    expect(log.history()).toEqual([]);
+    expect(log.pending()).toEqual([]);
+  });
+
+  it('shares Web Call reports, task decisions and correlated HappyRobot activity', () => {
+    const state = snapshot();
+    state.tasks = [
+      {
+        id: 'vital',
+        title: 'Asistencia crítica',
+        status: 'awaiting_approval',
+        incoming_call_id: 'call-1',
+        zone_id: null,
+        resource_ids: [],
+        requires_approval: true,
+        updated_at: state.generated_at,
+      },
+    ];
+    state.recent_actions = [
+      {
+        id: 'telegram',
+        ts: state.generated_at,
+        kind: 'telegram',
+        status: 'dispatched',
+        task_id: null,
+        contact_id: null,
+        request: { task_id: 'vital' },
+        workflow: 'send_telegram',
+        summary: 'Aviso de escalado',
+        result: {},
+      },
+    ];
+    const log = setup(state);
+    const store = TestBed.inject(IncidentStore);
+    expect(store.incidents()[0].id).toBe(operations.incidents()[0].id);
+    expect(store.details()['call:call-1'].affected).toBe(2);
+    expect(log.pendingCount()).toBe(1);
+    log.openForIncident('call:call-1');
+    expect(log.view()).toBe('missions');
+    expect(
+      log
+        .history()
+        .some(
+          (event) =>
+            event.id === 'action:telegram' && event.description.includes('resultado pendiente'),
+        ),
+    ).toBe(true);
+    const update = {
+      ...state,
+      version: 2,
+      generated_at: '2026-09-19T12:00:02Z',
+      incoming_calls: [
+        { ...state.incoming_calls[0], notes: 'Aviso corregido', victims: { count: 3 } },
+      ],
+    };
+    stream.send('snapshot', update);
+    expect(store.details()['call:call-1'].affected).toBe(3);
+    expect(store.incidents()[0].description).toContain('Aviso corregido');
+  });
+
+  it('keeps questions FIFO and uses highest urgency for incident attention without browser-side timeouts', () => {
+    vi.useFakeTimers();
+    const state = snapshot();
+    state.coordination_questions = [question('later', 2, 'critical'), question('first', 1)];
+    const log = setup(state);
+    expect(log.pending().map((item) => item.id)).toEqual(['first', 'later']);
+    expect(log.attention().get('call:call-1')).toMatchObject({ urgency: 'critical', count: 2 });
+    operations.now.set(Date.parse('2026-09-19T13:00:00Z'));
+    expect(log.pending()).toHaveLength(2);
+    expect(operations.snapshot()?.tasks).toEqual([]);
+    http.expectNone((request) => request.method === 'POST');
+  });
+
+  it('authenticates answers, preserves drafts on failure and prevents duplicate submissions', async () => {
+    const state = snapshot();
+    const first = question('first', 1),
+      second = question('second', 2);
+    state.coordination_questions = [first, second];
+    const log = setup(state);
+    const answer = { custom: true, optionIds: [], text: 'Revisar el acceso' };
+    log.updateDraft(first, answer);
+    await log.submit(first.id);
+    expect(log.errors()[first.id]).toContain('clave');
+    expect(log.draft(first)).toEqual(answer);
+    http.expectNone('/api/v1/control/questions/first/answer');
+    operations.operatorKey.set('operator-test');
+    const pending = log.submit(first.id);
+    await log.submit(first.id);
+    const request = http.expectOne('/api/v1/control/questions/first/answer');
+    expect(request.request.headers.get('X-API-Key')).toBe('operator-test');
+    expect(request.request.body).toEqual(answer);
+    request.flush({}, { status: 409, statusText: 'Conflict' });
+    await pending;
+    expect(log.draft(first)).toEqual(answer);
+    const retry = log.submit(first.id);
+    const resolved: HumanQuestion = {
+      ...first,
+      status: 'resolved',
+      resolution: {
+        questionId: first.id,
+        incidentId: first.incidentId,
+        idempotencyKey: first.id,
+        answer,
+        answerLabel: answer.text,
+        source: 'human',
+        answeredAt: '2026-09-19T12:01:00Z',
+        outcome: 'Nota guardada',
+        applied: true,
+      },
+    };
+    http.expectOne('/api/v1/control/questions/first/answer').flush(resolved);
+    await retry;
+    http.expectOne('/api/v1/state').flush({
+      ...state,
+      version: 2,
+      generated_at: '2026-09-19T12:01:00Z',
+      coordination_questions: [resolved, second],
+    });
+    expect(log.pending().map((item) => item.id)).toEqual(['second']);
+    expect(log.attention().get('call:call-1')?.count).toBe(1);
+    expect(log.drafts()[first.id]).toBeUndefined();
+  });
+
+  it('uses server resolution across clients and resets transient state for a new incident run', async () => {
+    const state = snapshot();
+    const first = question('first', 1);
+    state.coordination_questions = [first];
+    const log = setup(state);
+    log.updateDraft(first, { custom: true, text: 'Borrador', optionIds: [] });
+    stream.send('snapshot', {
+      ...state,
+      version: 2,
+      generated_at: '2026-09-19T12:00:02Z',
+      coordination_questions: [{ ...first, status: 'resolved' }],
+    });
+    expect(log.pending()).toEqual([]);
+    TestBed.tick();
+    const reset = snapshot(3);
+    reset.incident.started_at = '2026-09-19T12:00:03Z';
+    stream.send('snapshot', reset);
+    TestBed.tick();
+    expect(log.drafts()).toEqual({});
+    expect(log.incidentFilter()).toBeNull();
+  });
+
+  it('does not insert a delayed answer into a different incident run', async () => {
+    const state = snapshot();
+    const first = question('late', 1);
+    state.coordination_questions = [first];
+    const log = setup(state);
+    operations.operatorKey.set('operator-test');
+    log.updateDraft(first, { custom: false, text: '', optionIds: ['maintain'] });
+    const pending = log.submit(first.id);
+    const request = http.expectOne('/api/v1/control/questions/late/answer');
+    const reset = snapshot(2);
+    reset.incident.started_at = '2026-09-19T12:00:02Z';
+    stream.send('snapshot', reset);
+    TestBed.tick();
+    request.flush({ ...first, status: 'resolved' });
+    await pending;
+    http.match('/api/v1/state').forEach((request) => request.flush(reset));
+    expect(log.questions()).toEqual([]);
+  });
+
+  it('renders missions, communication outcomes and system metadata without exposing raw requests', async () => {
+    const state = snapshot();
+    state.agent = {
+      mode: 'paused',
+      autonomous: true,
+      hold_seconds: 10,
+      approval_required_for: ['evacuate_zone'],
+    };
+    state.tasks = [
+      {
+        id: 'evacuation',
+        title: 'Evacuación crítica',
+        zone_id: null,
+        resource_ids: [],
+        status: 'awaiting_approval',
+        requires_approval: true,
+      },
+    ];
+    state.recent_actions = [
+      {
+        id: 'call',
+        ts: state.generated_at,
+        kind: 'call',
+        status: 'unknown',
+        task_id: null,
+        contact_id: null,
+        summary: 'Llamada pendiente de verificar',
+        happyrobot_run_id: 'run-test',
+        result: { webhook: { summary: 'Sin confirmar', transcript: 'Parte de prueba' } },
+      },
+    ];
+    const log = setup(state);
+    const fixture = TestBed.createComponent(OperationLogPanel);
+    log.view.set('missions');
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('Evacuación crítica');
+    expect(element.querySelector('[data-task-id="evacuation"] input[type="checkbox"]')).toBeNull();
+    log.view.set('communications');
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Resultado desconocido');
+    expect(element.textContent).toContain('run-test');
+    log.view.set('system');
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Parada activa');
+    expect(element.textContent).toContain('Salidas simuladas');
   });
 });

@@ -1,0 +1,502 @@
+<section
+  class="log-panel panel"
+  id="operation-log"
+  [attr.role]="modal() ? 'dialog' : 'complementary'"
+  [attr.aria-modal]="modal() ? 'true' : null"
+  aria-labelledby="log-title"
+>
+  <header class="log-header">
+    <div class="heading-title">
+      <app-icon name="radio" />
+      <h2 id="log-title">Registro operativo</h2>
+    </div>
+    <button
+      type="button"
+      class="close-log"
+      aria-label="Cerrar registro"
+      (click)="closeRequested.emit()"
+    >
+      <app-icon name="close" />
+    </button>
+  </header>
+  <nav class="log-tabs" aria-label="Secciones del registro">
+    @for (tab of tabs; track tab.id) {
+      <button
+        type="button"
+        [class.active]="log.view() === tab.id"
+        [attr.aria-pressed]="log.view() === tab.id"
+        (click)="log.view.set(tab.id)"
+      >
+        {{ tab.label }}
+      </button>
+    }
+  </nav>
+  @if (log.view() !== 'system') {
+    <label class="incident-filter"
+      ><span class="sr-only">Filtrar registro por incidencia</span>
+      <select
+        #incident
+        [value]="log.incidentFilter() ?? ''"
+        (change)="log.setFilter(incident.value)"
+      >
+        <option value="">Todas las incidencias</option>
+        @for (item of log.incidents.incidents(); track item.id) {
+          <option [value]="item.id">{{ item.id }} · {{ item.title }}</option>
+        }
+      </select>
+    </label>
+  }
+  @if (log.incomingError()) {
+    <p class="stream-error" role="alert">
+      Se ha interrumpido la recepción. Se conserva el registro disponible.
+    </p>
+  }
+  @if (feedback()) {
+    <p class="control-feedback" role="status">{{ feedback() }}</p>
+  }
+  @if (operations.meta()?.happyrobot_mode === 'live') {
+    <label class="live-confirmation"
+      ><input
+        type="checkbox"
+        [checked]="liveConfirmed()"
+        (change)="liveConfirmed.set($any($event.target).checked)"
+      />Autorizo las comunicaciones reales que lance desde este panel.</label
+    >
+  }
+  @if (log.view() === 'activity') {
+    @if (log.pendingTasks().length) {
+      <button type="button" class="other-pending" (click)="log.view.set('missions')">
+        {{ log.pendingTasks().length }} decisiones críticas pendientes · Ver misiones
+      </button>
+    }
+    @if (log.incidentFilter() && log.pending().length > log.visiblePending().length) {
+      <button type="button" class="other-pending" (click)="log.setFilter('')">
+        {{ log.pending().length - log.visiblePending().length }} preguntas en otras incidencias ·
+        Ver todas
+      </button>
+    }
+    @if (log.visiblePending().length) {
+      <section class="pending-section" aria-label="Preguntas pendientes por orden de llegada">
+        <div class="section-heading">
+          <h3>Requieren respuesta</h3>
+          <span class="pending-count">{{ log.visiblePending().length }}</span>
+        </div>
+        <div class="pending-scroll">
+          @for (question of log.visiblePending(); track question.id) {
+            <app-urgent-question-card
+              [question]="question"
+              [class.related]="question.incidentId === selectedIncidentId()"
+            />
+          }
+        </div>
+      </section>
+    }
+    <details class="operator-tools">
+      <summary>Herramientas de coordinación</summary>
+      <form (submit)="note($event, noteText.value)">
+        <label>Nota operativa<input #noteText maxlength="2000" required /></label
+        ><button type="submit" [disabled]="busy() || !operations.operatorKey()">
+          Registrar nota
+        </button>
+      </form>
+      @if (operations.meta()?.seed_demo && operations.meta()?.happyrobot_mode === 'simulated') {
+        <button
+          type="button"
+          (click)="log.generateDemoQuestion()"
+          [disabled]="log.demoBusy() || !operations.operatorKey()"
+        >
+          Pregunta de prueba · Ctrl+I
+        </button>
+      }
+    </details>
+    <div class="section-heading history-heading">
+      <h3>Actividad</h3>
+      <span>{{ log.history().length }}</span>
+    </div>
+    <div
+      #history
+      class="history-scroll"
+      (scroll)="onScroll()"
+      tabindex="0"
+      aria-label="Histórico de actividad"
+    >
+      <ol class="history-list" role="log" aria-live="polite" aria-relevant="additions">
+        @for (event of log.history(); track event.incidentId + ':' + event.id) {
+          <li
+            class="log-entry"
+            [class.related]="event.incidentId === selectedIncidentId()"
+            [class.answer-entry]="event.kind === 'answer'"
+            [class.question-entry]="event.kind === 'question'"
+            [attr.data-event-id]="event.id"
+          >
+            <div class="event-meta">
+              <span class="event-source">{{ event.source }}</span
+              ><time
+                [attr.datetime]="event.occurredAt"
+                [title]="event.occurredAt | date: 'dd/MM/yyyy HH:mm:ss'"
+                >{{ event.occurredAt | date: 'HH:mm:ss' }}</time
+              >
+            </div>
+            @if (!log.incidentFilter()) {
+              <button
+                class="event-incident"
+                type="button"
+                (click)="log.setFilter(event.incidentId)"
+              >
+                {{ event.incidentId }}
+              </button>
+            }
+            <strong>{{ event.title }}</strong>
+            @if (event.kind === 'question') {
+              <span class="resolution-label">Pregunta resuelta</span>
+            }
+            <p>{{ event.summary ?? event.description }}</p>
+          </li>
+        } @empty {
+          <li class="empty-state">No hay actividad registrada para esta incidencia.</li>
+        }
+      </ol>
+    </div>
+    @if (unread()) {
+      <button class="new-events" type="button" (click)="scrollToLatest()">
+        {{ unread() }} nuevos · Ir al final
+      </button>
+    }
+  } @else {
+    <div class="control-scroll" tabindex="0" aria-label="Controles operativos">
+      @if (log.view() === 'missions') {
+        <details class="operator-tools">
+          <summary>Crear misión</summary>
+          <form
+            (submit)="
+              createMission(
+                $event,
+                kind.value,
+                title.value,
+                description.value,
+                zone.value,
+                contact.value
+              )
+            "
+          >
+            <label
+              >Tipo<select #kind>
+                @for (item of taskKinds; track item.id) {
+                  <option [value]="item.id">{{ item.label }}</option>
+                }
+              </select></label
+            >
+            <label>Título<input #title required maxlength="200" /></label>
+            <label
+              >Instrucciones<textarea #description rows="2" maxlength="10000"></textarea>
+            </label>
+            <label
+              >Destino<select #zone>
+                <option value="">Sin destino específico</option>
+                @for (item of operations.snapshot()?.zones; track item.id) {
+                  <option [value]="item.id">{{ item.name }}</option>
+                }
+                @for (item of operations.snapshot()?.fronts; track item.id) {
+                  <option [value]="item.id">{{ item.name }}</option>
+                }
+                @for (item of operations.snapshot()?.roads; track item.id) {
+                  <option [value]="item.id">{{ item.name }}</option>
+                }
+              </select></label
+            >
+            <label
+              >Contacto<select #contact>
+                <option value="">Selección del agente</option>
+                @for (item of operations.snapshot()?.contacts; track item.id) {
+                  <option [value]="item.id">{{ item.name }}</option>
+                }
+              </select></label
+            >
+            <button type="submit" [disabled]="busy() || !operations.operatorKey() || !canSend()">
+              Crear misión en el backend
+            </button>
+          </form>
+        </details>
+        @for (task of tasks(); track task.id) {
+          <article
+            class="control-card"
+            [class.critical]="task.status === 'awaiting_approval'"
+            [attr.data-task-id]="task.id"
+          >
+            <h3>{{ task.title }}</h3>
+            <p class="status-label">{{ taskLabels[task.status] || task.status }}</p>
+            @if (task.autonomous) {
+              <span class="auto-label">Decisión automática</span>
+            }
+            <p>{{ task.priority_reason }}</p>
+            @if (task.target_location; as point) {
+              <p>Destino: {{ point.label }} · {{ point.lat }}, {{ point.lng }}</p>
+            }
+            @if (task.resource_ids.length) {
+              <p>Recursos: {{ task.resource_ids.join(', ') }}</p>
+            }
+            @if (task.blocked_reason) {
+              <p class="stream-error">{{ task.blocked_reason }}</p>
+            }
+            @if (task.outcome) {
+              <p>{{ task.outcome }}</p>
+            }
+            @if (holdRemaining(task); as seconds) {
+              <p>
+                {{
+                  operations.paused()
+                    ? 'Retenida por parada · margen original'
+                    : 'Envío automático en'
+                }}
+                {{ seconds }} s
+              </p>
+            }
+            @if (task.escalated_at) {
+              <p>Escalado preparado; consulta la entrega en Comunicaciones.</p>
+            }
+            @if (task.incoming_call_id) {
+              <a
+                routerLink="/"
+                [queryParams]="{ incidencia: 'call:' + task.incoming_call_id }"
+                (click)="closeRequested.emit()"
+                >Revisar aviso, ubicación y aprobación</a
+              >
+            } @else if (task.status === 'awaiting_approval') {
+              <div class="control-buttons">
+                <button
+                  type="button"
+                  (click)="approve(task, true)"
+                  [disabled]="busy() || !operations.operatorKey() || !canSend()"
+                >
+                  Confirmar orden crítica</button
+                ><button
+                  type="button"
+                  (click)="approve(task, false)"
+                  [disabled]="busy() || !operations.operatorKey()"
+                >
+                  Rechazar
+                </button>
+              </div>
+            }
+            @if (!['done', 'cancelled', 'rejected', 'failed'].includes(task.status)) {
+              <div class="control-buttons">
+                <button
+                  type="button"
+                  (click)="cancel(task)"
+                  [disabled]="busy() || !operations.operatorKey()"
+                >
+                  Anular misión
+                </button>
+                @if (task.status === 'accepted' || task.status === 'in_progress') {
+                  <button
+                    type="button"
+                    (click)="complete(task)"
+                    [disabled]="busy() || !operations.operatorKey()"
+                  >
+                    Finalizar misión
+                  </button>
+                }
+              </div>
+              <label
+                >Prioridad (0–100)<input
+                  #priority
+                  type="number"
+                  min="0"
+                  max="100"
+                  [value]="task.priority ?? 50"
+              /></label>
+              <button
+                type="button"
+                (click)="prioritize(task, priority.value)"
+                [disabled]="busy() || !operations.operatorKey()"
+              >
+                Guardar prioridad
+              </button>
+            }
+          </article>
+        } @empty {
+          <p class="empty-state">No hay misiones en este ámbito.</p>
+        }
+      }
+      @if (log.view() === 'communications') {
+        <details class="operator-tools">
+          <summary>Preparar llamada o aviso Telegram</summary>
+          <form (submit)="communicate($event, channel.value, contact.value, message.value)">
+            <label
+              >Canal<select #channel>
+                <option value="call">Llamada HappyRobot</option>
+                <option value="telegram">Workflow send_telegram</option>
+              </select></label
+            >
+            <label
+              >Contacto<select #contact required>
+                <option value="">Selecciona un contacto</option>
+                @for (item of operations.snapshot()?.contacts; track item.id) {
+                  <option [value]="item.id">{{ item.name }}</option>
+                }
+              </select></label
+            >
+            <label
+              >Instrucciones<textarea #message required rows="3" maxlength="4096"></textarea>
+            </label>
+            <p>Las comunicaciones no sustituyen una asignación de recursos.</p>
+            <button type="submit" [disabled]="busy() || !operations.operatorKey() || !canSend()">
+              Preparar comunicación
+            </button>
+          </form>
+        </details>
+        @for (action of actions(); track action.id) {
+          <article class="control-card" [attr.data-action-id]="action.id">
+            <h3>{{ action.summary }}</h3>
+            <p class="status-label">{{ actionLabels[action.status] || action.status }}</p>
+            <time [attr.datetime]="action.ts">{{ action.ts | date: 'dd/MM HH:mm:ss' }}</time>
+            <p>{{ action.workflow || action.kind }} · Intentos: {{ action.attempts ?? 0 }}</p>
+            @if (action.happyrobot_run_id) {
+              <p>Run: {{ action.happyrobot_run_id }}</p>
+            }
+            @if (action.result.webhook; as result) {
+              <p>{{ result.summary }}</p>
+              @if (result.transcript) {
+                <details>
+                  <summary>Transcripción</summary>
+                  <p class="transcript">{{ result.transcript }}</p>
+                </details>
+              }
+            }
+            @if (action.error) {
+              <p class="stream-error">{{ action.error }}</p>
+            }
+            @if (action.next_attempt_at) {
+              <p>Reintento: {{ action.next_attempt_at | date: 'HH:mm:ss' }}</p>
+            }
+            @if (
+              action.happyrobot_run_id &&
+              !['completed', 'failed', 'skipped'].includes(action.status)
+            ) {
+              <button
+                type="button"
+                (click)="reconcile(action)"
+                [disabled]="busy() || !operations.operatorKey()"
+              >
+                Consultar run y reconciliar
+              </button>
+            }
+          </article>
+        } @empty {
+          <p class="empty-state">No hay órdenes ni comunicaciones registradas.</p>
+        }
+      }
+      @if (log.view() === 'system') {
+        <section class="control-card">
+          <h3>Estado del sistema</h3>
+          <p>{{ operations.modeLabel() }}</p>
+          <p>
+            HappyRobot: {{ operations.meta()?.happyrobot_environment || 'Entorno sin verificar' }}
+          </p>
+          <p>
+            Persistencia: {{ operations.meta()?.storage || 'Sin verificar' }} · Versión
+            {{ operations.snapshot()?.version }}
+          </p>
+          <p>
+            Revisor LLM:
+            {{ operations.meta()?.llm_enabled ? 'Configurado' : 'Planificación heurística local' }}
+          </p>
+          <p>
+            Última sincronización:
+            {{ operations.snapshot()?.last_synced_at | date: 'dd/MM HH:mm:ss' }}
+          </p>
+          @for (integration of integrations(); track integration[0]) {
+            <p>{{ integration[0] }}: {{ integration[1] ? 'Disponible' : 'No disponible' }}</p>
+          }
+          @for (workflow of workflows(); track workflow[0]) {
+            <p>
+              {{ workflow[0] }}: {{ workflow[1] ? 'Configurado' : 'No configurado para modo real' }}
+            </p>
+          }
+          <p>
+            Las Web Calls entrantes son independientes de las salidas simuladas. Ninguna orden se da
+            por aceptada hasta recibir un resultado operativo.
+          </p>
+        </section>
+        @if (operations.snapshot()?.agent; as agent) {
+          <section class="control-card">
+            <h3>Política del agente</h3>
+            <p>Estado: {{ agent.mode === 'paused' ? 'Parada activa' : 'En ejecución' }}</p>
+            <label class="live-confirmation"
+              ><input #autonomous type="checkbox" [checked]="agent.autonomous" />Decisiones no
+              críticas autónomas</label
+            >
+            <label
+              >Retención (segundos)<input
+                #hold
+                type="number"
+                min="0"
+                [value]="agent.hold_seconds ?? 10"
+            /></label>
+            <label
+              >Escalado (segundos; 0 lo desactiva)<input
+                #escalation
+                type="number"
+                min="0"
+                [value]="agent.escalate_after_seconds ?? 30"
+            /></label>
+            <label
+              >Intervalo del agente (segundos)<input
+                #interval
+                type="number"
+                min="0.1"
+                step="0.1"
+                [value]="agent.tick_seconds ?? 10"
+            /></label>
+            <p>
+              Requieren confirmación: {{ agent.approval_required_severities?.join(', ') }} ·
+              {{ agent.approval_required_for?.join(', ') }}
+            </p>
+            <button
+              type="button"
+              (click)="configure(autonomous.checked, hold.value, escalation.value, interval.value)"
+              [disabled]="busy() || !operations.operatorKey()"
+            >
+              Guardar política
+            </button>
+            <div class="control-buttons">
+              <button
+                type="button"
+                (click)="tick()"
+                [disabled]="
+                  busy() || !operations.operatorKey() || agent.mode === 'paused' || !canSend()
+                "
+              >
+                Ejecutar ciclo</button
+              ><button
+                type="button"
+                (click)="dispatch()"
+                [disabled]="
+                  busy() || !operations.operatorKey() || agent.mode === 'paused' || !canSend()
+                "
+              >
+                Procesar cola
+              </button>
+            </div>
+          </section>
+        }
+        @if (operations.snapshot()?.weather; as weather) {
+          <section class="control-card">
+            <h3>Meteorología</h3>
+            <p>Viento: {{ weather.wind_kmh }} km/h desde {{ weather.wind_from_deg }}°</p>
+            <p>{{ weather.temperature_c }} °C · Humedad {{ weather.humidity_pct }}%</p>
+            <p>{{ weather.forecast }}</p>
+          </section>
+        }
+        <section class="control-card">
+          <h3>Accesos y carreteras</h3>
+          @for (road of operations.snapshot()?.roads; track road.id) {
+            <p>{{ road.name }} · {{ road.open ? 'Abierta' : 'Cortada' }} · {{ road.reason }}</p>
+          } @empty {
+            <p>Sin información de carreteras.</p>
+          }
+        </section>
+      }
+    </div>
+  }
+</section>

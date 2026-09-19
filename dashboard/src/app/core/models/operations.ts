@@ -18,7 +18,17 @@ export type IconName =
   | 'chevron'
   | 'close'
   | 'pin'
-  | 'radio';
+  | 'radio'
+  | 'log'
+  | 'disabled'
+  | 'municipal'
+  | 'civil-protection'
+  | 'infrastructure'
+  | 'plus'
+  | 'minus'
+  | 'sun'
+  | 'moon'
+  | 'search';
 
 export interface Coordinates {
   lat: number;
@@ -30,7 +40,11 @@ export interface ResourceRoute {
   destination: Coordinates;
   destinationLabel?: string;
   via?: readonly Coordinates[];
+  navigation?: RouteNavigation;
 }
+
+export type RouteNavigation =
+  { status: 'loading' | 'unavailable' | 'error' } | { status: 'ready'; route: CalculatedRoute };
 
 export interface CalculatedRoute {
   path: readonly Coordinates[];
@@ -47,7 +61,14 @@ export interface MapLocation {
   kind: 'incident' | 'unit' | 'place';
   detail?: string;
   incidentId?: string;
+  radiusMeters?: number;
   route?: ResourceRoute;
+  resourceStatus?: CommunicationStatus;
+  service?: string;
+  capacity?: number;
+  contactId?: string | null;
+  etaMinutes?: number | null;
+  reportedAt?: string | null;
 }
 
 export interface Incident {
@@ -55,12 +76,13 @@ export interface Incident {
   title: string;
   area: string;
   address: string;
-  priority: 'P0' | 'P1' | 'P2';
+  priority?: 'P0' | 'P1' | 'P2' | 'P3' | null;
   status: string;
   icon: IconName;
   coordinates?: Coordinates;
   description?: string;
   locationStatus?: string;
+  radiusMeters?: number;
 }
 
 export type CommunicationStatus =

@@ -368,3 +368,54 @@ async def test_invalid_observation_cannot_partially_mutate_snapshot() -> None:
     await rt.orchestrator.synchronize()
     assert rt.state.fronts["front_sur"] == next(f for f in initial.fronts if f.id == "front_sur")
     await rt.hr.aclose()
+
+
+async def test_coordination_survives_sql_restore_and_concurrent_answers(pg: PostgresStore) -> None:
+    from app.domain.models import CoordinationAnswer, CoordinationQuestionIn
+    from tests.test_durable_api import coordination_question
+
+    initial = snapshot()
+    await pg.create(initial)
+    settings = Settings(agent_autostart=False, geocoding_enabled=False)
+    left = build_runtime(settings, store=pg)
+    right = build_runtime(settings, store=pg)
+    try:
+        left.state.restore(initial)
+        question = await left.orchestrator.create_question(
+            CoordinationQuestionIn.model_validate(coordination_question("sql-question"))
+        )
+        stored = await pg.load(initial.incident.id)
+        right.state.restore(stored)
+        assert right.state.coordination_questions[question.id] == question
+        answers = [
+            CoordinationAnswer(option_ids=["note"]),
+            CoordinationAnswer(option_ids=["maintain"]),
+        ]
+        results = await asyncio.gather(
+            left.orchestrator.answer_question(question.id, answers[0]),
+            right.orchestrator.answer_question(question.id, answers[1]),
+            return_exceptions=True,
+        )
+        assert all(
+            not isinstance(result, Exception) or isinstance(result, VersionConflict)
+            for result in results
+        )
+        stored = await pg.load(initial.incident.id)
+        saved = stored.coordination_questions[0]
+        assert saved.status == "resolved"
+        assert saved.resolution.answer in answers
+        response_events = [
+            event
+            for event in stored.recent_events
+            if event.payload.get("question_id") == question.id
+            and event.payload.get("log_kind") == "answer"
+        ]
+        assert len(response_events) == 1
+        replay = await right.orchestrator.answer_question(question.id, answers[1])
+        assert replay == saved
+        assert len((await pg.load(initial.incident.id)).coordination_questions) == 1
+    finally:
+        await left.hr.aclose()
+        await right.hr.aclose()
+        await left.geocoder.close()
+        await right.geocoder.close()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -18,6 +19,11 @@ from app.domain.models import (
     ActionKind,
     ActionStatus,
     AgentMode,
+    CoordinationAction,
+    CoordinationAnswer,
+    CoordinationQuestion,
+    CoordinationQuestionIn,
+    CoordinationResolution,
     Decision,
     Event,
     EventKind,
@@ -91,6 +97,7 @@ class Orchestrator:
             try:
                 if self.state.incident:
                     await self.synchronize()
+                    await self.resolve_due_questions()
                     await self.locate_pending_reports()
                     await self.reconcile_intake()
                     await self.escalate_stale_approvals()
@@ -468,6 +475,8 @@ class Orchestrator:
             task = s.tasks[task_id]
             if task.status != TaskStatus.awaiting_approval:
                 raise ValueError("la tarea no está pendiente de aprobación")
+            if expected_updated_at is not None and expected_updated_at != task.updated_at:
+                raise ValueError("la propuesta ha cambiado; revisa el estado actualizado")
             # Confirmar una ubicación solo tiene sentido sobre un aviso ciudadano; una
             # evacuación no tiene parte que revisar.
             if task.incoming_call_id:
@@ -488,7 +497,242 @@ class Orchestrator:
                     Proposal(task, task.resource_types, task.contact_roles),
                     {c.id: c.reliability for c in s.contacts.values()},
                 )
+            s.upsert_task(task)
+            s.add_event(
+                Event(
+                    source=EventSource.operator,
+                    kind=EventKind.note,
+                    title=f"{'Confirmada' if approved else 'Rechazada'}: {task.title}",
+                    payload={"task_id": task.id, "summary": task.outcome or task.title},
+                )
+            )
         await self.dispatch_pending()
+
+    async def create_question(self, body: CoordinationQuestionIn) -> CoordinationQuestion:
+        fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+        async with self.edit() as state:
+            existing = state.coordination_questions.get(body.id)
+            if existing:
+                if existing.request_hash != fingerprint:
+                    raise ValueError("identificador de pregunta reutilizado con otro contenido")
+                return existing
+            report = (
+                state.incoming_calls.get(body.incident_id.removeprefix("call:"))
+                if body.incident_id.startswith("call:")
+                else None
+            )
+            target = state.zones.get(body.incident_id) or state.fronts.get(body.incident_id)
+            if (
+                not report
+                and not target
+                and body.incident_id not in state.roads
+                and body.incident_id != self.incident_id
+            ):
+                raise ValueError("incidencia desconocida")
+            rank = {"critical": 0, "high": 1, "moderate": 2}
+            severity = (
+                "critical"
+                if report and report.severity == "vital"
+                else "high"
+                if report and report.severity == "grave"
+                else str(getattr(target, "threat", getattr(target, "intensity", "moderate")))
+            )
+            urgency = min(
+                (body.urgency, severity if severity in rank else "moderate"), key=rank.__getitem__
+            )
+            seconds = (
+                body.timeout_seconds or {"critical": 60, "high": 120, "moderate": 300}[urgency]
+            )
+            received = now()
+            question = CoordinationQuestion(
+                **body.model_dump(by_alias=False, exclude={"expires_at", "urgency"}),
+                urgency=urgency,
+                received_at=received,
+                expires_at=body.expires_at or received + timedelta(seconds=seconds),
+                sequence=max((q.sequence for q in state.coordination_questions.values()), default=0)
+                + 1,
+                request_hash=fingerprint,
+            )
+            state.coordination_questions[question.id] = question
+            state.add_event(
+                Event(
+                    source=EventSource.operator,
+                    kind=EventKind.note,
+                    title="Pregunta de coordinación",
+                    severity=Severity.high,
+                    payload={
+                        "incident_id": question.incident_id,
+                        "question_id": question.id,
+                        "summary": question.prompt,
+                        "log_kind": "question",
+                    },
+                )
+            )
+        return self.state.coordination_questions[body.id]
+
+    def _question_action_problem(
+        self, state: WorldState, question: CoordinationQuestion, action: CoordinationAction
+    ) -> str:
+        if action.type in ("none", "note"):
+            return ""
+        task = state.tasks.get(action.task_id or "")
+        if (
+            not task
+            or task.status != action.expected_status
+            or task.updated_at != action.expected_updated_at
+        ):
+            return "la tarea ha cambiado; revisa su estado actual"
+        incident_id = (
+            f"call:{task.incoming_call_id}"
+            if task.incoming_call_id
+            else task.zone_id or self.incident_id
+        )
+        if incident_id != question.incident_id:
+            return "la tarea no pertenece a esta incidencia"
+        if task.status in (
+            TaskStatus.done,
+            TaskStatus.cancelled,
+            TaskStatus.failed,
+            TaskStatus.rejected,
+        ):
+            return "la misión ya está cerrada"
+        if action.type == "set-status":
+            if action.status == "done" and task.status not in (
+                TaskStatus.accepted,
+                TaskStatus.in_progress,
+            ):
+                return "solo puede finalizarse una misión aceptada o en curso"
+            return ""
+        resource = state.resources.get(action.resource_id or "")
+        current_task = state.tasks.get(resource.assigned_task_id or "") if resource else None
+        current_incident = (
+            f"call:{current_task.incoming_call_id}"
+            if current_task and current_task.incoming_call_id
+            else resource.assigned_zone_id
+            if resource
+            else None
+        )
+        if not resource or current_incident != action.expected_incident_id:
+            return "la asignación del recurso ha cambiado"
+        if resource.assigned_task_id or resource.status != "available":
+            return "el recurso no está disponible; no se reasignan misiones activas"
+        if task.resource_ids or task.status not in (
+            TaskStatus.proposed,
+            TaskStatus.awaiting_approval,
+        ):
+            return "la tarea ya tiene una orden o reserva"
+        if (
+            resource.type not in task.resource_types
+            or not state.contact_for_resource(resource.id)
+            or not reachable(state, task, resource)
+        ):
+            return "el recurso no es compatible o accesible"
+        return invalid_task(state, task)
+
+    async def answer_question(
+        self, question_id: str, answer: CoordinationAnswer, *, timed_out: bool = False
+    ) -> CoordinationQuestion:
+        async with self.edit() as state:
+            question = state.coordination_questions.get(question_id)
+            if question is None:
+                raise ValueError("pregunta desconocida")
+            if question.status == "resolved":
+                return question
+            expired = now() >= question.expires_at
+            if timed_out and not expired:
+                return question
+            chosen = question.default_answer if expired else answer
+            if not question.accepts(chosen):
+                raise ValueError("respuesta inválida para esta pregunta")
+            actions = question.actions_for(chosen)
+            targets = [f"task:{a.task_id}" for a in actions if a.type not in ("none", "note")]
+            targets += [f"resource:{a.resource_id}" for a in actions if a.type == "assign-resource"]
+            problem = (
+                "acciones incompatibles sobre la misma tarea o recurso"
+                if len(set(targets)) != len(targets)
+                else next(
+                    (
+                        reason
+                        for action in actions
+                        if (reason := self._question_action_problem(state, question, action))
+                    ),
+                    "",
+                )
+            )
+            label = (
+                chosen.text
+                if chosen.custom
+                else ", ".join(
+                    option.label for option in question.options if option.id in chosen.option_ids
+                )
+            )
+            results = []
+            if not problem:
+                executor = self.executor.bind(state)
+                for action in actions:
+                    if action.type == "set-status":
+                        task = state.tasks[action.task_id or ""]
+                        if action.status == "cancelled":
+                            await executor.cancel_task(task, label)
+                        else:
+                            executor.complete_task(task, label)
+                        results.append(f"{task.title}: {task.status}")
+                    elif action.type == "assign-resource":
+                        task = state.tasks[action.task_id or ""]
+                        resource = state.resources[action.resource_id or ""]
+                        contact = state.contact_for_resource(resource.id)
+                        task.preferred_resource_id = resource.id
+                        task.assignee_contact_id = contact.id if contact else None
+                        await executor.execute(
+                            Proposal(task, task.resource_types, task.contact_roles), {}
+                        )
+                        state.upsert_task(task)
+                        results.append(
+                            f"{task.title}: {task.status}; recurso solicitado {resource.name}"
+                        )
+                    elif action.type == "note":
+                        results.append(
+                            "Instrucción registrada; no implica una comunicación enviada."
+                        )
+                    else:
+                        results.append("Se mantiene la actuación actual.")
+            outcome = f"No aplicada: {problem}" if problem else " ".join(results)
+            question.status = "resolved"
+            question.resolution = CoordinationResolution(
+                question_id=question.id,
+                incident_id=question.incident_id,
+                idempotency_key=question.id,
+                answer=chosen,
+                answer_label=label,
+                source="timeout" if expired else "human",
+                outcome=outcome,
+                applied=not bool(problem),
+            )
+            state.add_event(
+                Event(
+                    source=EventSource.system if expired else EventSource.operator,
+                    kind=EventKind.note,
+                    title="Respuesta automática por vencimiento"
+                    if expired
+                    else "Respuesta del coordinador",
+                    payload={
+                        "incident_id": question.incident_id,
+                        "question_id": question.id,
+                        "summary": f"{label}. {outcome}",
+                        "log_kind": "answer",
+                    },
+                )
+            )
+        return self.state.coordination_questions[question_id]
+
+    async def resolve_due_questions(self) -> None:
+        due = [
+            q
+            for q in self.state.coordination_questions.values()
+            if q.status == "pending" and q.expires_at <= now()
+        ]
+        for question in due:
+            await self.answer_question(question.id, question.default_answer, timed_out=True)
 
     async def dispatch_pending(self) -> None:
         async with self._tick_lock:

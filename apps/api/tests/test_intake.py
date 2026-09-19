@@ -271,7 +271,11 @@ async def test_evacuation_approval_does_not_require_location_confirmation(
     response = await client.post(
         "/api/v1/control/tasks",
         headers=headers,
-        json={"kind": "evacuate_zone", "title": "Evacuar zona de prueba", "zone_id": "zone_raso"},
+        json={
+            "kind": "evacuate_zone",
+            "title": "Evacuar zona de prueba",
+            "zone_id": "zone_poyales",
+        },
     )
     assert response.status_code == 201
     task = response.json()

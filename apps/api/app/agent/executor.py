@@ -337,6 +337,11 @@ class Executor:
             )
         )
 
+    def complete_task(self, task: Task, outcome: str) -> None:
+        if task.status not in (TaskStatus.accepted, TaskStatus.in_progress):
+            raise ValueError("solo puede finalizarse una misión aceptada o en curso")
+        self.state.set_task_status(task.id, TaskStatus.done, outcome or "Finalizada por operador")
+
     async def cancel_task(self, task: Task, reason: str) -> None:
         if task.cancellation_requested:
             return
