@@ -372,7 +372,7 @@ app-home .dashboard-grid .incident-list {
   gap: 3px;
 }
 app-home .dashboard-grid .feed-list {
-  --page-row-height: 72px;
+  --page-row-height: 44px;
   gap: 3px;
 }
 app-home .dashboard-grid .incident-row,
@@ -381,7 +381,7 @@ app-home .dashboard-grid .communication {
   gap: 6px;
 }
 app-home .dashboard-grid .communication {
-  grid-template-columns: 34px 20px minmax(0, 1fr) max-content;
+  grid-template-columns: max-content 20px minmax(0, 1fr) max-content;
   column-gap: 3px;
   row-gap: 1px;
   padding-block: 1px;
@@ -442,10 +442,10 @@ app-home .dashboard-grid .tile-notice {
 }
 @media (max-width: 1200px) {
   app-home .dashboard-grid .feed-list {
-    --page-row-height: 80px;
+    --page-row-height: 46px;
   }
   app-home .dashboard-grid .communication {
-    grid-template-columns: 32px 20px minmax(0, 1fr);
+    grid-template-columns: max-content 20px minmax(0, 1fr);
     column-gap: 3px;
     row-gap: 1px;
     padding-block: 1px;
@@ -466,8 +466,11 @@ app-home .dashboard-grid .tile-notice {
   }
 }
 @media (max-width: 480px) {
+  app-home .dashboard-grid .feed-list {
+    --page-row-height: 60px;
+  }
   app-home .dashboard-grid .communication {
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     column-gap: 3px;
   }
   app-home .dashboard-grid .communication-body {
