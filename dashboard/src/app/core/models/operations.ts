@@ -18,7 +18,8 @@ export type IconName =
   | 'chevron'
   | 'close'
   | 'pin'
-  | 'radio';
+  | 'radio'
+  | 'log';
 
 export interface Coordinates {
   lat: number;

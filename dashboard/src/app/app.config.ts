@@ -9,6 +9,7 @@ import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 import { MOCK_UNITS } from './core/data/operations.mock';
 import { DemoRouteSimulation } from './core/services/demo-route-simulation';
+import { OperationLogStore } from './features/home/operation-log/operation-log-store';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -16,7 +17,11 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideAppInitializer(() => {
       const simulation = inject(DemoRouteSimulation);
-      afterNextRender(() => simulation.start(MOCK_UNITS));
+      const log = inject(OperationLogStore);
+      afterNextRender(() => {
+        log.start();
+        simulation.start(MOCK_UNITS);
+      });
     }),
   ],
 };

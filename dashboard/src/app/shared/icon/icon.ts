@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { IconName } from '../../core/models/operations';
 
 export const ICON_PATHS: Record<IconName, string> = {
+  log: 'M4 3h16v14H9l-5 4V3ZM8 7h8M8 11h8',
   fire: 'M12 3c1 5-4 6-4 10 0 2 1 3 2 3-1-3 2-4 3-6 0 3 4 4 4 7 0 2-2 4-5 4-5 0-8-3-8-7 0-4 3-6 4-8 0 2 1 3 1 3 2-2 3-4 3-6Z',
   walk: 'M14 4h.01M13 7l-2 6 4 3 1 5M11 13l-4 8M13 8l3 4h4M12 8 8 9l-3 4',
   heart:

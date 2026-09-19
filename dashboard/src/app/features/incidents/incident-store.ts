@@ -34,6 +34,8 @@ export class IncidentStore {
           incidentId: incident.id,
           occurredAt: openedAt,
           title: 'Incidencia notificada',
+          summary: `Se ha creado ${incident.id}.`,
+          kind: 'created' as const,
           description: `Aviso recibido en ${incident.area}.`,
           source: 'Central 112',
         },
@@ -47,6 +49,19 @@ export class IncidentStore {
         },
       ];
     }),
+    ...MOCK_UNITS.filter((unit) => unit.kind === 'unit' && unit.incidentId).map((unit) => ({
+      id: `${unit.id}:assigned`,
+      incidentId: unit.incidentId!,
+      occurredAt: new Date(
+        Date.parse(
+          MOCK_INCIDENT_DETAILS[unit.incidentId!]?.openedAt ?? '2026-09-19T14:00:00+02:00',
+        ) + 90000,
+      ).toISOString(),
+      title: 'Recurso asignado',
+      description: `${unit.id} ha sido asignado a ${unit.incidentId}.`,
+      source: 'Coordinación',
+      kind: 'assignment' as const,
+    })),
     ...MOCK_COMMUNICATIONS.map((communication) => ({
       id: communication.id,
       incidentId: communication.incidentId,
@@ -69,6 +84,39 @@ export class IncidentStore {
         next: (update) => this.applyUpdate(update),
         error: () => this.updateError.set(true),
       });
+  }
+
+  appendEvent(event: IncidentEvent): void {
+    if (
+      !this.incidents().some((incident) => incident.id === event.incidentId) ||
+      !Number.isFinite(Date.parse(event.occurredAt))
+    )
+      return;
+    if (
+      this.events().some(
+        (existing) => existing.id === event.id && existing.incidentId === event.incidentId,
+      )
+    )
+      return;
+    this.eventState.update((events) => [...events, event]);
+  }
+
+  reassignUnit(unit: MapLocation, incidentId: string): void {
+    if (unit.kind !== 'unit' || !this.incidents().some((incident) => incident.id === incidentId))
+      return;
+    this.unitState.update((units) =>
+      units.map((existing) =>
+        existing.id === unit.id
+          ? {
+              ...existing,
+              incidentId,
+              coordinates: unit.coordinates,
+              address: unit.address,
+              route: undefined,
+            }
+          : existing,
+      ),
+    );
   }
 
   applyUpdate(update: IncidentUpdate): void {

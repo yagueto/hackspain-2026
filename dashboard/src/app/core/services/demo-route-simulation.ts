@@ -1,4 +1,6 @@
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { Subject } from 'rxjs';
+import { OperationLogEvent } from '../models/operation-log';
 import { Coordinates, MapLocation, RouteNavigation } from '../models/operations';
 import { advanceRoute, prepareRoute, RoutePlan } from './route-progress';
 import { Routing } from './routing';
@@ -19,6 +21,8 @@ export class DemoRouteSimulation {
   private readonly journeys = new Map<string, { plan: RoutePlan; startedAt: number }>();
   private readonly controller = new AbortController();
   private started = false;
+  private readonly arrivalEvents = new Subject<OperationLogEvent>();
+  readonly arrivals$ = this.arrivalEvents.asObservable();
 
   start(locations: readonly MapLocation[]): void {
     if (this.started) return;
@@ -32,6 +36,7 @@ export class DemoRouteSimulation {
     this.destroyRef.onDestroy(() => {
       clearInterval(timer);
       this.controller.abort();
+      this.arrivalEvents.complete();
     });
   }
 
@@ -123,7 +128,20 @@ export class DemoRouteSimulation {
         completed: progress.completed,
         navigation: { status: 'ready', route: progress.remaining },
       });
-      if (progress.completed) this.journeys.delete(id);
+      if (progress.completed) {
+        this.journeys.delete(id);
+        const unit = this.sources.get(id);
+        if (unit?.incidentId)
+          this.arrivalEvents.next({
+            id: `arrival:${id}`,
+            incidentId: unit.incidentId,
+            occurredAt: new Date().toISOString(),
+            kind: 'arrival',
+            title: 'Recurso en destino',
+            description: `${id} ha llegado a ${unit.route?.destinationLabel ?? 'su destino'}.`,
+            source: 'Seguimiento de recursos',
+          });
+      }
     }
     this.frames.set(frames);
   }

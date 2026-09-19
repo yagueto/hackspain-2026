@@ -1,3 +1,5 @@
+import { OperationLogEvent } from '../../core/models/operation-log';
+
 export interface IncidentDetails {
   category: string;
   openedAt: string;
@@ -5,14 +7,7 @@ export interface IncidentDetails {
   affectedNote: string;
 }
 
-export interface IncidentEvent {
-  id: string;
-  incidentId: string;
-  occurredAt: string;
-  title: string;
-  description: string;
-  source: string;
-}
+export type IncidentEvent = OperationLogEvent;
 
 export const MOCK_INCIDENT_DETAILS: Record<string, IncidentDetails> = {
   'INC-001': {
