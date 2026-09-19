@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -69,7 +70,8 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
             await rt.store.open()
             snapshot = await rt.store.load(settings.incident_id)
             if snapshot is None and settings.storage_backend == "memory" and settings.seed_demo:
-                seed_wildfire(rt.state)
+                phones = json.loads(settings.seed_phones) if settings.seed_phones else None
+                seed_wildfire(rt.state, phones=phones)
                 if rt.state.incident:
                     rt.state.incident.id = settings.incident_id
                 rt.state.agent.tick_seconds = settings.agent_tick_seconds

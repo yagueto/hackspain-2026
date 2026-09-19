@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     storage_backend: Literal["memory", "twin"] = "memory"
     incident_id: str = "incendio-gredos-demo"
     seed_demo: bool = True
+    seed_phones: str = ""  # JSON opcional rol->teléfono real para la demo
     twin_poll_seconds: float = Field(default=2, ge=0.1)
     twin_batch_size: int = Field(default=100, ge=1, le=250)
     happyrobot_mode: Literal["simulated", "live"] = "simulated"
