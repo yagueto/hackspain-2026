@@ -7,6 +7,7 @@ from datetime import timedelta
 import httpx
 import psycopg
 import pytest
+from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg.sql import SQL, Identifier
 from pydantic import BaseModel
@@ -26,7 +27,7 @@ from app.domain.models import (
 )
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
-from app.main import build_runtime
+from app.main import build_runtime, create_app
 from app.store.persistence import (
     MemoryStore,
     ObservationConflict,
@@ -34,6 +35,7 @@ from app.store.persistence import (
     StoreError,
     VersionConflict,
 )
+from app.store.postgres import PostgresStore
 from app.store.twin import TwinStore, json_literal, literal
 
 
@@ -41,8 +43,8 @@ class SQLBody(BaseModel):
     sql: str
 
 
-@pytest.fixture
-async def twin() -> AsyncIterator[TwinStore]:
+@pytest.fixture(params=["twin", "postgres"])
+async def twin(request: pytest.FixtureRequest) -> AsyncIterator[TwinStore]:
     dsn = os.environ.get("TEST_POSTGRES_DSN")
     if not dsn:
         pytest.skip("TEST_POSTGRES_DSN no configurado")
@@ -92,10 +94,15 @@ async def twin() -> AsyncIterator[TwinStore]:
             except psycopg.Error as exc:
                 return httpx.Response(400, json={"error": str(exc)})
 
-    client = httpx.AsyncClient(
-        base_url="https://twin.test/api/v2", transport=httpx.MockTransport(handle)
-    )
-    store = TwinStore(Settings(), client)
+    if request.param == "postgres":
+        store: TwinStore = PostgresStore(
+            Settings(database_url=make_conninfo(dsn, options=f"-c search_path={schema}"))
+        )
+    else:
+        client = httpx.AsyncClient(
+            base_url="https://twin.test/api/v2", transport=httpx.MockTransport(handle)
+        )
+        store = TwinStore(Settings(), client)
     await store.migrate()
     await store.open()
     try:
@@ -172,7 +179,7 @@ async def test_pending_observations_block_atomic_send_claim(twin: TwinStore) -> 
     updated = initial.model_copy(deep=True)
     updated.version = 1
     updated.recent_actions = [
-        Action(kind=ActionKind.sms, summary="orden", status=ActionStatus.sending)
+        Action(kind=ActionKind.call, summary="orden", status=ActionStatus.sending)
     ]
     with pytest.raises(VersionConflict):
         await twin.save(updated, 0, [], require_synced=True)
@@ -287,12 +294,17 @@ async def test_twin_contract_fails_closed(response: httpx.Response) -> None:
 async def test_restart_restores_all_actions_and_pending_commands(twin: TwinStore) -> None:
     initial = snapshot()
     initial.recent_actions = [
-        Action(kind=ActionKind.sms, summary=f"anterior {i}", status=ActionStatus.completed)
+        Action(kind=ActionKind.call, summary=f"anterior {i}", status=ActionStatus.completed)
         for i in range(60)
     ]
-    pending = Action(kind=ActionKind.sms, summary="pendiente", workflow="sms", request={})
+    pending = Action(
+        kind=ActionKind.call, summary="pendiente", workflow="call_civilian", request={}
+    )
     sending = Action(
-        kind=ActionKind.sms, summary="incierta", workflow="sms", status=ActionStatus.sending
+        kind=ActionKind.call,
+        summary="incierta",
+        workflow="call_civilian",
+        status=ActionStatus.sending,
     )
     initial.recent_actions.extend([pending, sending])
     await twin.create(initial)
@@ -307,6 +319,55 @@ async def test_restart_restores_all_actions_and_pending_commands(twin: TwinStore
     restored = await twin.load(initial.incident.id)
     assert len(restored.recent_actions) == 62
     await rt.hr.aclose()
+
+
+async def test_restart_api_on_postgres_without_happyrobot_key(twin: TwinStore) -> None:
+    if not isinstance(twin, PostgresStore):
+        return
+    settings = Settings(
+        storage_backend="postgres",
+        database_url=twin._dsn,
+        agent_autostart=False,
+        happyrobot_api_key="",
+        api_key="test",
+    )
+    app = create_app(settings)
+    headers = {"X-API-Key": "test"}
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://test"
+        ) as client:
+            assert (await client.post("/api/v1/control/tick", headers=headers)).status_code == 200
+            action = (await client.get("/api/v1/actions")).json()[0]
+            response = await client.post(
+                "/api/v1/webhooks/happyrobot",
+                json={
+                    "command_id": action["id"],
+                    "observation_id": "persisted-callback",
+                    "outcome": "accepted",
+                    "eta_minutes": "12",
+                },
+            )
+            assert response.status_code == 202
+            await client.post("/api/v1/control/pause", headers=headers)
+            saved = (await client.get("/api/v1/state")).json()
+    restarted = create_app(settings)
+    async with restarted.router.lifespan_context(restarted):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(restarted), base_url="http://test"
+        ) as client:
+            restored = (await client.get("/api/v1/state")).json()
+            assert restored["version"] == saved["version"]
+            assert restored["tasks"] == saved["tasks"]
+            assert restored["recent_actions"] == saved["recent_actions"]
+            assert restored["resources"] == saved["resources"]
+            assert restored["agent"]["mode"] == "paused"
+            assert (await client.get("/api/v1/receipts", headers=headers)).json() == [
+                {"observation_id": "persisted-callback", "status": "applied", "reason": ""}
+            ]
+            health = (await client.get("/healthz")).json()
+            assert health["storage"] == "postgres"
+            assert health["synchronized"]
 
 
 class InvalidRowStore(MemoryStore):

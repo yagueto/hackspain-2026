@@ -11,7 +11,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+)
 
 
 def now() -> datetime:
@@ -114,6 +121,7 @@ class ContactRole(StrEnum):
 class ActionKind(StrEnum):
     call = "call"
     sms = "sms"
+    telegram = "telegram"
     signal = "signal"
     assign = "assign"
     internal = "internal"
@@ -399,3 +407,28 @@ class CallOutcome(BaseModel):
     summary: str = ""
     transcript: str = ""
     extra: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @field_validator(
+        "observation_id",
+        "task_id",
+        "action_id",
+        "command_id",
+        "run_id",
+        "session_id",
+        "contact_id",
+        "phone",
+        "eta_minutes",
+        "injured_count",
+        "civilians_count",
+        "road_blocked",
+        "needs_medical",
+        "evacuation_confirmed",
+        "shelter_capacity",
+        "resource_status",
+        mode="before",
+    )
+    @classmethod
+    def _blank_to_none(cls, v: object) -> object:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v

@@ -122,9 +122,29 @@ async def test_reconcile_known_run_does_not_imply_unit_available() -> None:
             assert app.state.rt.state.resources[task.resource_ids[0]].assigned_task_id == task.id
 
 
-def test_live_requires_durable_storage_and_webhook_secret() -> None:
+def test_live_requires_api_key_and_webhook_secret() -> None:
     with pytest.raises(ValueError, match="modo live"):
-        create_app(Settings(happyrobot_mode="live", happyrobot_api_key="test"))
+        create_app(
+            Settings(
+                happyrobot_mode="live",
+                happyrobot_api_key="test",
+                happyrobot_webhook_secret="",
+            )
+        )
+    with pytest.raises(ValueError, match="modo live"):
+        create_app(
+            Settings(
+                happyrobot_mode="live",
+                happyrobot_api_key="",
+                happyrobot_webhook_secret="s",
+            )
+        )
+
+
+async def test_external_http_is_blocked_in_tests() -> None:
+    async with AsyncClient() as client:
+        with pytest.raises(AssertionError, match="HTTP externo bloqueado"):
+            await client.post("https://must-not-be-contacted.invalid", json={})
 
 
 async def test_documented_observation_and_receipt_contract(client: AsyncClient) -> None:

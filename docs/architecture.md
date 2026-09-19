@@ -157,7 +157,12 @@ El estado de una acción describe la **comunicación**. Una llamada aceptada pue
 El payload del workflow incluye `command_id` (= `action_id`), `task_id`, `resource_ids`,
 `incident_id`, `world_state_version`, contacto/teléfono, instrucciones, clima, carreteras,
 `observations_table` y `callback_url`. Workflows: `call_responder`, `call_civilian`,
-`notify_authority`, `sms`.
+`notify_authority`, `send_telegram`. Los avisos de texto usan `send_telegram`: el backend
+dispara el workflow y es el workflow quien hace el POST a la API de Telegram. El backend no
+habla con Telegram ni con ningún puente intermedio. El payload de un aviso lleva solo
+`command_id`, `action_id`, `channel`, `message`, `contacto`, `incident_id` y `callback_url`;
+el chat de destino lo resuelve HappyRobot, porque un teléfono no es un chat de Telegram.
+Una orden con un workflow que no corresponde a su `kind` falla en vez de cambiar de canal.
 
 Preferentemente el agente inserta la observación en Twin. Como alternativa, envía
 `POST /api/v1/webhooks/happyrobot` con `X-Webhook-Secret`:
@@ -210,7 +215,8 @@ Todos los endpoints cuelgan de `/api/v1`:
   descargar `/state`. No aplicar snapshots más antiguos que el que ya se muestra.
 - `/control/pause`, `/resume`, `/tick`, `/agent`.
 - `/control/tasks`, `/tasks/{id}/approve`, `/priority`, `/status`.
-- `/control/call`, `/sms`, `/note`, `/actions/{id}/reconcile`.
+- `/control/call`, `/telegram`, `/sms` (alias obsoleto de Telegram), `/note`,
+  `/actions/{id}/reconcile` (sirve también para avisos, que ahora tienen `run_id`).
 - `/control/incident`: inicialización explícita, solo si no hay incidente activo.
 - `/history/runs`, `/history/runs/{id}/journal`, `/history/lessons`.
 

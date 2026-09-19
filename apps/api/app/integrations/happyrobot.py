@@ -3,7 +3,7 @@
 Base: https://platform[.eu].happyrobot.ai/api/v2 — auth Bearer con la API key.
 
 Usamos:
-- POST /workflows/{id}/runs      -> disparar una llamada / SMS / WhatsApp (un workflow por tipo)
+- POST /workflows/{id}/runs      -> disparar una llamada (un workflow por tipo de contacto)
 - GET  /runs/{id}                -> estado de la ejecución
 - GET  /runs/{id}/sessions       -> sesiones (transcripción, variables extraídas)
 - GET  /sessions/{id}/messages   -> mensajes de la conversación
@@ -26,7 +26,7 @@ from app.config import Settings
 
 log = logging.getLogger(__name__)
 
-WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority", "sms"]
+WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority", "send_telegram"]
 
 
 class HappyRobotError(RuntimeError):
@@ -58,7 +58,7 @@ class HappyRobotClient:
             "call_responder": s.happyrobot_wf_call_responder,
             "call_civilian": s.happyrobot_wf_call_civilian,
             "notify_authority": s.happyrobot_wf_notify_authority,
-            "sms": s.happyrobot_wf_sms,
+            "send_telegram": s.happyrobot_wf_telegram,
         }[kind]
 
     async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
@@ -165,6 +165,9 @@ class FakeHappyRobotClient(HappyRobotClient):
 
     async def trigger_run(self, workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._trigger(workflow_id or "wf_fake", payload)
+
+    async def get_run(self, run_id: str) -> dict[str, Any]:
+        return {"id": run_id, "status": "running"}
 
     async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
         self.calls.append({"method": method, "path": path, **kw})

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from app.domain.state import WorldState
 from app.integrations.happyrobot import FakeHappyRobotClient, HappyRobotClient
 from app.runtime import Runtime
 from app.store import persistence
+from app.store.postgres import PostgresStore
 from app.store.twin import TwinStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -32,29 +34,33 @@ def build_runtime(
     if settings.storage_backend == "twin" and not settings.happyrobot_api_key:
         raise ValueError("Twin requiere HAPPYROBOT_API_KEY; usa STORAGE_BACKEND=memory para demo")
     if settings.happyrobot_mode == "live" and (
-        not settings.happyrobot_api_key
-        or not settings.happyrobot_webhook_secret
-        or settings.storage_backend != "twin"
+        not settings.happyrobot_api_key or not settings.happyrobot_webhook_secret
     ):
-        raise ValueError("modo live requiere Twin, API key y webhook secret")
-    store = store or (
-        TwinStore(settings) if settings.storage_backend == "twin" else persistence.MemoryStore()
-    )
+        raise ValueError("modo live requiere API key y webhook secret")
+    if settings.happyrobot_mode == "live" and settings.storage_backend == "memory":
+        log.warning("modo live con persistencia en memoria: el estado se pierde al reiniciar")
+    if store is None:
+        if settings.storage_backend == "postgres":
+            store = PostgresStore(settings)
+        elif settings.storage_backend == "twin":
+            store = TwinStore(settings)
+        else:
+            store = persistence.MemoryStore()
     hr: HappyRobotClient = (
         HappyRobotClient(settings)
         if settings.happyrobot_mode == "live"
         else FakeHappyRobotClient(settings)
     )
     executor = Executor(state, hr, store, public_base_url=settings.public_base_url)
-    reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model)
+    reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model, settings.openai_base_url)
     orchestrator = Orchestrator(
         state,
         executor,
         store,
         reviewer,
         settings.agent_tick_seconds,
-        settings.twin_poll_seconds,
-        settings.twin_batch_size,
+        settings.store_poll_seconds,
+        settings.store_batch_size,
     )
     return Runtime(settings, state, store, hr, executor, orchestrator)
 
@@ -68,8 +74,9 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
         try:
             await rt.store.open()
             snapshot = await rt.store.load(settings.incident_id)
-            if snapshot is None and settings.storage_backend == "memory" and settings.seed_demo:
-                seed_wildfire(rt.state)
+            if snapshot is None and settings.storage_backend != "twin" and settings.seed_demo:
+                phones = json.loads(settings.seed_phones) if settings.seed_phones else None
+                seed_wildfire(rt.state, phones=phones)
                 if rt.state.incident:
                     rt.state.incident.id = settings.incident_id
                 rt.state.agent.tick_seconds = settings.agent_tick_seconds
@@ -133,9 +140,11 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
             "ok": True,
             "agent": rt.state.agent.mode,
             "happyrobot": rt.hr.configured,
+            "happyrobot_mode": settings.happyrobot_mode,
+            "telegram": bool(settings.happyrobot_wf_telegram),
             "llm": rt.orchestrator.reviewer.enabled,
             "storage": settings.storage_backend,
-            "synchronized": rt.state.integrations.get("twin", False),
+            "synchronized": rt.state.integrations.get("storage", False),
             "version": rt.state.version,
             "last_synced_at": rt.state.last_synced_at,
         }

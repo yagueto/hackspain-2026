@@ -4,7 +4,7 @@ import hmac
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import JsonValue
 
-from app.domain.models import CallOutcome, EventKind, Observation
+from app.domain.models import ActionKind, CallOutcome, EventKind, Observation
 from app.domain.observations import resolve_action
 from app.runtime import Runtime, get_runtime
 
@@ -23,13 +23,19 @@ async def happyrobot_webhook(
     await rt.orchestrator.synchronize()
     try:
         action = resolve_action(rt.state, body)
+        if action.kind not in (ActionKind.call, ActionKind.sms, ActionKind.telegram):
+            raise ValueError("la orden no corresponde a HappyRobot")
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     digest = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
     observation = Observation(
         observation_id=body.observation_id or f"hr_{digest}",
         incident_id=rt.orchestrator.incident_id,
-        kind=EventKind.call_outcome,
+        kind=(
+            EventKind.message_outcome
+            if action.kind in (ActionKind.sms, ActionKind.telegram)
+            else EventKind.call_outcome
+        ),
         command_id=action.id,
         source_run_id=body.run_id,
         observed_at=body.observed_at or action.ts,

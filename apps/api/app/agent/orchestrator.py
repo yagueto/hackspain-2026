@@ -60,7 +60,7 @@ class Orchestrator:
     def start(self, autoplan: bool = True) -> None:
         self._autoplan = autoplan
         if self._task is None:
-            self._task = asyncio.create_task(self._loop(), name="twin-sync")
+            self._task = asyncio.create_task(self._loop(), name="store-sync")
 
     async def stop(self) -> None:
         if self._task:
@@ -112,7 +112,7 @@ class Orchestrator:
                 if candidate.resources[rid].assigned_task_id != task.id:
                     raise ValueError("reserva inconsistente")
         candidate.version = expected + 1
-        candidate.integrations["twin"] = True
+        candidate.integrations["storage"] = True
         try:
             await self.store.save(
                 candidate.snapshot(full=True),
@@ -123,7 +123,7 @@ class Orchestrator:
         except VersionConflict:
             raise
         except StoreError:
-            self.state.set_integration("twin", False)
+            self.state.set_integration("storage", False)
             raise
         self.state.restore(candidate.snapshot(full=True), emit=True)
 
@@ -143,7 +143,7 @@ class Orchestrator:
                 rows = await self.store.pending(self.incident_id, self.batch_size)
                 if not rows:
                     self.state.last_synced_at = now()
-                    self.state.integrations["twin"] = True
+                    self.state.integrations["storage"] = True
                     return
                 candidate = self.state.copy()
                 receipts = []
@@ -173,7 +173,7 @@ class Orchestrator:
         except VersionConflict:
             raise
         except StoreError:
-            self.state.set_integration("twin", False)
+            self.state.set_integration("storage", False)
             raise
 
     @asynccontextmanager
@@ -188,7 +188,6 @@ class Orchestrator:
         if observation.incident_id != self.incident_id:
             raise ValueError("incident_id no coincide con el incidente activo")
         await self.store.observe(observation)
-        self.state.dirty.set()
 
     async def ingest_event(self, event: Event) -> Event:
         await self.ingest(
@@ -214,7 +213,7 @@ class Orchestrator:
             for action in candidate.actions.values():
                 if action.status == ActionStatus.sending:
                     action.status = ActionStatus.unknown
-                    action.error = "reinicio durante el envío; reconciliar con HappyRobot"
+                    action.error = "reinicio durante el envío; verificar resultado con el proveedor"
                     changed = True
             if changed:
                 await self._commit(candidate)
@@ -358,10 +357,10 @@ class Orchestrator:
             await self._synchronize()
             if self.state.agent.mode != AgentMode.running:
                 return
-            if not self.state.integrations.get("happyrobot", True):
-                return
             s = self.state.copy()
             action = s.actions[aid]
+            if not s.integrations.get("happyrobot", True):
+                continue
             if action.status != ActionStatus.pending:
                 continue
             if action.next_attempt_at and action.next_attempt_at > now():

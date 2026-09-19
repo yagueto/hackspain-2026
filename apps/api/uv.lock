@@ -136,6 +136,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "openai" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sse-starlette" },
@@ -146,7 +147,6 @@ dependencies = [
 dev = [
     { name = "anyio" },
     { name = "mypy" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -157,6 +157,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "openai", specifier = ">=3.16.2" },
+    { name = "psycopg", extras = ["binary"], specifier = "==3.2.10" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "sse-starlette", specifier = ">=3.4.11" },
@@ -167,7 +168,6 @@ requires-dist = [
 dev = [
     { name = "anyio", specifier = ">=4.15.1" },
     { name = "mypy", specifier = ">=2.3.1" },
-    { name = "psycopg", extras = ["binary"], specifier = "==3.2.10" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "ruff", specifier = ">=0.16.8" },
