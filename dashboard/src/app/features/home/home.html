@@ -1,0 +1,21 @@
+<h1 class="sr-only">Centro de coordinación de emergencias</h1>
+<div class="dashboard-grid">
+  <app-operational-map
+    [addresses]="addresses()"
+    [locations]="locations()"
+    [selectedIncidentId]="selectedIncidentId()"
+    (incidentSelected)="selectIncident($event)"
+  />
+  <div class="operations-column">
+    <app-incident-list
+      [incidents]="incidents()"
+      [selectedId]="selectedIncidentId()"
+      (incidentSelected)="selectIncident($event)"
+    />
+    <app-service-feed
+      [communications]="communications()"
+      [selectedIncidentId]="selectedIncidentId()"
+      (incidentSelected)="selectIncident($event)"
+    />
+  </div>
+</div>
