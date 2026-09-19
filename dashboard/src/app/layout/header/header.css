@@ -4,11 +4,27 @@
   z-index: 1100;
 }
 .topbar {
-  height: 52px;
+  height: 44px;
   display: flex;
   align-items: center;
   padding: 0 24px;
   background: var(--background);
+  font-size: 12px;
+  gap: 20px;
+}
+.brand {
+  font-family:
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Inter',
+    sans-serif;
+  font-size: 2.55em;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-top: 4px;
+  flex-shrink: 0;
 }
 .header-meta {
   display: flex;
@@ -105,6 +121,10 @@
   }
   .date {
     font-size: 10px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    line-height: 1.2;
   }
   .header-meta {
     gap: 12px;

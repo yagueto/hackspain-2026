@@ -110,6 +110,7 @@ export class MarkerLabels {
         group.addEventListener('focusout', () => queueMicrotask(() => this.refreshHover()));
         this.groups.set(key, group);
       }
+      group.hidden = this.map.getZoom() < 12;
       for (const location of locationsInGroup) {
         const persistent =
           location.kind !== 'unit' ||

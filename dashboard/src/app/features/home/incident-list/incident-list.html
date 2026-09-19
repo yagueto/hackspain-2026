@@ -5,7 +5,13 @@
       <span class="count-badge">{{ incidents().length }}</span>
     </div>
   </div>
-  <div id="incidents-list" class="incident-list" tabindex="0" aria-label="Lista de incidencias">
+  <div
+    appAnimateList
+    id="incidents-list"
+    class="incident-list"
+    tabindex="0"
+    aria-label="Lista de incidencias"
+  >
     @for (incident of sortedIncidents(); track incident.id) {
       @let pending = attention().get(incident.id);
       <article

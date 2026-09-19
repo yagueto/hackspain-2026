@@ -12,10 +12,11 @@ import {
 import { RouterLink } from '@angular/router';
 import { Communication, MapLocation } from '../../../core/models/operations';
 import { Icon } from '../../../shared/icon/icon';
+import { AnimateList } from '../../../shared/animate-list';
 
 @Component({
   selector: 'app-service-feed',
-  imports: [Icon, RouterLink],
+  imports: [Icon, RouterLink, AnimateList],
   templateUrl: './service-feed.html',
   styleUrl: './service-feed.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

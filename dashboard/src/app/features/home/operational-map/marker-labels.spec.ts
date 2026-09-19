@@ -136,4 +136,20 @@ describe('Marker labels', () => {
     expect(container.querySelector('[data-location-id="R-1"]')).toBeNull();
     expect(container.querySelectorAll('.marker-labels')).toHaveLength(2);
   });
+
+  it('hides even selected labels when zoomed out and restores them at zoom 12', () => {
+    const unit = location('R-1', 'unit', 0);
+    const incident = location('INC-1', 'incident', 0);
+    map.setZoom(11);
+    render([unit, incident], unit.id);
+    labels.hover(unit.id, true);
+    const group = container.querySelector<HTMLElement>('.marker-labels')!;
+    expect(group.hidden).toBe(true);
+    map.setZoom(12);
+    render([unit, incident], unit.id);
+    expect(group.hidden).toBe(false);
+    expect(
+      group.querySelector('[data-location-id="R-1"]')?.classList.contains('is-persistent'),
+    ).toBe(true);
+  });
 });

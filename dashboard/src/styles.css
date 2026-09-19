@@ -17,7 +17,6 @@
   --selected: #f2f2f2;
   --resource-selected: #f4f4f4;
   --text: #454545;
-  --connection-text: #000;
   --muted: #777;
   --icon: #999;
   --icon-selected: #666;
@@ -56,7 +55,6 @@
   --selected: #222;
   --resource-selected: #202020;
   --text: #e5e5e5;
-  --connection-text: #e5e5e5;
   --muted: #b4b4b4;
   --icon: #979797;
   --icon-selected: #fff;
@@ -127,6 +125,10 @@ h2 {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 7px;
+}
+[appAnimateList] {
+  position: relative;
+  overflow-anchor: none;
 }
 .panel-heading,
 .heading-title {
@@ -269,6 +271,9 @@ h2 {
   line-height: 1.5;
   text-align: left;
   cursor: pointer;
+}
+.marker-labels[hidden] {
+  display: none;
 }
 .marker-label strong {
   display: block;

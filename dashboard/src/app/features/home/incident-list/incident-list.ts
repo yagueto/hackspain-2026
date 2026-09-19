@@ -12,10 +12,11 @@ import { RouterLink } from '@angular/router';
 import { Incident, PRIORITY_LEVEL } from '../../../core/models/operations';
 import { IncidentAttention, URGENCY_RANK } from '../../../core/models/operation-log';
 import { Icon } from '../../../shared/icon/icon';
+import { AnimateList } from '../../../shared/animate-list';
 
 @Component({
   selector: 'app-incident-list',
-  imports: [Icon, RouterLink],
+  imports: [Icon, RouterLink, AnimateList],
   templateUrl: './incident-list.html',
   styleUrl: './incident-list.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

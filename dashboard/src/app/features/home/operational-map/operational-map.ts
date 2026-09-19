@@ -385,6 +385,7 @@ export class OperationalMap {
       }
       const state = this.routeStates().get(location.id);
       if (location.route?.status === 'active' && state?.status === 'ready') {
+        marker.closePopup();
         marker.unbindPopup();
       } else if (!marker.getPopup()) {
         marker.bindPopup(this.popupContent(location, state), { maxWidth: 250 });
