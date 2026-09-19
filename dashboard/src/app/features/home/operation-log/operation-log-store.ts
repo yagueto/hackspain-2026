@@ -33,7 +33,6 @@ export class OperationLogStore {
   readonly answers$ = this.responseEvents.asObservable();
   readonly questions = this.questionState.asReadonly();
   readonly now = signal(Date.now());
-  readonly notification = signal('');
   readonly incomingError = signal(false);
   readonly drafts = signal<Readonly<Record<string, QuestionAnswer>>>({});
   readonly errors = signal<Readonly<Record<string, string>>>({});
@@ -44,6 +43,13 @@ export class OperationLogStore {
   readonly pending = computed(() =>
     this.questions().filter((question) => question.status === 'pending'),
   );
+  readonly notification = computed(() => {
+    const pending = this.pending();
+    const latest = pending.at(-1);
+    if (!latest) return '';
+    const label = pending.length === 1 ? 'pregunta pendiente' : 'preguntas pendientes';
+    return `${latest.incidentId} necesita respuesta. ${pending.length} ${label}.`;
+  });
   readonly attention = computed<ReadonlyMap<string, IncidentAttention>>(() => {
     const result = new Map<string, IncidentAttention>();
     for (const question of this.pending()) {
@@ -196,10 +202,6 @@ export class OperationLogStore {
       source: 'Agente de coordinación',
     });
     this.expireDue();
-    if (this.questions().find((item) => item.id === question.id)?.status === 'pending')
-      this.notification.set(
-        `${question.incidentId} necesita respuesta. ${this.pending().length} preguntas pendientes.`,
-      );
     return true;
   }
 

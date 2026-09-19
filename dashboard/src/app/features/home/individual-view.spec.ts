@@ -181,6 +181,28 @@ describe('Individual dashboard views', () => {
     expect(harness.routeNativeElement?.querySelector('app-operation-log-panel')).toBeNull();
   });
 
+  it('updates the live announcement after a response and clears it after the remaining question expires', async () => {
+    const harness = await RouterTestingHarness.create('/');
+    const log = TestBed.inject(OperationLogStore);
+    const alert = () => harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent;
+    log.receiveQuestion({ ...question('expiring'), timeoutSeconds: 5 });
+    log.receiveQuestion(question('latest', 'INC-002'));
+    await harness.fixture.whenStable();
+    expect(alert()).toBe('INC-002 necesita respuesta. 2 preguntas pendientes.');
+    log.updateDraft(log.questions()[1], {
+      optionIds: ['maintain'],
+      text: '',
+      custom: false,
+    });
+    log.submit('latest');
+    await harness.fixture.whenStable();
+    expect(alert()).toBe('INC-001 necesita respuesta. 1 pregunta pendiente.');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 6000);
+    log.expireDue();
+    await harness.fixture.whenStable();
+    expect(alert()).toBe('');
+  });
+
   it('keeps only account/date/time in the header and reacts to offline and event errors', async () => {
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     const fixture = TestBed.createComponent(App);
