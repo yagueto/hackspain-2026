@@ -1,0 +1,39 @@
+<header class="topbar">
+  <div class="brand" aria-label="Centro de coordinación" title="Centro de coordinación">
+    <app-icon name="radio" />
+  </div>
+  <nav aria-label="Navegación principal">
+    @for (item of navigation; track item.path) {
+      @if (item.available) {
+        <a
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          ariaCurrentWhenActive="page"
+          >{{ item.label }}</a
+        >
+      } @else {
+        <button type="button" disabled [attr.title]="item.label + ' · Próximamente'">
+          {{ item.label }}<span class="sr-only"> — Próximamente</span>
+        </button>
+      }
+    }
+  </nav>
+  <div class="header-meta">
+    <span class="demo-indicator"><span></span> Modo demo</span>
+    <time class="date">{{ date }}</time>
+    <div class="profile">
+      <div class="profile-name"><strong>Ander</strong><span>Coordinador</span></div>
+      <span class="avatar" aria-label="Ander, coordinador">
+        <svg viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <circle cx="18" cy="18" r="18" fill="#C9D9E3" />
+          <path d="M5 36c0-9 5-13 13-13s13 4 13 13" fill="#456B89" />
+          <path d="m13 24 5 10 5-10" fill="#F4F5F6" />
+          <path d="M15 21h6v6l-3 3-3-3" fill="#DDAE91" />
+          <ellipse cx="18" cy="15" rx="7" ry="9" fill="#F2C6A8" />
+          <path d="M11 16V9c1-6 13-6 14 1v7l-2-6c-4 1-6-1-8-2l-3 7" fill="#34424D" />
+        </svg>
+      </span>
+    </div>
+  </div>
+</header>

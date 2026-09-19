@@ -1,0 +1,95 @@
+<section class="panel services-panel" aria-labelledby="services-title">
+  <div class="panel-heading services-heading">
+    <div>
+      <h2 id="services-title">Servicios</h2>
+      <p class="panel-subtitle">Historial de comunicaciones</p>
+    </div>
+    <div class="feed-actions">
+      <button
+        type="button"
+        class="filter-button"
+        [class.is-active]="filterCount() > 0"
+        [attr.aria-expanded]="filtersOpen()"
+        aria-controls="service-filters"
+        (click)="filtersOpen.set(!filtersOpen())"
+      >
+        <app-icon name="filter" /> Filtrar
+        @if (filterCount()) {
+          <span class="filter-count">{{ filterCount() }}</span>
+        }
+      </button>
+      <span class="record-count" aria-live="polite"
+        >{{ filteredCommunications().length }} registros</span
+      >
+    </div>
+  </div>
+  @if (filtersOpen()) {
+    <div id="service-filters" class="filters">
+      <label
+        >Servicio<select
+          #service
+          [value]="serviceFilter()"
+          (change)="serviceFilter.set(service.value)"
+        >
+          <option value="">Todos los servicios</option>
+          @for (item of services(); track item) {
+            <option [value]="item">{{ item }}</option>
+          }
+        </select></label
+      >
+      <label
+        >Incidencia<select
+          #incident
+          [value]="incidentFilter()"
+          (change)="incidentFilter.set(incident.value)"
+        >
+          <option value="">Todas las incidencias</option>
+          @for (item of incidents(); track item) {
+            <option [value]="item">{{ item }}</option>
+          }
+        </select></label
+      >
+      <button class="clear-filters" type="button" (click)="resetFilters()">Limpiar</button>
+    </div>
+  }
+  <div class="feed-list">
+    @for (item of filteredCommunications(); track item.id) {
+      <button
+        type="button"
+        class="communication"
+        [class.related]="item.incidentId === selectedIncidentId()"
+        [attr.aria-label]="item.time + ', ' + item.message + ' Ver ' + item.incidentId"
+        (click)="incidentSelected.emit(item.incidentId)"
+      >
+        <time>{{ item.time }}</time>
+        <span class="communication-status">{{ item.status }}</span>
+        <app-icon class="service-icon" [name]="item.icon" />
+        <span class="communication-body">
+          <span class="message">{{ item.message }}</span>
+          <span class="tags"
+            ><span
+              >Servicio: <strong>{{ item.service }}</strong></span
+            ><span
+              >Vehículo: <strong>{{ item.vehicle }}</strong></span
+            ><span
+              >Agente: <strong>{{ item.agent }}</strong></span
+            ><span
+              >Incidencia: <strong>{{ item.incidentId }}</strong></span
+            ></span
+          >
+        </span>
+      </button>
+    } @empty {
+      <div class="empty-state">
+        <app-icon name="filter" />
+        <p>No hay comunicaciones con estos filtros.</p>
+        <button type="button" class="clear-filters" (click)="resetFilters()">
+          Mostrar todos los registros
+        </button>
+      </div>
+    }
+  </div>
+  <footer class="feed-footer">
+    <span class="history-dot"></span> Historial de la sesión <span>Datos simulados</span>
+  </footer>
+</section>

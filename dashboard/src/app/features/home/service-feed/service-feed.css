@@ -1,0 +1,253 @@
+:host {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.services-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 15px 12px 10px;
+}
+.services-heading {
+  margin: 0 3px 12px;
+  align-items: flex-start;
+}
+.feed-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+.filter-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #454c52;
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: #c9d0d7;
+  background: #2a2f33;
+  font-size: 10px;
+  cursor: pointer;
+}
+.filter-button app-icon {
+  width: 13px;
+  height: 13px;
+}
+.filter-button:hover,
+.filter-button.is-active {
+  color: #70bfff;
+  border-color: #237fc2;
+}
+.filter-count {
+  display: grid;
+  place-items: center;
+  background: #168eeb;
+  color: white;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 9px;
+}
+.record-count {
+  font-size: 9px;
+  color: #98a2ac;
+}
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 1px;
+}
+.communication {
+  display: grid;
+  grid-template-columns: 34px 64px 25px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 11px;
+  border: 1px solid #3c4349;
+  border-left: 3px solid #8c99a5;
+  border-radius: 5px;
+  background: linear-gradient(110deg, #262b30, #22272b);
+  color: #dce1e6;
+  text-align: left;
+  cursor: pointer;
+  flex: 1 0 auto;
+  transition:
+    background 150ms,
+    border-color 150ms;
+}
+.communication:hover {
+  background: #2d353c;
+  border-color: #697784;
+}
+.communication.related {
+  border-color: #1366a3;
+  border-left-color: #1296ff;
+  background: linear-gradient(110deg, #103654, #102c43);
+}
+.communication.related:hover {
+  background: #154163;
+}
+.communication time {
+  font-size: 10px;
+  color: #b7c1cd;
+  align-self: start;
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.communication-status {
+  font-size: 8px;
+  padding: 4px 5px;
+  text-align: center;
+  border-radius: 5px;
+  background: #ffffff0d;
+  color: #c3ccd4;
+  align-self: start;
+  white-space: nowrap;
+}
+.related .communication-status {
+  background: #92b9d121;
+  color: #bed5e6;
+}
+.service-icon {
+  width: 24px;
+  height: 24px;
+  color: #dce1e6;
+}
+.related .service-icon {
+  color: #56b8ff;
+}
+.communication-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.message {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tags > span {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid #485059;
+  border-radius: 20px;
+  padding: 3px 6px;
+  font-size: 8px;
+  line-height: 1.1;
+  color: #9da9b5;
+  white-space: nowrap;
+}
+.tags strong {
+  color: #c2cbd5;
+  font-weight: 400;
+}
+.related .tags > span {
+  border-color: #225d87;
+  color: #85afd0;
+}
+.related .tags strong {
+  color: #bfdcf3;
+}
+.feed-footer {
+  padding: 12px 3px 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #78848e;
+}
+.feed-footer > span:last-child {
+  margin-left: auto;
+}
+.history-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #738596;
+}
+.filters {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 9px;
+  background: #181e23;
+  border: 1px solid #363f47;
+  border-radius: 5px;
+  align-items: flex-end;
+}
+.filters label {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  font-size: 10px;
+  color: #abb7c2;
+}
+.filters select {
+  padding: 6px;
+  font: inherit;
+  width: 100%;
+  color: #dce4ec;
+  background: #272f36;
+  border: 1px solid #47545f;
+  border-radius: 4px;
+}
+.clear-filters {
+  background: none;
+  color: #70bcf5;
+  border: 0;
+  padding: 7px 2px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.empty-state app-icon {
+  margin: 0 auto 10px;
+}
+@media (max-width: 1200px) and (min-width: 801px) {
+  .communication {
+    grid-template-columns: 29px 54px 20px minmax(0, 1fr);
+    gap: 7px;
+    padding: 9px 8px;
+  }
+  .communication-status {
+    font-size: 7px;
+  }
+  .service-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .tags > span {
+    font-size: 7px;
+    padding: 3px 4px;
+  }
+  .message {
+    font-size: 9px;
+  }
+}
+@media (max-width: 480px) {
+  .communication {
+    grid-template-columns: 30px 56px minmax(0, 1fr);
+    gap: 7px;
+    padding: 10px 8px;
+  }
+  .service-icon {
+    display: none;
+  }
+  .communication-status {
+    font-size: 7px;
+  }
+  .filters {
+    flex-wrap: wrap;
+  }
+}

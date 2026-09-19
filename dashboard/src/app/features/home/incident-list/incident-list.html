@@ -1,0 +1,35 @@
+<section class="panel incident-panel" aria-labelledby="incidents-title">
+  <div class="panel-heading">
+    <div class="heading-title">
+      <h2 id="incidents-title">Incidencias</h2>
+      <span class="count-badge">{{ incidents().length }}</span>
+    </div>
+    <span class="section-label">EN SEGUIMIENTO</span>
+  </div>
+  <div class="incident-list">
+    @for (incident of incidents(); track incident.id) {
+      <button
+        type="button"
+        class="incident-row"
+        [class.selected]="selectedId() === incident.id"
+        [attr.aria-pressed]="selectedId() === incident.id"
+        (click)="incidentSelected.emit(incident.id)"
+      >
+        <span class="incident-icon"><app-icon [name]="incident.icon" /></span>
+        <span class="incident-info"
+          ><span class="incident-name"
+            ><strong>{{ incident.id }}</strong
+            ><span class="separator">·</span>{{ incident.title }}</span
+          ><span class="incident-area">{{ incident.area }}</span></span
+        >
+        <span class="status-badge"
+          ><span>{{ incident.priority }}</span
+          ><span class="status-dot"></span>{{ incident.status }}</span
+        >
+        <app-icon class="row-chevron" name="chevron" />
+      </button>
+    } @empty {
+      <p class="empty-state">No hay incidencias en seguimiento.</p>
+    }
+  </div>
+</section>
