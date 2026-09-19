@@ -1,0 +1,111 @@
+<section class="panel resources-panel" aria-labelledby="resources-title">
+  <div class="panel-heading resources-heading">
+    <div class="heading-title">
+      <h2 id="resources-title">Recursos</h2>
+      <span class="count-badge" aria-live="polite">{{ filteredCommunications().length }}</span>
+    </div>
+    <button
+      type="button"
+      class="filter-button"
+      [class.is-active]="filterCount() > 0"
+      [attr.aria-expanded]="filtersOpen()"
+      aria-controls="resource-filters"
+      (click)="filtersOpen.set(!filtersOpen())"
+    >
+      <app-icon name="filter" /> Filtrar
+      @if (filterCount()) {
+        <span class="filter-count">{{ filterCount() }}</span>
+      }
+    </button>
+  </div>
+  @if (filtersOpen()) {
+    <div
+      id="resource-filters"
+      class="filters"
+      role="group"
+      aria-label="Filtrar recursos por categoría"
+    >
+      <button
+        type="button"
+        class="category-chip"
+        [class.is-active]="!filterCount()"
+        [attr.aria-pressed]="!filterCount()"
+        (click)="selectedServices.set([])"
+      >
+        Todos
+      </button>
+      @for (service of services(); track service) {
+        <button
+          type="button"
+          class="category-chip"
+          [class.is-active]="selectedServices().includes(service)"
+          [attr.aria-pressed]="selectedServices().includes(service)"
+          (click)="toggleService(service)"
+        >
+          {{ service }}
+        </button>
+      }
+    </div>
+  }
+  <div
+    id="resources-list"
+    class="feed-list"
+    [appPaginatedList]="filteredCommunications()"
+    [itemKey]="resourceKey"
+    [selectedKey]="selectedUnitId()"
+    #pager="paginatedList"
+  >
+    @for (item of pager.visibleItems(); track item.id) {
+      <button
+        type="button"
+        class="communication"
+        [class.related]="
+          selectedUnitId()
+            ? item.vehicle === selectedUnitId()
+            : item.incidentId === selectedIncidentId()
+        "
+        [attr.aria-label]="item.time + ', ' + item.message + ' Ver recurso ' + item.vehicle"
+        [attr.aria-pressed]="item.vehicle === selectedUnitId()"
+        (click)="unitSelected.emit(item.vehicle)"
+      >
+        <time>{{ item.time }}</time>
+        <app-icon class="service-icon" [name]="item.icon" />
+        <span class="communication-body">
+          <span class="message">{{ item.message }}</span>
+          <span class="tags">
+            <span
+              >Servicio: <strong>{{ item.service }}</strong></span
+            >
+            <span
+              >Vehículo: <strong>{{ item.vehicle }}</strong></span
+            >
+            <span
+              >Agente: <strong>{{ item.agent }}</strong></span
+            >
+            <span
+              >Incidencia: <strong>{{ item.incidentId }}</strong></span
+            >
+          </span>
+        </span>
+        <span class="communication-status">{{ item.status }}</span>
+      </button>
+    } @empty {
+      <div class="empty-state">
+        <p>
+          {{
+            communications().length
+              ? 'No hay recursos en las categorías seleccionadas.'
+              : 'No hay recursos disponibles.'
+          }}
+        </p>
+      </div>
+    }
+  </div>
+  <app-pagination
+    [page]="pager.pageIndex()"
+    [pageCount]="pager.pageCount()"
+    label="recursos"
+    controls="resources-list"
+    (pageChanged)="pager.goToPage($event)"
+  />
+</section>

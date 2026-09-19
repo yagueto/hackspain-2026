@@ -1,0 +1,235 @@
+:host {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.map-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  padding: 15px 9px 0;
+  overflow: hidden;
+}
+.map-heading {
+  margin: 0 5px 12px;
+}
+.map-provider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: #8798a5;
+}
+.map-provider app-icon {
+  width: 13px;
+  height: 13px;
+}
+.map-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid #45524d;
+  background: #2a3734;
+  isolation: isolate;
+}
+.map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.map-sector {
+  position: absolute;
+  z-index: 500;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid #a6b5af30;
+  border-radius: 4px;
+  background: #1f2b2dee;
+  color: #e4ede7;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.7px;
+  pointer-events: none;
+  box-shadow: 0 2px 5px #0002;
+}
+.sector-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #68b49a;
+}
+.sector-divider {
+  height: 9px;
+  width: 1px;
+  background: #73878166;
+  margin: 0 2px;
+}
+.fit-button {
+  position: absolute;
+  z-index: 500;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #71817d;
+  border-radius: 4px;
+  background: #212d30ed;
+  color: #e8f0f3;
+  cursor: pointer;
+  box-shadow: 0 2px 5px #0002;
+}
+.fit-button:hover {
+  background: #394c56;
+}
+.fit-button app-icon {
+  width: 18px;
+  height: 18px;
+}
+.map-legend {
+  position: absolute;
+  z-index: 500;
+  bottom: 30px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  gap: 11px;
+  background: #1c292cec;
+  border: 1px solid #8da09955;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px #0003;
+}
+.map-legend button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #e2e8ec;
+  font-size: 10px;
+  cursor: pointer;
+}
+.map-legend button.layer-hidden {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.legend-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.incident-dot {
+  background: #059afb;
+  box-shadow: 0 0 0 3px #068bf221;
+}
+.unit-dot {
+  width: 10px;
+  height: 10px;
+  background: #d6dedb;
+  box-shadow: 0 0 0 3px #b0c1b929;
+}
+.legend-separator {
+  width: 1px;
+  height: 13px;
+  background: #a6b3b02e;
+}
+.map-footer {
+  height: 29px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #83919c;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.map-footer > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer-dot {
+  width: 4px;
+  height: 4px;
+  background: #6b9c8c;
+  border-radius: 50%;
+}
+.map-notice,
+.tile-notice {
+  position: absolute;
+  z-index: 600;
+  left: 12px;
+  right: 54px;
+  top: 55px;
+  padding: 10px 12px;
+  border: 1px solid #597786;
+  border-radius: 4px;
+  background: #1d2b35f5;
+  color: #d1e1eb;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.map-notice summary {
+  cursor: pointer;
+}
+.map-notice p,
+.map-notice ul {
+  margin-top: 8px;
+}
+.map-notice ul {
+  max-height: 130px;
+  overflow-y: auto;
+  padding-left: 16px;
+}
+.map-notice button,
+.tile-notice button {
+  color: #83c9ff;
+  background: none;
+  border: 0;
+  padding: 2px 5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tile-notice {
+  top: auto;
+  bottom: 77px;
+  right: 12px;
+}
+.loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+@media (max-height: 760px) and (min-width: 801px) {
+  .map-panel {
+    padding: 9px 8px 0;
+  }
+  .map-heading {
+    margin-bottom: 8px;
+  }
+  .map-footer {
+    height: 24px;
+  }
+}
+@media (max-width: 1000px) {
+  .map-provider {
+    display: none;
+  }
+  .map-heading {
+    margin-bottom: 10px;
+  }
+}
