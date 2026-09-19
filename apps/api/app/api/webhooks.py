@@ -23,6 +23,8 @@ async def happyrobot_webhook(
     await rt.orchestrator.synchronize()
     try:
         action = resolve_action(rt.state, body)
+        if action.kind not in (ActionKind.call, ActionKind.sms):
+            raise ValueError("la orden no corresponde a HappyRobot")
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     digest = hashlib.sha256(body.model_dump_json().encode()).hexdigest()

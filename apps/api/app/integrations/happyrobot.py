@@ -26,7 +26,7 @@ from app.config import Settings
 
 log = logging.getLogger(__name__)
 
-WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority", "sms"]
+WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority"]
 
 
 class HappyRobotError(RuntimeError):
@@ -58,7 +58,6 @@ class HappyRobotClient:
             "call_responder": s.happyrobot_wf_call_responder,
             "call_civilian": s.happyrobot_wf_call_civilian,
             "notify_authority": s.happyrobot_wf_notify_authority,
-            "sms": s.happyrobot_wf_sms,
         }[kind]
 
     async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:

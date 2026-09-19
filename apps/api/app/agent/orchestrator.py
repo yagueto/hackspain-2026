@@ -213,7 +213,7 @@ class Orchestrator:
             for action in candidate.actions.values():
                 if action.status == ActionStatus.sending:
                     action.status = ActionStatus.unknown
-                    action.error = "reinicio durante el envío; reconciliar con HappyRobot"
+                    action.error = "reinicio durante el envío; verificar resultado con el proveedor"
                     changed = True
             if changed:
                 await self._commit(candidate)
@@ -357,10 +357,11 @@ class Orchestrator:
             await self._synchronize()
             if self.state.agent.mode != AgentMode.running:
                 return
-            if not self.state.integrations.get("happyrobot", True):
-                return
             s = self.state.copy()
             action = s.actions[aid]
+            integration = "telegram" if action.kind == ActionKind.telegram else "happyrobot"
+            if not s.integrations.get(integration, True):
+                continue
             if action.status != ActionStatus.pending:
                 continue
             if action.next_attempt_at and action.next_attempt_at > now():

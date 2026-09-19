@@ -37,8 +37,11 @@ class Settings(BaseSettings):
     happyrobot_wf_call_responder: str = ""
     happyrobot_wf_call_civilian: str = ""
     happyrobot_wf_notify_authority: str = ""
-    happyrobot_wf_sms: str = ""
     happyrobot_webhook_secret: str = ""
+
+    telegram_mode: Literal["simulated", "live"] = "simulated"
+    telegram_webhook_url: SecretStr = SecretStr("")
+    telegram_webhook_secret: SecretStr = SecretStr("")
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"

@@ -40,6 +40,7 @@ async def runtime() -> AsyncIterator[Runtime]:
     rt = build_runtime(Settings(agent_autostart=False), state=state, store=store)
     yield rt
     await rt.hr.aclose()
+    await rt.telegram.aclose()
 
 
 def observation(rt: Runtime, kind: EventKind = EventKind.note, **kwargs: object) -> Observation:
@@ -194,10 +195,14 @@ async def test_ambiguous_timeout_never_retries(runtime: Runtime) -> None:
         raise httpx.ReadTimeout("timeout después de enviar", request=request)
 
     client = httpx.AsyncClient(base_url="https://fake.test", transport=httpx.MockTransport(timeout))
-    hr = HappyRobotClient(Settings(happyrobot_api_key="test", happyrobot_wf_sms="sms"), client)
+    hr = HappyRobotClient(
+        Settings(happyrobot_api_key="test", happyrobot_wf_call_civilian="call"), client
+    )
     rt.executor.hr = hr
     async with rt.orchestrator.edit() as state:
-        action = await rt.executor.bind(state).sms(state.contacts["ct_camping"], "aviso")
+        action = await rt.executor.bind(state).call(
+            Task(kind=TaskKind.other, title="aviso"), state.contacts["ct_camping"]
+        )
     await rt.orchestrator.dispatch_pending()
     await rt.orchestrator.dispatch_pending()
     assert calls == 1
@@ -214,10 +219,14 @@ async def test_known_connect_failure_retries_with_limit(runtime: Runtime) -> Non
     client = httpx.AsyncClient(
         base_url="https://fake.test", transport=httpx.MockTransport(unavailable)
     )
-    hr = HappyRobotClient(Settings(happyrobot_api_key="test", happyrobot_wf_sms="sms"), client)
+    hr = HappyRobotClient(
+        Settings(happyrobot_api_key="test", happyrobot_wf_call_civilian="call"), client
+    )
     rt.executor.hr = hr
     async with rt.orchestrator.edit() as state:
-        action = await rt.executor.bind(state).sms(state.contacts["ct_camping"], "aviso")
+        action = await rt.executor.bind(state).call(
+            Task(kind=TaskKind.other, title="aviso"), state.contacts["ct_camping"]
+        )
     for _ in range(4):
         async with rt.orchestrator.edit() as state:
             state.actions[action.id].next_attempt_at = now() - timedelta(seconds=1)

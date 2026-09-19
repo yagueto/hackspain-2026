@@ -17,31 +17,81 @@ y no llama a teléfonos. El estado se pierde al cerrar el proceso. `AGENT_AUTOST
 permite avanzar con `POST /api/v1/control/tick`; el polling de observaciones sigue activo.
 Pausar el agente conserva la sincronización y bloquea los nuevos envíos.
 
-Para Twin:
+### PostgreSQL (persistencia recomendada, sin Twin)
 
-1. Configura `STORAGE_BACKEND=twin`, `HAPPYROBOT_API_KEY`, `HAPPYROBOT_CLUSTER`,
-   `INCIDENT_ID` y `SEED_DEMO=false`. Mantén `HAPPYROBOT_MODE=simulated` para validar
-   persistencia sin llamadas. Twin usa el espacio de la organización/región de la API key;
-   `HAPPYROBOT_ENVIRONMENT` selecciona el entorno de workflows, no otra base de Twin.
-2. `uv run python -m app.store.migrate` inspecciona el schema sin modificarlo.
-   Comprueba región, permisos y colisiones de nombres `crisis_*` en la salida.
-3. `uv run python -m app.store.migrate --apply` crea el schema v1 idempotentemente.
-   No borra tablas ni convierte una tabla existente con columnas incompatibles.
-4. Arranca la API. Restaura el snapshot de `INCIDENT_ID` si existe. En caso contrario,
-   `POST /api/v1/control/incident` con `X-API-Key` recibe un `WorldSnapshot` inicial
-   (esquema en `/docs`), con catálogos, clima y todas las listas de histórico/tareas vacías.
-   El `incident.id` debe coincidir con `INCIDENT_ID`.
-5. Para una demo sobre Twin usa explícitamente `SEED_DEMO=true` y `/scenario/reset`;
-   devuelve un ID nuevo, conserva el incidente anterior y no inicia llamadas reales.
-   Guarda ese ID como `INCIDENT_ID` para recuperarlo en el siguiente arranque.
-6. Para comunicaciones reales configura `HAPPYROBOT_MODE=live`, los cuatro workflows,
-   `HAPPYROBOT_WEBHOOK_SECRET`, una `API_KEY` propia y `PUBLIC_BASE_URL` accesible desde
-   HappyRobot. El backend rechaza `live` con memoria o sin secret del webhook.
+Desde `apps/api`:
 
-La migración usa SQL de PostgreSQL mediante `POST /twin/sql`; no necesita conexión directa.
-El schema y las operaciones atómicas se prueban con PostgreSQL 17 tras un transporte HTTP
-simulado. Falta validar permisos, límites y admisión de estas sentencias en el Twin del equipo
-con su credencial antes de activar llamadas reales.
+```bash
+docker compose up -d --wait postgres
+export STORAGE_BACKEND=postgres
+export DATABASE_URL=postgresql://crisis:local-dev-only@127.0.0.1:55433/crisis
+export HAPPYROBOT_MODE=simulated TELEGRAM_MODE=simulated AGENT_AUTOSTART=false
+uv run python -m app.store.migrate --apply
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+La contraseña de Compose es exclusivamente para desarrollo local. Cambia `POSTGRES_PASSWORD`
+y `DATABASE_URL` antes de desplegar; no publiques el puerto de la base de datos. Compose
+expone únicamente `127.0.0.1:55433` y guarda los datos en un volumen persistente.
+`docker compose stop` conserva los datos; no elimines el volumen si quieres conservarlos.
+
+Puedes guardar estos ajustes en `.env.local` (ignorado por Git), sin copiar allí las API keys.
+La precedencia es: variables del proceso > `.env.local` > `.env` > valores por defecto.
+Para probar sin revisión LLM remota configura además `OPENAI_API_KEY=` en el entorno.
+
+La migración crea el esquema v1 idempotentemente y rechaza tablas incompatibles. Sin `--apply`
+solo inspecciona. El arranque exige un esquema migrado: no degrada silenciosamente a memoria
+si PostgreSQL falla. `SEED_DEMO=true` crea el escenario solo si el incidente no existe; los
+siguientes arranques restauran tareas, acciones, asignaciones, recibos e histórico.
+`STORE_POLL_SECONDS` y `STORE_BATCH_SIZE` controlan la sincronización.
+
+Para datos no simulados usa `SEED_DEMO=false` e inicializa el catálogo mediante
+`POST /api/v1/control/incident` con `X-API-Key`. El `incident.id` debe coincidir con `INCIDENT_ID`.
+HappyRobot queda dedicado a las llamadas: configura los tres `HAPPYROBOT_WF_CALL_*` /
+`HAPPYROBOT_WF_NOTIFY_AUTHORITY`, `HAPPYROBOT_WEBHOOK_SECRET` y una URL pública antes de
+activar `HAPPYROBOT_MODE=live`. El entorno de workflows debe ser `development` durante pruebas.
+
+El adaptador Twin anterior se conserva por compatibilidad, pero PostgreSQL no llama a Twin
+ni necesita una API key de HappyRobot. `integrations.storage` refleja el estado del store.
+
+### Telegram por webhook (sustituye SMS)
+
+`POST /api/v1/control/telegram`, autenticado con `X-API-Key`, recibe:
+
+```json
+{"contact_id":"ct_camping","message":"Aviso de prueba"}
+```
+
+`/control/sms` es un alias obsoleto del mismo envío; ya no inicia workflows SMS. El nuevo
+`kind` de la acción es `telegram`. `HAPPYROBOT_WF_SMS` ya no se utiliza.
+
+Con `TELEGRAM_MODE=simulated` no se hace ninguna petición. Para usar un puente existente
+(por ejemplo n8n), configura localmente `TELEGRAM_MODE=live`, `TELEGRAM_WEBHOOK_URL` (HTTPS)
+y, si tu puente lo acepta, `TELEGRAM_WEBHOOK_SECRET` para el header `X-Webhook-Secret`.
+La URL y el secret no se incluyen en acciones, respuestas API ni logs de peticiones.
+
+Contrato propuesto para el puente, pendiente de confirmar con su implementación:
+
+```json
+{
+  "channel":"telegram",
+  "command_id":"act_...",
+  "action_id":"act_...",
+  "incident_id":"incendio-gredos-demo",
+  "contact_id":"ct_camping",
+  "contact_name":"Contacto del escenario",
+  "message":"Aviso de prueba"
+}
+```
+
+El POST incluye `Idempotency-Key: <command_id>`. El puente debe deduplicar por esa clave y
+resolver el chat de destino; un teléfono no es un chat_id de Telegram. Un HTTP 2xx completa
+la entrega **al webhook**, no acredita entrega en Telegram ni aceptación de una tarea:
+`result.delivery_confirmed` permanece `false`. No se guarda el cuerpo de respuesta del puente.
+Timeouts tras enviar y HTTP 5xx quedan `unknown`, sin reenvío automático. Fallos de conexión
+anteriores al envío y HTTP 429 se reintentan como máximo tres veces. No se siguen redirecciones.
+La pausa del agente también bloquea estos envíos. Una orden histórica `sms` pendiente no
+se transforma ni se reenvía silenciosamente a otro canal.
 
 ## Prueba del circuito sin llamadas
 

@@ -18,6 +18,7 @@ from app.config import Settings, get_settings
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
 from app.integrations.happyrobot import FakeHappyRobotClient, HappyRobotClient
+from app.integrations.telegram import TelegramWebhookClient
 from app.runtime import Runtime
 from app.store import persistence
 from app.store.postgres import PostgresStore
@@ -51,7 +52,8 @@ def build_runtime(
         if settings.happyrobot_mode == "live"
         else FakeHappyRobotClient(settings)
     )
-    executor = Executor(state, hr, store, public_base_url=settings.public_base_url)
+    telegram = TelegramWebhookClient(settings)
+    executor = Executor(state, hr, store, telegram, public_base_url=settings.public_base_url)
     reviewer = LLMReviewer(settings.openai_api_key, settings.openai_model, settings.openai_base_url)
     orchestrator = Orchestrator(
         state,
@@ -62,7 +64,7 @@ def build_runtime(
         settings.store_poll_seconds,
         settings.store_batch_size,
     )
-    return Runtime(settings, state, store, hr, executor, orchestrator)
+    return Runtime(settings, state, store, hr, telegram, executor, orchestrator)
 
 
 def create_app(settings: Settings | None = None, store: persistence.Store | None = None) -> FastAPI:
@@ -93,6 +95,7 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
         finally:
             await rt.orchestrator.stop()
             await rt.hr.aclose()
+            await rt.telegram.aclose()
             await rt.store.close()
             if rt.orchestrator.reviewer.client:
                 await rt.orchestrator.reviewer.client.close()
@@ -136,6 +139,9 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
             "ok": True,
             "agent": rt.state.agent.mode,
             "happyrobot": rt.hr.configured,
+            "happyrobot_mode": settings.happyrobot_mode,
+            "telegram": rt.telegram.configured,
+            "telegram_mode": settings.telegram_mode,
             "llm": rt.orchestrator.reviewer.enabled,
             "storage": settings.storage_backend,
             "synchronized": rt.state.integrations.get("storage", False),

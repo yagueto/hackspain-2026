@@ -121,6 +121,7 @@ class ContactRole(StrEnum):
 class ActionKind(StrEnum):
     call = "call"
     sms = "sms"
+    telegram = "telegram"
     signal = "signal"
     assign = "assign"
     internal = "internal"

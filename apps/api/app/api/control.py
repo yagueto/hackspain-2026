@@ -170,18 +170,19 @@ async def manual_call(body: CallIn, rt: Runtime = Depends(get_runtime)) -> Actio
     return rt.state.actions[action.id]
 
 
-class SmsIn(BaseModel):
+class TelegramIn(BaseModel):
     contact_id: str
-    message: str
+    message: str = Field(min_length=1, max_length=4096)
 
 
-@router.post("/sms")
-async def manual_sms(body: SmsIn, rt: Runtime = Depends(get_runtime)) -> Action:
+@router.post("/sms", deprecated=True)
+@router.post("/telegram")
+async def manual_telegram(body: TelegramIn, rt: Runtime = Depends(get_runtime)) -> Action:
     async with rt.orchestrator.edit() as state:
         contact = state.contacts.get(body.contact_id)
         if not contact:
             raise HTTPException(404, "contacto no existe")
-        action = await rt.executor.bind(state).sms(contact, body.message)
+        action = await rt.executor.bind(state).message(contact, body.message)
     await rt.orchestrator.dispatch_pending()
     return rt.state.actions[action.id]
 

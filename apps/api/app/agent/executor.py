@@ -22,6 +22,7 @@ from app.domain.models import (
 )
 from app.domain.state import WorldState
 from app.integrations.happyrobot import HappyRobotClient, HappyRobotError, WorkflowKind
+from app.integrations.telegram import TelegramError, TelegramWebhookClient
 from app.store.persistence import Store
 
 ROLE_TO_WORKFLOW: dict[ContactRole, WorkflowKind] = {
@@ -70,13 +71,19 @@ def reachable(state: WorldState, task: Task, resource: Resource) -> bool:
 
 class Executor:
     def __init__(
-        self, state: WorldState, hr: HappyRobotClient, store: Store, public_base_url: str = ""
+        self,
+        state: WorldState,
+        hr: HappyRobotClient,
+        store: Store,
+        telegram: TelegramWebhookClient,
+        public_base_url: str = "",
     ) -> None:
         self.state, self.hr, self.store = state, hr, store
+        self.telegram = telegram
         self.public_base_url = public_base_url
 
     def bind(self, state: WorldState) -> Executor:
-        return Executor(state, self.hr, self.store, self.public_base_url)
+        return Executor(state, self.hr, self.store, self.telegram, self.public_base_url)
 
     def _pick_resource(self, prop: Proposal, reliability: dict[str, float]) -> Resource | None:
         candidates = [
@@ -227,24 +234,23 @@ class Executor:
         self.state.upsert_task(task)
         return self.state.upsert_action(action)
 
-    async def sms(self, contact: Contact, message: str, task: Task | None = None) -> Action:
+    async def message(self, contact: Contact, message: str) -> Action:
         action = Action(
-            kind=ActionKind.sms,
+            kind=ActionKind.telegram,
             contact_id=contact.id,
-            task_id=task.id if task else None,
-            summary=f"SMS a {contact.name}",
-            workflow="sms",
+            summary=f"Telegram: aviso para {contact.name}",
+            workflow="telegram",
             state_version=self.state.version + 1,
             expires_at=now() + timedelta(minutes=10),
         )
         action.request = {
             "command_id": action.id,
             "action_id": action.id,
-            "phone": contact.phone,
+            "channel": "telegram",
             "message": message,
             "contact_id": contact.id,
+            "contact_name": contact.name,
             "incident_id": self.state.incident.id if self.state.incident else "",
-            "callback_url": f"{self.public_base_url}/api/v1/webhooks/happyrobot",
         }
         return self.state.upsert_action(action)
 
@@ -296,18 +302,19 @@ class Executor:
     async def send(self, action: Action) -> None:
         task = self.state.tasks.get(action.task_id or "")
         try:
-            if action.kind == ActionKind.signal:
+            if action.kind == ActionKind.telegram:
+                result = await self.telegram.send(action.request)
+            elif action.kind == ActionKind.signal:
                 result = await self.hr.publish_signal(
                     str(action.request["key"]), action.request["payload"]
                 )
             elif action.kind == ActionKind.internal:
                 result = await self.hr.cancel_run(str(action.request["cancel_run_id"]))
             else:
-                if action.workflow not in (
+                if action.kind != ActionKind.call or action.workflow not in (
                     "call_responder",
                     "call_civilian",
                     "notify_authority",
-                    "sms",
                 ):
                     raise HappyRobotError("workflow no configurado")
                 result = await self.hr.trigger(cast(WorkflowKind, action.workflow), action.request)
@@ -317,14 +324,14 @@ class Executor:
             action.result = result
             action.status = (
                 ActionStatus.dispatched
-                if action.kind in (ActionKind.call, ActionKind.sms)
+                if action.kind == ActionKind.call
                 else ActionStatus.completed
             )
             if task:
                 task.status = TaskStatus.dispatched
             if action.contact_id in self.state.contacts:
                 self.state.contacts[action.contact_id].last_contacted_at = now()
-        except HappyRobotError as exc:
+        except (HappyRobotError, TelegramError) as exc:
             action.error = str(exc)
             if exc.ambiguous:
                 action.status = ActionStatus.unknown
