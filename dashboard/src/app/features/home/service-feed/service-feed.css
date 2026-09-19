@@ -50,10 +50,6 @@
   border-radius: 50%;
   font-size: 9px;
 }
-.record-count {
-  font-size: 9px;
-  color: #98a2ac;
-}
 .feed-list {
   display: flex;
   flex-direction: column;
@@ -160,23 +156,6 @@
 .related .tags strong {
   color: #bfdcf3;
 }
-.feed-footer {
-  padding: 12px 3px 1px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #78848e;
-}
-.feed-footer > span:last-child {
-  margin-left: auto;
-}
-.history-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #738596;
-}
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -258,9 +237,6 @@
   .tags > span {
     padding-top: 2px;
     padding-bottom: 2px;
-  }
-  .feed-footer {
-    display: none;
   }
   .feed-actions {
     gap: 3px;

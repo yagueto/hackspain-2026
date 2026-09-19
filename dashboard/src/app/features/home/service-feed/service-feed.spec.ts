@@ -43,6 +43,8 @@ describe('ServiceFeed', () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('h2')?.textContent).toBe('Recursos');
+    expect(element.querySelector('.heading-title .count-badge')?.textContent?.trim()).toBe('6');
+    expect(element.querySelector('.panel-subtitle, .record-count, .feed-footer')).toBeNull();
     expect(
       element
         .querySelector('.communication')

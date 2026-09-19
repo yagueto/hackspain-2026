@@ -81,6 +81,11 @@ nav button:disabled {
   background: #72b996;
   box-shadow: 0 0 0 3px #72b99610;
 }
+.clock {
+  margin-left: 9px;
+  color: #d5dee7;
+  font-variant-numeric: tabular-nums;
+}
 .date {
   color: #9198a0;
   font-size: 11px;
@@ -114,9 +119,6 @@ nav button:disabled {
   overflow: hidden;
 }
 @media (max-width: 1000px) {
-  .demo-indicator {
-    display: none;
-  }
   .topbar {
     gap: 17px;
     padding: 0 18px;
@@ -144,29 +146,43 @@ nav button:disabled {
     display: none;
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 800px) {
   .topbar {
-    height: 57px;
+    display: grid;
+    height: auto;
     padding: 0 14px;
-    gap: 12px;
+    gap: 0;
   }
   .brand,
-  .date,
   .profile-name {
     display: none;
   }
   nav {
-    gap: 21px;
+    height: 48px;
+    gap: 24px;
   }
   nav a,
   nav button {
     font-size: 12px;
   }
+  .header-meta {
+    min-height: 40px;
+    width: 100%;
+    gap: 12px;
+    border-top: 1px solid #ffffff08;
+  }
+  .demo-indicator {
+    font-size: 9px;
+  }
+  .date {
+    margin-left: auto;
+    font-size: 10px;
+  }
   .profile {
     padding-left: 12px;
   }
   .avatar {
-    width: 29px;
-    height: 29px;
+    width: 26px;
+    height: 26px;
   }
 }

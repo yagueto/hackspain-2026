@@ -21,7 +21,9 @@
   </nav>
   <div class="header-meta">
     <span class="demo-indicator"><span></span> Modo demo</span>
-    <time class="date">{{ date }}</time>
+    <time class="date" [attr.datetime]="now().toISOString()"
+      >{{ date() }} <span class="clock">{{ time() }}</span></time
+    >
     <div class="profile">
       <div class="profile-name"><strong>Ander</strong><span>Coordinador</span></div>
       <span class="avatar" aria-label="Ander, coordinador">

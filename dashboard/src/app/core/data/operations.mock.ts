@@ -137,7 +137,7 @@ export const MOCK_UNITS: MapLocation[] = [
   {
     id: 'shelter',
     label: 'Albergue',
-    address: 'Punto de acogida · Escenario simulado',
+    address: 'Punto de acogida',
     coordinates: { lat: 40.724, lng: -3.8812 },
     icon: 'shelter',
     kind: 'place',
@@ -145,7 +145,7 @@ export const MOCK_UNITS: MapLocation[] = [
   {
     id: 'hospital',
     label: 'Puesto sanitario',
-    address: 'Puesto sanitario · Escenario simulado',
+    address: 'Puesto sanitario',
     coordinates: { lat: 40.7192, lng: -3.87 },
     icon: 'hospital',
     kind: 'place',

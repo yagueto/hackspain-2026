@@ -14,10 +14,6 @@
 .map-heading {
   margin: 0 5px 12px;
 }
-.panel-subtitle > span {
-  padding: 0 5px;
-  color: #60717e;
-}
 .map-provider {
   display: flex;
   align-items: center;
@@ -224,9 +220,6 @@
   }
   .map-heading {
     margin-bottom: 8px;
-  }
-  .panel-subtitle {
-    margin-top: 2px;
   }
   .map-footer {
     height: 24px;

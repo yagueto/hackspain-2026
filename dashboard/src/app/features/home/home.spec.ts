@@ -20,6 +20,19 @@ describe('Home resource selection', () => {
     return fixture;
   }
 
+  it('starts without any selected incident, resource or highlighted marker', async () => {
+    const fixture = await setup();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(fixture.componentInstance.selectedIncidentId()).toBeNull();
+    expect(fixture.componentInstance.selectedUnitId()).toBeNull();
+    expect(
+      element.querySelector(
+        '.incident-row.selected, .communication.related, .map-marker.is-selected, .map-marker.is-related',
+      ),
+    ).toBeNull();
+    expect(element.textContent).not.toMatch(/simulad|demostración|Historial de/i);
+  });
+
   it('focuses the resource from the feed, including another resource in the same incident', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;

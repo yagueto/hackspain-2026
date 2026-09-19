@@ -17,7 +17,7 @@ export class Home {
   readonly communications = signal(MOCK_COMMUNICATIONS);
   readonly units = signal(MOCK_UNITS);
   readonly addresses = signal<string[]>(MOCK_INCIDENTS.map((incident) => incident.address));
-  readonly selectedIncidentId = signal<string | null>('INC-001');
+  readonly selectedIncidentId = signal<string | null>(null);
   readonly selectedUnitId = signal<string | null>(null);
   readonly locations = computed<MapLocation[]>(() => [
     ...this.incidents().map((incident) => ({
