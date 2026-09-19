@@ -57,9 +57,14 @@
       <button
         type="button"
         class="communication"
-        [class.related]="item.incidentId === selectedIncidentId()"
-        [attr.aria-label]="item.time + ', ' + item.message + ' Ver ' + item.incidentId"
-        (click)="incidentSelected.emit(item.incidentId)"
+        [class.related]="
+          selectedUnitId()
+            ? item.vehicle === selectedUnitId()
+            : item.incidentId === selectedIncidentId()
+        "
+        [attr.aria-label]="item.time + ', ' + item.message + ' Ver recurso ' + item.vehicle"
+        [attr.aria-pressed]="item.vehicle === selectedUnitId()"
+        (click)="unitSelected.emit(item.vehicle)"
       >
         <time>{{ item.time }}</time>
         <span class="communication-status">{{ item.status }}</span>

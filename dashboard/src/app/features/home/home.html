@@ -4,6 +4,8 @@
     [addresses]="addresses()"
     [locations]="locations()"
     [selectedIncidentId]="selectedIncidentId()"
+    [selectedUnitId]="selectedUnitId()"
+    (unitSelected)="selectUnit($event)"
     (incidentSelected)="selectIncident($event)"
   />
   <div class="operations-column">
@@ -15,7 +17,8 @@
     <app-service-feed
       [communications]="communications()"
       [selectedIncidentId]="selectedIncidentId()"
-      (incidentSelected)="selectIncident($event)"
+      [selectedUnitId]="selectedUnitId()"
+      (unitSelected)="selectUnit($event)"
     />
   </div>
 </div>

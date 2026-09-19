@@ -18,6 +18,7 @@ export class Home {
   readonly units = signal(MOCK_UNITS);
   readonly addresses = signal<string[]>(MOCK_INCIDENTS.map((incident) => incident.address));
   readonly selectedIncidentId = signal<string | null>('INC-001');
+  readonly selectedUnitId = signal<string | null>(null);
   readonly locations = computed<MapLocation[]>(() => [
     ...this.incidents().map((incident) => ({
       id: incident.id,
@@ -33,7 +34,15 @@ export class Home {
 
   selectIncident(id: string): void {
     if (this.incidents().some((incident) => incident.id === id)) {
+      this.selectedUnitId.set(null);
       this.selectedIncidentId.set(id);
+    }
+  }
+
+  selectUnit(id: string): void {
+    if (this.units().some((unit) => unit.kind === 'unit' && unit.id === id)) {
+      this.selectedIncidentId.set(null);
+      this.selectedUnitId.set(id);
     }
   }
 }

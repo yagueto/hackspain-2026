@@ -27,8 +27,10 @@ import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
 export class OperationalMap {
   readonly addresses = input<readonly string[]>([]);
   readonly locations = input<readonly MapLocation[]>([]);
+  readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
   readonly incidentSelected = output<string>();
+  readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
   protected readonly showUnits = signal(true);
   protected readonly locating = signal(false);
@@ -98,10 +100,15 @@ export class OperationalMap {
     });
 
     effect(() => {
+      if (this.selectedUnitId()) this.showUnits.set(true);
+    });
+
+    effect(() => {
       if (!this.ready()) return;
       this.drawMarkers(
         this.resolvedLocations(),
         this.selectedIncidentId(),
+        this.selectedUnitId(),
         this.showIncidents(),
         this.showUnits(),
       );
@@ -184,6 +191,7 @@ export class OperationalMap {
   private drawMarkers(
     locations: readonly MapLocation[],
     selectedId: string | null,
+    selectedUnitId: string | null,
     incidentsVisible: boolean,
     unitsVisible: boolean,
   ): void {
@@ -192,12 +200,13 @@ export class OperationalMap {
     let selectedMarker: L.Marker | undefined;
     for (const location of locations) {
       if (!this.isVisible(location, incidentsVisible, unitsVisible)) continue;
+      const selected = this.isSelected(location, selectedId, selectedUnitId);
       const marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
-        icon: this.createIcon(location, selectedId),
+        icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
         title: `${location.label} · ${location.address}`,
         alt: location.label,
         keyboard: true,
-        zIndexOffset: location.kind === 'incident' ? 500 : 0,
+        zIndexOffset: selected ? 1000 : location.kind === 'incident' ? 500 : 0,
       }).addTo(this.markerLayer);
       const popup = document.createElement('div');
       popup.className = 'map-popup';
@@ -208,32 +217,52 @@ export class OperationalMap {
       popup.append(title, address);
       marker.bindPopup(popup, { maxWidth: 250 });
       marker.on('click', () => {
-        if (location.incidentId) this.incidentSelected.emit(location.incidentId);
+        if (location.kind === 'unit') this.unitSelected.emit(location.id);
+        else if (location.kind === 'incident' && location.incidentId)
+          this.incidentSelected.emit(location.incidentId);
       });
-      if (location.kind === 'incident' && location.incidentId === selectedId)
-        selectedMarker = marker;
+      if (selected) selectedMarker = marker;
     }
     const locationKey = locations
       .map((location) => `${location.id}:${location.coordinates.lat}:${location.coordinates.lng}`)
       .join('|');
+    const selectionKey = selectedUnitId
+      ? `unit:${selectedUnitId}`
+      : selectedId
+        ? `incident:${selectedId}`
+        : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
       this.fitLocations();
-    } else if (selectedId !== this.lastSelection && selectedMarker) {
+    } else if (selectionKey !== this.lastSelection && selectedMarker) {
       this.map.panTo(selectedMarker.getLatLng(), { animate: false });
       selectedMarker.openPopup();
     }
-    this.lastSelection = selectedId;
+    this.lastSelection = selectionKey;
   }
 
   private isVisible(location: MapLocation, incidents: boolean, units: boolean): boolean {
     return location.kind === 'place' || (location.kind === 'incident' ? incidents : units);
   }
 
-  private createIcon(location: MapLocation, selectedId: string | null): L.DivIcon {
+  private isSelected(
+    location: MapLocation,
+    incidentId: string | null,
+    unitId: string | null,
+  ): boolean {
+    return unitId
+      ? location.kind === 'unit' && location.id === unitId
+      : !!incidentId && location.kind === 'incident' && location.incidentId === incidentId;
+  }
+
+  private createIcon(
+    location: MapLocation,
+    selectedId: string | null,
+    selected: boolean,
+  ): L.DivIcon {
     const element = document.createElement('div');
-    const related = !!selectedId && location.incidentId === selectedId;
-    element.className = `map-marker kind-${location.kind}${related ? ' is-related' : ''}${related && location.kind === 'incident' ? ' is-selected' : ''}`;
+    const related = selected || (!!selectedId && location.incidentId === selectedId);
+    element.className = `map-marker kind-${location.kind}${related ? ' is-related' : ''}${selected ? ' is-selected' : ''}`;
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

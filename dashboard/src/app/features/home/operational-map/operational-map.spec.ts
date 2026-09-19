@@ -33,10 +33,13 @@ describe('OperationalMap', () => {
     const fixture = TestBed.createComponent(OperationalMap);
     fixture.componentRef.setInput('locations', [MOCK_UNITS[0]]);
     const selected: string[] = [];
-    fixture.componentInstance.incidentSelected.subscribe((id) => selected.push(id));
+    const selectedIncidents: string[] = [];
+    fixture.componentInstance.unitSelected.subscribe((id) => selected.push(id));
+    fixture.componentInstance.incidentSelected.subscribe((id) => selectedIncidents.push(id));
     await fixture.whenStable();
     fixture.nativeElement.querySelector('.operation-marker').click();
-    expect(selected).toEqual(['INC-001']);
+    expect(selected).toEqual(['B-03']);
+    expect(selectedIncidents).toEqual([]);
     fixture.nativeElement.querySelectorAll('.map-legend button')[1].click();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(0);

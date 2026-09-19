@@ -11,8 +11,9 @@ import { Icon } from '../../../shared/icon/icon';
 })
 export class ServiceFeed {
   readonly communications = input.required<readonly Communication[]>();
+  readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
-  readonly incidentSelected = output<string>();
+  readonly unitSelected = output<string>();
   protected readonly filtersOpen = signal(false);
   protected readonly serviceFilter = signal('');
   protected readonly incidentFilter = signal('');

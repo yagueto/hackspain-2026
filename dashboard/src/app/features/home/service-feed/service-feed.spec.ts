@@ -16,9 +16,21 @@ describe('ServiceFeed', () => {
     expect(fixture.nativeElement.querySelectorAll('.communication').length).toBe(6);
     expect(fixture.nativeElement.querySelectorAll('.communication.related').length).toBe(3);
     const selected: string[] = [];
-    fixture.componentInstance.incidentSelected.subscribe((id) => selected.push(id));
+    fixture.componentInstance.unitSelected.subscribe((id) => selected.push(id));
     fixture.nativeElement.querySelectorAll('.communication')[1].click();
-    expect(selected).toEqual(['INC-002']);
+    expect(selected).toEqual(['BUS-04']);
+  });
+
+  it('highlights only the selected resource instead of all resources in its incident', async () => {
+    const fixture = await setup();
+    fixture.componentRef.setInput('selectedUnitId', 'B-03');
+    await fixture.whenStable();
+    const rows = fixture.nativeElement.querySelectorAll(
+      '.communication.related',
+    ) as NodeListOf<HTMLButtonElement>;
+    expect(rows.length).toBe(1);
+    expect(rows[0].getAttribute('aria-pressed')).toBe('true');
+    expect(rows[0].getAttribute('aria-label')).toContain('Ver recurso B-03');
   });
 
   it('combines filters and clears them from the empty state', async () => {
