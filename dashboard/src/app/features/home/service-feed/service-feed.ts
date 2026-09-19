@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { Communication } from '../../../core/models/operations';
 import { Icon } from '../../../shared/icon/icon';
+import { PaginatedList } from '../../../shared/pagination/paginated-list';
+import { Pagination } from '../../../shared/pagination/pagination';
 
 @Component({
   selector: 'app-service-feed',
-  imports: [Icon],
+  imports: [Icon, PaginatedList, Pagination],
   templateUrl: './service-feed.html',
   styleUrl: './service-feed.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -14,6 +16,7 @@ export class ServiceFeed {
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
   readonly unitSelected = output<string>();
+  protected readonly resourceKey = (item: Communication) => item.vehicle;
   protected readonly filtersOpen = signal(false);
   protected readonly selectedServices = signal<readonly string[]>([]);
   protected readonly services = computed(() => [

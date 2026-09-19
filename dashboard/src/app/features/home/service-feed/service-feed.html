@@ -4,21 +4,19 @@
       <h2 id="resources-title">Recursos</h2>
       <span class="count-badge" aria-live="polite">{{ filteredCommunications().length }}</span>
     </div>
-    <div class="feed-actions">
-      <button
-        type="button"
-        class="filter-button"
-        [class.is-active]="filterCount() > 0"
-        [attr.aria-expanded]="filtersOpen()"
-        aria-controls="resource-filters"
-        (click)="filtersOpen.set(!filtersOpen())"
-      >
-        <app-icon name="filter" /> Filtrar
-        @if (filterCount()) {
-          <span class="filter-count">{{ filterCount() }}</span>
-        }
-      </button>
-    </div>
+    <button
+      type="button"
+      class="filter-button"
+      [class.is-active]="filterCount() > 0"
+      [attr.aria-expanded]="filtersOpen()"
+      aria-controls="resource-filters"
+      (click)="filtersOpen.set(!filtersOpen())"
+    >
+      <app-icon name="filter" /> Filtrar
+      @if (filterCount()) {
+        <span class="filter-count">{{ filterCount() }}</span>
+      }
+    </button>
   </div>
   @if (filtersOpen()) {
     <div
@@ -49,8 +47,15 @@
       }
     </div>
   }
-  <div class="feed-list">
-    @for (item of filteredCommunications(); track item.id) {
+  <div
+    id="resources-list"
+    class="feed-list"
+    [appPaginatedList]="filteredCommunications()"
+    [itemKey]="resourceKey"
+    [selectedKey]="selectedUnitId()"
+    #pager="paginatedList"
+  >
+    @for (item of pager.visibleItems(); track item.id) {
       <button
         type="button"
         class="communication"
@@ -86,7 +91,6 @@
       </button>
     } @empty {
       <div class="empty-state">
-        <app-icon name="filter" />
         <p>
           {{
             communications().length
@@ -97,4 +101,11 @@
       </div>
     }
   </div>
+  <app-pagination
+    [page]="pager.pageIndex()"
+    [pageCount]="pager.pageCount()"
+    label="recursos"
+    controls="resources-list"
+    (pageChanged)="pager.goToPage($event)"
+  />
 </section>

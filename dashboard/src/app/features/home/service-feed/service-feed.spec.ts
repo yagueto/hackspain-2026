@@ -101,6 +101,35 @@ describe('ServiceFeed', () => {
     expect(category(element, 'Todos').getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('returns to the first page after category filtering and keeps the total in the badge', async () => {
+    const fixture = await setup();
+    fixture.componentRef.setInput(
+      'communications',
+      Array.from({ length: 13 }, (_, index) => ({
+        ...MOCK_COMMUNICATIONS[index % MOCK_COMMUNICATIONS.length],
+        id: `COM-${index}`,
+      })),
+    );
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.count-badge')?.textContent?.trim()).toBe('13');
+    expect(element.querySelectorAll('.communication').length).toBe(10);
+    element.querySelector<HTMLButtonElement>('.next')!.click();
+    await fixture.whenStable();
+    expect(element.querySelectorAll('.communication').length).toBe(3);
+    element.querySelector<HTMLButtonElement>('.filter-button')!.click();
+    await fixture.whenStable();
+    category(element, 'Bomberos').click();
+    await fixture.whenStable();
+    expect(element.querySelector('.count-badge')?.textContent?.trim()).toBe('3');
+    expect(element.querySelectorAll('.communication').length).toBe(3);
+    expect(element.querySelector<HTMLButtonElement>('.previous')!.disabled).toBe(true);
+    category(element, 'Todos').click();
+    await fixture.whenStable();
+    expect(element.querySelectorAll('.communication').length).toBe(10);
+    expect(element.querySelector('.count-badge')?.textContent?.trim()).toBe('13');
+  });
+
   it('renders an empty resource list without a clear button', async () => {
     const fixture = await setup();
     fixture.componentRef.setInput('communications', []);

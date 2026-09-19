@@ -19,6 +19,26 @@ describe('IncidentList', () => {
     expect(selected).toEqual(['INC-002']);
   });
 
+  it('paginates independently and reveals the incident selected on the map', async () => {
+    const fixture = TestBed.createComponent(IncidentList);
+    fixture.componentRef.setInput(
+      'incidents',
+      Array.from({ length: 13 }, (_, index) => ({ ...MOCK_INCIDENTS[0], id: `INC-${index}` })),
+    );
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('.incident-row').length).toBe(10);
+    expect(element.querySelector<HTMLButtonElement>('.previous')!.disabled).toBe(true);
+    element.querySelector<HTMLButtonElement>('.next')!.click();
+    await fixture.whenStable();
+    expect(element.querySelectorAll('.incident-row').length).toBe(3);
+    expect(element.querySelector<HTMLButtonElement>('.next')!.disabled).toBe(true);
+    fixture.componentRef.setInput('selectedId', 'INC-0');
+    await fixture.whenStable();
+    expect(element.querySelector('.incident-row.selected')?.textContent).toContain('INC-0');
+    expect(element.querySelectorAll('.incident-row').length).toBe(10);
+  });
+
   it('handles an empty incident list', async () => {
     const fixture = TestBed.createComponent(IncidentList);
     fixture.componentRef.setInput('incidents', []);

@@ -6,8 +6,15 @@
     </div>
     <span class="section-label">EN SEGUIMIENTO</span>
   </div>
-  <div class="incident-list">
-    @for (incident of incidents(); track incident.id) {
+  <div
+    id="incidents-list"
+    class="incident-list"
+    [appPaginatedList]="incidents()"
+    [itemKey]="incidentKey"
+    [selectedKey]="selectedId()"
+    #pager="paginatedList"
+  >
+    @for (incident of pager.visibleItems(); track incident.id) {
       <button
         type="button"
         class="incident-row"
@@ -32,4 +39,11 @@
       <p class="empty-state">No hay incidencias en seguimiento.</p>
     }
   </div>
+  <app-pagination
+    [page]="pager.pageIndex()"
+    [pageCount]="pager.pageCount()"
+    label="incidencias"
+    controls="incidents-list"
+    (pageChanged)="pager.goToPage($event)"
+  />
 </section>

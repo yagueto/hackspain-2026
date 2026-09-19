@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  min-height: 650px;
+  min-height: 0;
 }
 main {
   display: flex;
