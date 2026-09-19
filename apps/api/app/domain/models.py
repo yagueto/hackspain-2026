@@ -18,6 +18,7 @@ from pydantic import (
     Field,
     JsonValue,
     field_validator,
+    model_validator,
 )
 
 
@@ -59,6 +60,7 @@ class EventKind(StrEnum):
     injured_reported = "injured_reported"
     resource_status = "resource_status"
     call_outcome = "call_outcome"
+    incoming_call = "incoming_call"
     message_outcome = "message_outcome"
     integration_down = "integration_down"
     integration_up = "integration_up"
@@ -280,6 +282,9 @@ class Task(BaseModel):
     preferred_resource_id: str | None = None
     approved_at: datetime | None = None
     cancellation_requested: bool = False
+    incoming_call_id: str | None = None
+    incoming_call_timestamp: datetime | None = None
+    target_location: Location | None = None
 
 
 class Decision(BaseModel):
@@ -314,6 +319,97 @@ class AgentConfig(BaseModel):
     tick_seconds: float = 10.0
 
 
+class IntakeFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, str_strip_whitespace=True)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def normalize_unknown(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().lower() in ("", "null", "none"):
+            return None
+        return value
+
+
+class ReportedLocation(IntakeFields):
+    raw_text: str | None = Field(default=None, max_length=2000)
+    street: str | None = None
+    number: str | None = None
+    floor_door: str | None = None
+    city: str | None = None
+    road: str | None = None
+    kilometer: str | None = None
+    direction: str | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+    confirmed: bool = False
+    public_search_allowed: bool = False
+    accuracy_m: float | None = Field(default=None, gt=0)
+
+    @field_validator("lat", "lng", "accuracy_m", mode="before")
+    @classmethod
+    def reject_boolean_coordinate(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("una coordenada/precisión debe ser numérica, no booleana")
+        return value
+
+    @model_validator(mode="after")
+    def coordinate_pair(self) -> ReportedLocation:
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("lat y lng deben proporcionarse juntas")
+        return self
+
+
+class ReportedVictims(IntakeFields):
+    count: int | None = Field(default=None, ge=0)
+    conscious: bool | None = None
+    breathing: bool | None = None
+    trapped: bool | None = None
+    minors_involved: bool | None = None
+
+
+class Caller(IntakeFields):
+    name: str | None = None
+    phone: str | None = None
+    is_victim: bool | None = None
+
+
+class GeocodedPlace(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    lat: float = Field(ge=-90, le=90, strict=True)
+    lng: float = Field(ge=-180, le=180, strict=True)
+    label: str = Field(min_length=1, max_length=2000)
+    kind: str = ""
+
+
+class LocationResolution(BaseModel):
+    status: Literal[
+        "not_requested", "resolved", "ambiguous", "not_found", "unavailable", "confirmed"
+    ] = "not_requested"
+    candidates: list[GeocodedPlace] = Field(default_factory=list)
+    selected: GeocodedPlace | None = None
+    provider: Literal["nominatim", "operator"] = "nominatim"
+    error: str = ""
+
+
+class IncomingCallIn(IntakeFields):
+    run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_:-]+$")
+    timestamp: AwareDatetime
+    emergency_type: Literal[
+        "sanitaria", "incendio", "seguridad", "trafico", "rescate", "otra", "desconocida"
+    ]
+    severity: Literal["vital", "grave", "moderada", "leve", "no_emergencia"]
+    escalation_required: bool = True
+    location: ReportedLocation = Field(default_factory=ReportedLocation)
+    victims: ReportedVictims = Field(default_factory=ReportedVictims)
+    caller: Caller = Field(default_factory=Caller)
+    active_hazards: str | None = None
+    notes: str | None = Field(default=None, max_length=10000)
+
+
+class IncomingCall(IncomingCallIn):
+    resolution: LocationResolution = Field(default_factory=LocationResolution)
+
+
 class WorldSnapshot(BaseModel):
     """Lo que el dashboard pinta y lo que el LLM recibe como contexto."""
 
@@ -328,6 +424,7 @@ class WorldSnapshot(BaseModel):
     recent_events: list[Event]
     recent_decisions: list[Decision]
     recent_actions: list[Action]
+    incoming_calls: list[IncomingCall] = Field(default_factory=list)
     agent: AgentConfig
     integrations: dict[str, bool]
     generated_at: datetime = Field(default_factory=now)

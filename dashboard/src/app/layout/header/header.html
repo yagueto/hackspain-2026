@@ -20,7 +20,7 @@
     }
   </nav>
   <div class="header-meta">
-    <span class="demo-indicator"><span></span> Modo demo</span>
+    <span class="demo-indicator"><span></span> {{ operations.modeLabel() }}</span>
     <time class="date" [attr.datetime]="now().toISOString()"
       >{{ date() }} <span class="clock">{{ time() }}</span></time
     >

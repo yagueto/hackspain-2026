@@ -4,6 +4,7 @@ import math
 from datetime import timedelta
 
 from app.agent.planner import Proposal, zone_eta
+from app.domain.intake import report_location
 from app.domain.models import (
     Action,
     ActionKind,
@@ -49,6 +50,12 @@ def distance(a: Location, b: Location) -> float:
 
 
 def invalid_task(state: WorldState, task: Task) -> str:
+    if task.incoming_call_id:
+        report = state.incoming_calls.get(task.incoming_call_id)
+        if not report or report.timestamp != task.incoming_call_timestamp:
+            return "el aviso cambió; se requiere una nueva revisión"
+        if not task.target_location or task.target_location != report_location(report):
+            return "ubicación pendiente o modificada; se requiere revisión"
     if task.zone_id and task.zone_id not in (state.zones | state.fronts | state.roads):
         return "destino desconocido"
     front = state.fronts.get(task.zone_id or "")
@@ -113,12 +120,14 @@ class Executor:
             prop.task.zone_id or ""
         )
 
+        target_location = prop.task.target_location or (target.location if target else None)
+
         def score(resource: Resource) -> float:
             contact = self.state.contact_for_resource(resource.id)
             rel = reliability.get(contact.id, contact.reliability) if contact else 0
             eta = resource.eta_minutes
-            if eta is None:
-                eta = distance(resource.location, target.location) * 1.5 if target else 30
+            if eta is None or prop.task.incoming_call_id:
+                eta = distance(resource.location, target_location) * 1.5 if target_location else 30
             same_type = sum(r.type == resource.type for r in candidates)
             coverage = 15 if same_type == 1 and prop.task.priority < 90 else 0
             return -eta - coverage + min(resource.capacity, 50) / 10 + rel * 5
@@ -132,7 +141,17 @@ class Executor:
             "task_id": task.id,
             "task_kind": task.kind,
             "task_title": task.title,
-            "instructions": task.description,
+            "instructions": task.description
+            + (
+                f"\nDestino aprobado: {task.target_location.label}; "
+                f"latitud {task.target_location.lat}, longitud {task.target_location.lng}."
+                if task.target_location
+                else ""
+            ),
+            "target_location": task.target_location.model_dump(mode="json")
+            if task.target_location
+            else None,
+            "incoming_call_id": task.incoming_call_id,
             "priority": task.priority,
             "contact_id": contact.id,
             "contact_name": contact.name,

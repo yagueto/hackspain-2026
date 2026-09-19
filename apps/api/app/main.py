@@ -17,6 +17,7 @@ from app.api import state as state_api
 from app.config import Settings, get_settings
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
+from app.integrations.geocoding import NominatimGeocoder
 from app.integrations.happyrobot import FakeHappyRobotClient, HappyRobotClient
 from app.runtime import Runtime
 from app.store import persistence
@@ -58,7 +59,7 @@ def build_runtime(
         settings.store_poll_seconds,
         settings.store_batch_size,
     )
-    return Runtime(settings, state, store, hr, executor, orchestrator)
+    return Runtime(settings, state, store, hr, executor, orchestrator, NominatimGeocoder(settings))
 
 
 def create_app(settings: Settings | None = None, store: persistence.Store | None = None) -> FastAPI:
@@ -89,6 +90,7 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
         finally:
             await rt.orchestrator.stop()
             await rt.hr.aclose()
+            await rt.geocoder.close()
             await rt.store.close()
             if rt.orchestrator.reviewer.client:
                 await rt.orchestrator.reviewer.client.close()

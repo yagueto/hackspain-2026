@@ -320,6 +320,11 @@ export class OperationalMap {
     const address = document.createElement('span');
     address.textContent = location.address;
     popup.append(title, address);
+    if (location.detail) {
+      const detail = document.createElement('span');
+      detail.textContent = location.detail;
+      popup.append(detail);
+    }
     if (location.kind !== 'unit') return popup;
     if (location.route?.destinationLabel) {
       const destination = document.createElement('span');

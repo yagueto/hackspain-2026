@@ -18,6 +18,7 @@ from app.domain.models import (
     Event,
     FireFront,
     Incident,
+    IncomingCall,
     Resource,
     Road,
     Task,
@@ -48,6 +49,7 @@ class WorldState:
         self.events: deque[Event] = deque(maxlen=2000)
         self.decisions: deque[Decision] = deque(maxlen=500)
         self.actions: dict[str, Action] = {}
+        self.incoming_calls: dict[str, IncomingCall] = {}
         self.agent = AgentConfig()
         self.integrations: dict[str, bool] = {"happyrobot": True, "llm": True}
         self.version = 0
@@ -88,6 +90,7 @@ class WorldState:
         self.contacts = {c.id: c.model_copy(deep=True) for c in snapshot.contacts}
         self.tasks = {t.id: t.model_copy(deep=True) for t in snapshot.tasks}
         self.actions = {a.id: a.model_copy(deep=True) for a in snapshot.recent_actions}
+        self.incoming_calls = {c.run_id: c.model_copy(deep=True) for c in snapshot.incoming_calls}
         self.events = deque(reversed(snapshot.recent_events), maxlen=2000)
         self.decisions = deque(reversed(snapshot.recent_decisions), maxlen=500)
         self.agent = snapshot.agent.model_copy(deep=True)
@@ -213,6 +216,9 @@ class WorldState:
             if full
             else list(self.decisions)[-10:][::-1],
             recent_actions=actions if full else actions[:recent],
+            incoming_calls=sorted(
+                self.incoming_calls.values(), key=lambda c: c.timestamp, reverse=True
+            ),
             agent=self.agent,
             integrations=dict(self.integrations),
             version=self.version,

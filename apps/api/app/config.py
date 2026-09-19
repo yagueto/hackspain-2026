@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     store_batch_size: int = Field(default=100, ge=1, le=250)
     happyrobot_mode: Literal["simulated", "live"] = "simulated"
     public_base_url: str = "http://localhost:8000"
+    nominatim_demo_enabled: bool = False
 
     happyrobot_api_key: str = ""
     happyrobot_cluster: Literal["us", "eu"] = "eu"

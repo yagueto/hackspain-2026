@@ -1,13 +1,182 @@
 <h1 class="sr-only">Centro de coordinación de emergencias</h1>
+<div
+  class="connection-banner"
+  role="status"
+  [class.disconnected]="operations.connection() !== 'live'"
+>
+  <span>{{ connectionLabel() }} {{ operations.error() }}</span>
+  @if (operations.connection() !== 'live') {
+    <button type="button" (click)="operations.refresh()">Actualizar</button>
+  }
+</div>
 <div class="dashboard-grid">
-  <app-operational-map
-    [addresses]="addresses()"
-    [locations]="locations()"
-    [selectedIncidentId]="selectedIncidentId()"
-    [selectedUnitId]="selectedUnitId()"
-    (unitSelected)="selectUnit($event)"
-    (incidentSelected)="selectIncident($event)"
-  />
+  <div class="map-column">
+    <app-operational-map
+      [addresses]="addresses()"
+      [locations]="locations()"
+      [selectedIncidentId]="selectedIncidentId()"
+      [selectedUnitId]="selectedUnitId()"
+      (unitSelected)="selectUnit($event)"
+      (incidentSelected)="selectIncident($event)"
+    />
+    @if (selectedIncident(); as incident) {
+      <section class="incident-detail" aria-label="Detalle de la incidencia">
+        <strong>{{ incident.title }}</strong>
+        <p>{{ incident.address }}</p>
+        @if (incident.locationStatus) {
+          <p>{{ incident.locationStatus }}</p>
+        }
+        @if (incident.coordinates; as point) {
+          <p>{{ point.lat }}, {{ point.lng }}</p>
+        }
+        @if (incident.description) {
+          <p>{{ incident.description }}</p>
+        }
+        @if (selectedReport(); as report) {
+          <div class="operator-controls">
+            <p>Aviso recibido: {{ reportTime() }}</p>
+            <label
+              >Clave de operador
+              <input
+                type="password"
+                autocomplete="off"
+                [value]="operatorKey()"
+                (input)="operatorKey.set($any($event.target).value)"
+              />
+            </label>
+            <details>
+              <summary>Buscar o corregir ubicación</summary>
+              @if (operations.meta()?.nominatim_demo_enabled) {
+                <label class="check-label"
+                  ><input
+                    type="checkbox"
+                    [checked]="publicAddress()"
+                    (change)="publicAddress.set($any($event.target).checked)"
+                  />
+                  Es una dirección pública de prueba; autorizo consultarla en OpenStreetMap.</label
+                >
+                <button
+                  type="button"
+                  (click)="searchLocation()"
+                  [disabled]="operatorBusy() || !publicAddress() || !operatorKey()"
+                >
+                  Buscar coordenadas
+                </button>
+              }
+              @if (report.resolution; as resolution) {
+                @if (resolution.error) {
+                  <p role="status">{{ resolution.error }}</p>
+                }
+                @if (resolution.status === 'not_found') {
+                  <p>No se encontraron coincidencias. Confirma coordenadas manualmente.</p>
+                }
+                @if (resolution.status === 'ambiguous') {
+                  <p>La búsqueda es ambigua o poco precisa. Revisa cada resultado.</p>
+                }
+                @for (candidate of resolution.candidates; track $index) {
+                  <button
+                    class="location-candidate"
+                    type="button"
+                    [disabled]="operatorBusy() || !operatorKey()"
+                    (click)="chooseLocation(candidate)"
+                  >
+                    {{ candidate.label }} · {{ candidate.lat }}, {{ candidate.lng }} ·
+                    {{ candidate.kind }}
+                  </button>
+                }
+                @if (resolution.candidates.length) {
+                  <p>Fuente: OpenStreetMap / Nominatim. Coordenadas aproximadas, no GPS.</p>
+                }
+              }
+              <div class="coordinate-fields">
+                <label
+                  >Latitud<input
+                    inputmode="decimal"
+                    [value]="latitude()"
+                    (input)="latitude.set($any($event.target).value)"
+                /></label>
+                <label
+                  >Longitud<input
+                    inputmode="decimal"
+                    [value]="longitude()"
+                    (input)="longitude.set($any($event.target).value)"
+                /></label>
+              </div>
+              <button
+                type="button"
+                (click)="confirmCoordinates()"
+                [disabled]="operatorBusy() || !operatorKey()"
+              >
+                Confirmar coordenadas manuales
+              </button>
+            </details>
+            <label class="check-label"
+              ><input
+                type="checkbox"
+                [checked]="locationReviewed()"
+                (change)="
+                  reviewedLocation.set($any($event.target).checked ? locationVersion() : null)
+                "
+              />
+              He revisado el destino y su precisión para esta propuesta.</label
+            >
+            @for (task of reportTasks(); track task.id) {
+              <div class="response-proposal">
+                <strong>{{ task.title }}</strong>
+                <p>{{ taskLabels[task.status] || task.status }}</p>
+                @if (task.outcome) {
+                  <p>{{ task.outcome }}</p>
+                }
+                @if (task.status === 'awaiting_approval') {
+                  <div class="proposal-actions">
+                    <button
+                      type="button"
+                      (click)="approveTask(task, true)"
+                      [disabled]="
+                        operatorBusy() ||
+                        !operatorKey() ||
+                        !locationReviewed() ||
+                        !task.target_location
+                      "
+                    >
+                      Aprobar propuesta
+                    </button>
+                    <button
+                      type="button"
+                      (click)="approveTask(task, false)"
+                      [disabled]="operatorBusy() || !operatorKey()"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                }
+              </div>
+            } @empty {
+              <p>No hay propuesta automática de recursos para este aviso.</p>
+            }
+            @if (paused()) {
+              <p>Agente en pausa: aprobar prepara la orden, pero todavía no la envía.</p>
+              @if (hasQueuedOrders() && operations.meta()?.happyrobot_mode === 'simulated') {
+                <button
+                  type="button"
+                  (click)="resumeSimulated()"
+                  [disabled]="operatorBusy() || !operatorKey()"
+                >
+                  Reanudar envíos simulados
+                </button>
+              }
+            }
+            @if (operations.meta()?.happyrobot_mode === 'simulated') {
+              <p>Las órdenes salientes son simuladas; no movilizan ayuda real.</p>
+            }
+            @if (operatorMessage()) {
+              <p role="status">{{ operatorMessage() }}</p>
+            }
+          </div>
+        }
+      </section>
+    }
+  </div>
   <div class="operations-column">
     <app-incident-list
       [incidents]="incidents()"

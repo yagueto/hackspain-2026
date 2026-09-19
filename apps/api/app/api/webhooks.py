@@ -4,11 +4,76 @@ import hmac
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import JsonValue
 
-from app.domain.models import ActionKind, CallOutcome, EventKind, Observation
-from app.domain.observations import resolve_action
+from app.domain.models import (
+    ActionKind,
+    CallOutcome,
+    EventKind,
+    IncomingCallIn,
+    Observation,
+    Severity,
+)
+from app.domain.observations import apply_observation, resolve_action
 from app.runtime import Runtime, get_runtime
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+@router.post("/happyrobot/inbound", status_code=202)
+async def incoming_call_webhook(
+    body: IncomingCallIn,
+    rt: Runtime = Depends(get_runtime),
+    x_webhook_secret: str | None = Header(default=None),
+) -> dict[str, JsonValue]:
+    expected = rt.settings.happyrobot_webhook_secret
+    if expected and not hmac.compare_digest(expected, x_webhook_secret or ""):
+        raise HTTPException(401, "webhook secret inválido")
+    await rt.orchestrator.synchronize()
+    digest = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    observation = Observation(
+        observation_id=f"inbound_{digest}",
+        incident_id=rt.orchestrator.incident_id,
+        kind=EventKind.incoming_call,
+        source_run_id=body.run_id,
+        observed_at=body.timestamp,
+        title=f"Aviso ciudadano: {body.emergency_type}",
+        severity={
+            "vital": Severity.critical,
+            "grave": Severity.high,
+            "moderada": Severity.medium,
+            "leve": Severity.low,
+            "no_emergencia": Severity.low,
+        }[body.severity],
+        payload=body.model_dump(mode="json"),
+    )
+    try:
+        apply_observation(rt.state.copy(), observation)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    await rt.orchestrator.ingest(observation)
+    await rt.orchestrator.synchronize()
+    receipt = next(
+        r
+        for r in await rt.store.receipts(rt.orchestrator.incident_id)
+        if r.observation_id == observation.observation_id
+    )
+    if receipt.status == "invalid":
+        raise HTTPException(422, receipt.reason)
+    if (
+        receipt.status == "applied"
+        and body.location.lat is None
+        and body.location.public_search_allowed
+        and body.location.confirmed
+        and rt.state.incoming_calls[body.run_id].timestamp == body.timestamp
+    ):
+        await rt.geocode_report(body.run_id, body.timestamp)
+    return {
+        "ok": True,
+        "status": receipt.status,
+        "observation_id": observation.observation_id,
+        "run_id": body.run_id,
+        "location_confirmed": body.location.confirmed and body.location.lat is not None,
+        "requires_operator": body.escalation_required,
+    }
 
 
 @router.post("/happyrobot", status_code=202)

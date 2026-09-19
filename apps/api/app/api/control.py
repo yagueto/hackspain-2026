@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from app.agent.planner import Proposal
 from app.api.deps import require_api_key
+from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     Action,
     ActionStatus,
@@ -17,6 +18,9 @@ from app.domain.models import (
     Event,
     EventKind,
     EventSource,
+    GeocodedPlace,
+    IncomingCall,
+    LocationResolution,
     ResourceType,
     Task,
     TaskKind,
@@ -24,6 +28,7 @@ from app.domain.models import (
     WorldSnapshot,
     now,
 )
+from app.integrations.geocoding import COARSE_PLACES
 from app.integrations.happyrobot import HappyRobotError
 from app.runtime import Runtime, get_runtime
 
@@ -44,22 +49,114 @@ async def resume(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
     return rt.state.agent
 
 
+@router.post("/resume-simulated")
+async def resume_simulated(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
+    if rt.settings.happyrobot_mode != "simulated":
+        raise HTTPException(409, "esta operación solo permite envíos simulados")
+    async with rt.orchestrator.edit() as state:
+        state.agent.mode = AgentMode.running
+    await rt.orchestrator.dispatch_pending()
+    return rt.state.agent
+
+
 @router.post("/tick")
 async def tick(rt: Runtime = Depends(get_runtime)) -> Decision:
     return await rt.orchestrator.tick("manual")
 
 
+@router.post("/dispatch")
+async def dispatch(rt: Runtime = Depends(get_runtime)) -> dict[str, str]:
+    await rt.orchestrator.dispatch_pending()
+    return {"agent_mode": rt.state.agent.mode}
+
+
 class ApprovalIn(BaseModel):
     approved: bool = True
     note: str = ""
+    confirm_location: bool = False
+    expected_updated_at: AwareDatetime | None = None
 
 
 @router.post("/tasks/{task_id}/approve")
 async def approve(task_id: str, body: ApprovalIn, rt: Runtime = Depends(get_runtime)) -> Task:
     if task_id not in rt.state.tasks:
         raise HTTPException(404)
-    await rt.orchestrator.approve(task_id, body.approved, body.note)
+    await rt.orchestrator.approve(
+        task_id,
+        body.approved,
+        body.note,
+        confirm_location=body.confirm_location,
+        expected_updated_at=body.expected_updated_at,
+    )
     return rt.state.tasks[task_id]
+
+
+class GeocodeIn(BaseModel):
+    expected_timestamp: AwareDatetime
+    public_address: bool = False
+
+
+@router.post("/incoming-calls/{run_id}/geocode")
+async def geocode_report(
+    run_id: str, body: GeocodeIn, rt: Runtime = Depends(get_runtime)
+) -> LocationResolution:
+    if run_id not in rt.state.incoming_calls:
+        raise HTTPException(404, "aviso desconocido")
+    if not body.public_address:
+        raise HTTPException(422, "autoriza solo una dirección pública de prueba")
+    if not rt.geocoder.enabled:
+        raise HTTPException(409, "geocodificación pública de demo desactivada")
+    return await rt.geocode_report(
+        run_id, body.expected_timestamp, public_search_allowed=True, retry=True
+    )
+
+
+class ConfirmLocationIn(BaseModel):
+    expected_timestamp: AwareDatetime
+    location: GeocodedPlace
+
+
+@router.post("/incoming-calls/{run_id}/location")
+async def confirm_report_location(
+    run_id: str, body: ConfirmLocationIn, rt: Runtime = Depends(get_runtime)
+) -> IncomingCall:
+    async with rt.orchestrator.edit() as state:
+        report = state.incoming_calls.get(run_id)
+        if not report:
+            raise HTTPException(404, "aviso desconocido")
+        if report.timestamp != body.expected_timestamp:
+            raise HTTPException(409, "el aviso ha cambiado; revisa la ubicación actual")
+        if body.location.kind in COARSE_PLACES:
+            raise HTTPException(
+                422, "el centro de una población no localiza el incidente; concreta la dirección"
+            )
+        if any(
+            task.incoming_call_id == run_id
+            and task.approved_at
+            and task.status not in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.failed)
+            for task in state.tasks.values()
+        ):
+            raise HTTPException(
+                409, "hay una misión aprobada; cancélala antes de cambiar su destino"
+            )
+        report.resolution = report.resolution.model_copy(
+            update={
+                "status": "confirmed",
+                "selected": body.location,
+                "provider": "operator",
+                "error": "",
+            }
+        )
+        prepare_intake_tasks(state, report)
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title="Ubicación de aviso confirmada por operador",
+                payload={"run_id": run_id},
+            )
+        )
+    return rt.state.incoming_calls[run_id]
 
 
 class PriorityIn(BaseModel):

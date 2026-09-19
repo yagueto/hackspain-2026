@@ -4,12 +4,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.apply import apply_event
+from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     Action,
     ActionKind,
     ActionStatus,
     CallOutcome,
     EventKind,
+    IncomingCall,
     Observation,
     Receipt,
     ResourceStatus,
@@ -70,6 +72,7 @@ PAYLOADS: dict[EventKind, type[BaseModel]] = {
     EventKind.integration_down: IntegrationPayload,
     EventKind.integration_up: IntegrationPayload,
     EventKind.call_outcome: CallOutcome,
+    EventKind.incoming_call: IncomingCall,
     EventKind.message_outcome: CallOutcome,
 }
 
@@ -280,6 +283,11 @@ def apply_observation(state: WorldState, obs: Observation) -> Receipt:
             }
         )
         key = f"outcome:{resolve_action(state, body).id}"
+    elif obs.kind == EventKind.incoming_call:
+        incoming = IncomingCall.model_validate(obs.payload)
+        if incoming.timestamp != obs.observed_at or incoming.run_id != obs.source_run_id:
+            raise ValueError("fecha/run_id no coincide con el parte entrante")
+        key = f"incoming_call:{incoming.run_id}"
     elif obs.kind != EventKind.note and obs.kind != EventKind.wind_change:
         raise ValueError("tipo de observación no soportado")
 
@@ -289,6 +297,15 @@ def apply_observation(state: WorldState, obs: Observation) -> Receipt:
         return Receipt(observation_id=obs.observation_id, status="ignored", reason="dato atrasado")
     if obs.kind in (EventKind.call_outcome, EventKind.message_outcome):
         facts = outcome(state, obs)
+    elif obs.kind == EventKind.incoming_call:
+        incoming = IncomingCall.model_validate(obs.payload)
+        state.incoming_calls[incoming.run_id] = incoming
+        prepare_intake_tasks(state, incoming)
+        located = incoming.location.confirmed and incoming.location.lat is not None
+        facts = [
+            f"Aviso ciudadano: {incoming.emergency_type}; gravedad {incoming.severity}. "
+            + ("Coordenadas confirmadas por el informante." if located else "Ubicación pendiente.")
+        ]
     else:
         protected = {
             fid: front.model_copy(deep=True)

@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { Icon } from '../../shared/icon/icon';
+import { Operations } from '../../core/services/operations';
 
 @Component({
   selector: 'app-header',
@@ -18,6 +19,7 @@ import { Icon } from '../../shared/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Header {
+  protected readonly operations = inject(Operations);
   protected readonly navigation = [
     { label: 'Inicio', path: '/', available: true },
     { label: 'Incidencias', path: '/incidencias', available: false },

@@ -1,12 +1,59 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
+}
+.connection-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  font-size: 12px;
+  background: #edf6f1;
+  color: #24533b;
+}
+.connection-banner.disconnected {
+  background: #fff4df;
+  color: #764c12;
+}
+.connection-banner button {
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.map-column {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+app-operational-map {
+  height: 100%;
+}
+.incident-detail {
+  position: absolute;
+  bottom: 64px;
+  left: 16px;
+  right: 64px;
+  z-index: 500;
+  padding: 12px;
+  max-height: 65%;
+  overflow: auto;
+  background: #fff;
+  color: #243b4b;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px #0002;
+  font-size: 12px;
+}
+.incident-detail p {
+  margin: 4px 0 0;
 }
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   gap: 12px;
   padding: 14px 16px 16px;
 }
@@ -16,6 +63,70 @@
   gap: 12px;
   min-width: 0;
   min-height: 0;
+}
+.operator-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #d6dfe5;
+}
+.operator-controls label {
+  display: grid;
+  gap: 4px;
+}
+.operator-controls input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid #9caebc;
+  border-radius: 4px;
+  color: #243b4b;
+  background: white;
+}
+.operator-controls .check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.operator-controls button {
+  border: 1px solid #69869c;
+  border-radius: 4px;
+  background: #edf5fb;
+  padding: 6px 9px;
+  color: #23445d;
+  cursor: pointer;
+}
+.operator-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.operator-controls summary {
+  cursor: pointer;
+}
+.operator-controls details > *:not(summary) {
+  margin-top: 8px;
+}
+.location-candidate {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.coordinate-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.response-proposal {
+  padding: 8px;
+  border: 1px solid #d6dfe5;
+  border-radius: 4px;
+}
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 @media (min-width: 1600px) {
   .dashboard-grid {

@@ -2,12 +2,16 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { App } from './app';
+import { Operations } from './core/services/operations';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([])],
+      providers: [
+        provideRouter([]),
+        { provide: Operations, useValue: { modeLabel: () => 'Comunicaciones simuladas' } },
+      ],
     }).compileComponents();
   });
 

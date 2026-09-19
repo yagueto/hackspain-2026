@@ -12,6 +12,16 @@ from app.runtime import Runtime, get_runtime
 router = APIRouter(tags=["state"])
 
 
+@router.get("/meta")
+async def get_meta(rt: Runtime = Depends(get_runtime)) -> dict[str, str | bool]:
+    return {
+        "seed_demo": rt.settings.seed_demo,
+        "happyrobot_mode": rt.settings.happyrobot_mode,
+        "storage": rt.settings.storage_backend,
+        "nominatim_demo_enabled": rt.geocoder.enabled,
+    }
+
+
 @router.get("/state")
 async def get_state(rt: Runtime = Depends(get_runtime)) -> WorldSnapshot:
     try:

@@ -286,6 +286,61 @@ async def test_restart_api_on_postgres_without_happyrobot_key(pg: PostgresStore)
             assert health["synchronized"]
 
 
+async def test_chatbot_location_persists_in_postgres_and_emits_snapshot(pg: PostgresStore) -> None:
+    settings = Settings(
+        storage_backend="postgres",
+        database_url=pg._dsn,
+        agent_autostart=False,
+        happyrobot_webhook_secret="intake-test",
+    )
+    payload = {
+        "run_id": "chat-postgres",
+        "timestamp": now().isoformat(),
+        "emergency_type": "incendio",
+        "severity": "grave",
+        "location": {
+            "raw_text": "Ubicación de prueba",
+            "lat": 40.1,
+            "lng": -4.2,
+            "confirmed": True,
+        },
+    }
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        changes = app.state.rt.state.subscribe()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/webhooks/happyrobot/inbound",
+                json=payload,
+                headers={"X-Webhook-Secret": "intake-test"},
+            )
+            assert response.status_code == 202
+            change = await asyncio.wait_for(changes.get(), timeout=1)
+            assert change.type == "snapshot"
+            assert change.data["incoming_calls"][0]["location"]["lat"] == 40.1
+            saved = (await client.get("/api/v1/state")).json()
+        app.state.rt.state.unsubscribe(changes)
+    restarted = create_app(settings)
+    async with restarted.router.lifespan_context(restarted):
+        restored = restarted.state.rt.state.snapshot()
+        assert len(restored.incoming_calls) == 1
+        assert restored.incoming_calls[0].location.lng == -4.2
+        assert restored.version == saved["version"]
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(restarted), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/webhooks/happyrobot/inbound",
+                json=payload,
+                headers={"X-Webhook-Secret": "intake-test"},
+            )
+            assert response.status_code == 202
+            assert restarted.state.rt.state.version == restored.version
+            assert len(restarted.state.rt.state.incoming_calls) == 1
+
+
 class InvalidRowStore(MemoryStore):
     async def pending(self, incident_id: str, limit: int) -> list[ObservationRow]:
         if "bad" not in self.processed:

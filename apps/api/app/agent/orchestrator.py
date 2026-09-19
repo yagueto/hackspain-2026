@@ -6,12 +6,14 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from pydantic import ValidationError
 
 from app.agent.executor import Executor, invalid_task, reachable
 from app.agent.llm import LLMReviewer
 from app.agent.planner import Proposal, propose, replan_needed
+from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     ActionKind,
     ActionStatus,
@@ -210,6 +212,8 @@ class Orchestrator:
         async with self._tick_lock:
             candidate = self.state.copy()
             changed = False
+            for report in candidate.incoming_calls.values():
+                changed = prepare_intake_tasks(candidate, report) or changed
             for action in candidate.actions.values():
                 if action.status == ActionStatus.sending:
                     action.status = ActionStatus.unknown
@@ -322,11 +326,24 @@ class Orchestrator:
         await self._commit(s, require_synced=True)
         return decision
 
-    async def approve(self, task_id: str, approved: bool, note: str = "") -> None:
+    async def approve(
+        self,
+        task_id: str,
+        approved: bool,
+        note: str = "",
+        *,
+        confirm_location: bool = False,
+        expected_updated_at: datetime | None = None,
+    ) -> None:
         async with self.edit() as s:
             task = s.tasks[task_id]
             if task.status != TaskStatus.awaiting_approval:
                 raise ValueError("la tarea no está pendiente de aprobación")
+            if task.incoming_call_id:
+                if expected_updated_at != task.updated_at:
+                    raise ValueError("la propuesta ha cambiado; revisa el estado actualizado")
+                if approved and (not confirm_location or invalid_task(s, task)):
+                    raise ValueError("confirma una ubicación válida antes de aprobar recursos")
             if not approved:
                 task.status, task.outcome = TaskStatus.rejected, note or "Rechazada por operador"
             else:
