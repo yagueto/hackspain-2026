@@ -4,7 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
-from app.domain.models import WorldSnapshot
+from app.domain.models import WorldSnapshot, now
 from app.domain.scenario import seed_wildfire
 from app.domain.state import WorldState
 from app.integrations.happyrobot import FakeHappyRobotClient
@@ -125,3 +125,39 @@ async def test_reconcile_known_run_does_not_imply_unit_available() -> None:
 def test_live_requires_durable_storage_and_webhook_secret() -> None:
     with pytest.raises(ValueError, match="modo live"):
         create_app(Settings(happyrobot_mode="live", happyrobot_api_key="test"))
+
+
+async def test_documented_observation_and_receipt_contract(client: AsyncClient) -> None:
+    state = (await client.get("/api/v1/state")).json()
+    body = {
+        "observation_id": "documented-observation",
+        "incident_id": state["incident"]["id"],
+        "observed_at": now().isoformat(),
+        "kind": "injured_reported",
+        "zone_id": "zone_camping",
+        "title": "Tres heridos en el camping",
+        "payload": {"count": 3},
+    }
+    assert (await client.post("/api/v1/observations", json=body)).status_code == 401
+    assert (await client.get("/api/v1/receipts")).status_code == 401
+    result = await client.post("/api/v1/observations", json=body, headers=HEADERS)
+    assert result.status_code == 202
+    receipts = (await client.get("/api/v1/receipts", headers=HEADERS)).json()
+    assert any(
+        r["observation_id"] == body["observation_id"] and r["status"] == "applied" for r in receipts
+    )
+    updated = (await client.get("/api/v1/state")).json()
+    assert next(z for z in updated["zones"] if z["id"] == "zone_camping")["injured"] == 3
+    replay = await client.post("/api/v1/observations", json=body, headers=HEADERS)
+    assert replay.status_code == 202
+    assert (await client.get("/api/v1/state")).json()["version"] == updated["version"]
+    invalid = {**body, "observation_id": "invalid-count", "payload": {"count": -1}}
+    assert (
+        await client.post("/api/v1/observations", json=invalid, headers=HEADERS)
+    ).status_code == 202
+    receipts = (await client.get("/api/v1/receipts", headers=HEADERS)).json()
+    assert any(
+        r["observation_id"] == "invalid-count" and r["status"] == "invalid" for r in receipts
+    )
+    current = (await client.get("/api/v1/state")).json()
+    assert current["zones"] == updated["zones"]

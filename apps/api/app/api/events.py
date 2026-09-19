@@ -20,7 +20,7 @@ from app.domain.models import (
 )
 from app.runtime import Runtime, get_runtime
 
-router = APIRouter(prefix="/events", tags=["events"])
+router = APIRouter(tags=["events"])
 
 
 class EventIn(BaseModel):
@@ -34,7 +34,7 @@ class EventIn(BaseModel):
     zone_id: str | None = None
 
 
-@router.post("", status_code=202, dependencies=[Depends(require_api_key)])
+@router.post("/events", status_code=202, dependencies=[Depends(require_api_key)])
 async def ingest(body: EventIn, rt: Runtime = Depends(get_runtime)) -> Event:
     return await rt.orchestrator.ingest_event(
         Event(
@@ -45,7 +45,7 @@ async def ingest(body: EventIn, rt: Runtime = Depends(get_runtime)) -> Event:
     )
 
 
-@router.post("/batch", status_code=202, dependencies=[Depends(require_api_key)])
+@router.post("/events/batch", status_code=202, dependencies=[Depends(require_api_key)])
 async def ingest_batch(body: list[EventIn], rt: Runtime = Depends(get_runtime)) -> list[Event]:
     return [await ingest(b, rt) for b in body]
 
@@ -62,7 +62,7 @@ async def receipts(rt: Runtime = Depends(get_runtime)) -> list[Receipt]:
     return await rt.store.receipts(rt.orchestrator.incident_id)
 
 
-@router.get("")
+@router.get("/events")
 async def list_events(
     limit: int = 100,
     relevant: bool | None = None,
