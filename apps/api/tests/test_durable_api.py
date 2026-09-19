@@ -141,6 +141,12 @@ def test_live_requires_api_key_and_webhook_secret() -> None:
         )
 
 
+async def test_external_http_is_blocked_in_tests() -> None:
+    async with AsyncClient() as client:
+        with pytest.raises(AssertionError, match="HTTP externo bloqueado"):
+            await client.post("https://must-not-be-contacted.invalid", json={})
+
+
 async def test_documented_observation_and_receipt_contract(client: AsyncClient) -> None:
     state = (await client.get("/api/v1/state")).json()
     body = {
