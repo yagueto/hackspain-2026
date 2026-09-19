@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +10,12 @@ class Settings(BaseSettings):
 
     api_key: str = "dev-secret"
     cors_origins: str = "http://localhost:3000"
-    database_path: str = "./crisis.db"
+    storage_backend: Literal["memory", "twin"] = "memory"
+    incident_id: str = "incendio-gredos-demo"
+    seed_demo: bool = True
+    twin_poll_seconds: float = Field(default=2, ge=0.1)
+    twin_batch_size: int = Field(default=100, ge=1, le=250)
+    happyrobot_mode: Literal["simulated", "live"] = "simulated"
     public_base_url: str = "http://localhost:8000"
 
     happyrobot_api_key: str = ""
@@ -23,7 +29,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    agent_tick_seconds: float = 10.0
+    agent_tick_seconds: float = Field(default=10.0, ge=0.1)
     agent_autostart: bool = True
 
     @property

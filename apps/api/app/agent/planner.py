@@ -40,7 +40,8 @@ class Proposal:
 
 def _has_open(state: WorldState, kind: TaskKind, zone_id: str | None) -> bool:
     return any(
-        t.kind == kind and t.zone_id == zone_id and t.status in OPEN for t in state.tasks.values()
+        t.kind == kind and t.zone_id == zone_id and t.status in (OPEN | {TaskStatus.rejected})
+        for t in state.tasks.values()
     )
 
 

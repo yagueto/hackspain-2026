@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.models import Event, EventKind, ResourceStatus, Severity
+from app.domain.models import Event, EventKind, ResourceStatus, Severity, TaskStatus
 from app.domain.state import WorldState
 
 _SEV_ORDER = [Severity.low, Severity.medium, Severity.high, Severity.critical]
@@ -98,15 +98,20 @@ def apply_event(state: WorldState, e: Event) -> list[str]:
         r = state.resources.get(str(p.get("resource_id", "")))
         if r:
             new_status = ResourceStatus(p.get("status", r.status))
-            if new_status != r.status:
-                r.status = new_status
-                if "eta_minutes" in p:
-                    r.eta_minutes = float(p["eta_minutes"])
-                if new_status in (ResourceStatus.available, ResourceStatus.out_of_service):
+            r.reported_status = new_status
+            r.reported_at = e.ts
+            if "eta_minutes" in p:
+                r.eta_minutes = float(p["eta_minutes"])
+            if r.assigned_task_id and new_status == ResourceStatus.available:
+                if p.get("task_id") == r.assigned_task_id:
+                    state.set_task_status(r.assigned_task_id, TaskStatus.done, e.title)
                     r.assigned_task_id = None
                     r.assigned_zone_id = None
-                state.upsert_resource(r)
-                facts.append(f"{r.name} -> {new_status}")
+                    r.status = new_status
+            else:
+                r.status = new_status
+            state.upsert_resource(r)
+            facts.append(f"{r.name} -> {new_status}")
 
     elif e.kind == EventKind.integration_down:
         state.set_integration(str(p.get("name", "unknown")), False)

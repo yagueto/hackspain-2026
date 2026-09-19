@@ -87,6 +87,6 @@ async def run_journal(
 @router.get("/history/lessons")
 async def lessons(rt: Runtime = Depends(get_runtime)) -> dict[str, Any]:
     return {
-        "contact_reliability": await rt.store.contact_reliability(),
+        "contact_reliability": await rt.store.contact_reliability(rt.orchestrator.incident_id),
         "recent": await rt.store.lessons_summary(50),
     }

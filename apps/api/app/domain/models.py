@@ -9,9 +9,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 
 
 def now() -> datetime:
@@ -69,6 +69,8 @@ class ResourceType(StrEnum):
 
 class ResourceStatus(StrEnum):
     available = "available"
+    reserved = "reserved"
+    en_route = "en_route"
     dispatched = "dispatched"
     on_scene = "on_scene"
     returning = "returning"
@@ -119,6 +121,8 @@ class ActionKind(StrEnum):
 
 class ActionStatus(StrEnum):
     pending = "pending"
+    sending = "sending"
+    unknown = "unknown"
     dispatched = "dispatched"
     completed = "completed"
     failed = "failed"
@@ -185,6 +189,8 @@ class Resource(BaseModel):
     assigned_zone_id: str | None = None
     contact_id: str | None = None
     eta_minutes: float | None = None
+    reported_status: ResourceStatus | None = None
+    reported_at: datetime | None = None
     notes: list[str] = Field(default_factory=list)
 
 
@@ -237,6 +243,12 @@ class Action(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
     happyrobot_run_id: str | None = None
     error: str = ""
+    attempts: int = 0
+    next_attempt_at: datetime | None = None
+    state_version: int = 0
+    workflow: str | None = None
+    decision_id: str | None = None
+    expires_at: datetime | None = None
 
 
 class Task(BaseModel):
@@ -256,6 +268,11 @@ class Task(BaseModel):
     action_ids: list[str] = Field(default_factory=list)
     decision_id: str | None = None
     outcome: str = ""
+    resource_types: list[ResourceType] = Field(default_factory=list)
+    contact_roles: list[ContactRole] = Field(default_factory=list)
+    preferred_resource_id: str | None = None
+    approved_at: datetime | None = None
+    cancellation_requested: bool = False
 
 
 class Decision(BaseModel):
@@ -307,3 +324,78 @@ class WorldSnapshot(BaseModel):
     agent: AgentConfig
     integrations: dict[str, bool]
     generated_at: datetime = Field(default_factory=now)
+    version: int = 0
+    last_synced_at: datetime | None = None
+    field_clocks: dict[str, datetime] = Field(default_factory=dict)
+    event_facts: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class Observation(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    observation_id: str = Field(default_factory=lambda: new_id("obs"))
+    schema_version: Literal[1] = 1
+    incident_id: str
+    kind: EventKind
+    entity_id: str | None = None
+    zone_id: str | None = None
+    observed_at: AwareDatetime = Field(default_factory=now)
+    source: EventSource = EventSource.happyrobot
+    source_run_id: str | None = None
+    command_id: str | None = None
+    title: str
+    severity: Severity = Severity.medium
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
+
+    def event(self) -> Event:
+        return Event(
+            id=self.observation_id,
+            ts=self.observed_at,
+            source=self.source,
+            kind=self.kind,
+            title=self.title,
+            severity=self.severity,
+            zone_id=self.zone_id,
+            payload={
+                **self.payload,
+                "command_id": self.command_id,
+                "source_run_id": self.source_run_id,
+            },
+        )
+
+
+class ObservationRow(BaseModel):
+    observation_id: str
+    body: JsonValue
+
+
+class Receipt(BaseModel):
+    observation_id: str
+    status: Literal["applied", "ignored", "invalid"]
+    reason: str = ""
+
+
+class CallOutcome(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    observation_id: str | None = None
+    observed_at: AwareDatetime | None = None
+    task_id: str | None = None
+    action_id: str | None = None
+    command_id: str | None = None
+    run_id: str | None = None
+    session_id: str | None = None
+    contact_id: str | None = None
+    phone: str | None = None
+    outcome: Literal["accepted", "rejected", "no_answer", "voicemail", "busy", "failed", "info"] = (
+        "info"
+    )
+    eta_minutes: float | None = Field(default=None, ge=0)
+    injured_count: int | None = Field(default=None, ge=0)
+    civilians_count: int | None = Field(default=None, ge=0)
+    road_blocked: str | None = None
+    needs_medical: bool | None = None
+    evacuation_confirmed: bool | None = None
+    shelter_capacity: int | None = Field(default=None, ge=0)
+    resource_status: ResourceStatus | None = None
+    summary: str = ""
+    transcript: str = ""
+    extra: dict[str, JsonValue] = Field(default_factory=dict)

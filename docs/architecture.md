@@ -1,101 +1,230 @@
-# Arquitectura
+# Arquitectura: Twin, world state y orquestador
 
-```
-┌──────────────────────┐        ┌──────────────────────┐
-│  apps/simulator      │        │  apps/web (Next.js)  │
-│  guion de la crisis  │        │  dashboard + control │
-└─────────┬────────────┘        └─────────▲────────────┘
-          │ POST /events                  │ GET /stream (SSE), /state
-          ▼                               │
-┌─────────────────────────────────────────┴────────────┐
-│  apps/api  (FastAPI)                                  │
-│  1. WorldState en memoria (zonas, frentes, medios…)   │
-│  2. Orquestador: percibir→filtrar→priorizar→actuar    │
-│     · planner.py  plan determinista (siempre)         │
-│     · llm.py      revisión LLM (opcional)             │
-│     · executor.py acciones reales                     │
-│  3. SQLite: journal + lessons (aprende entre runs)    │
-└──────┬───────────────────────────────────────▲───────┘
-       │ POST /workflows/{id}/runs               │ POST /api/v1/webhooks/happyrobot
-       │ POST /signals/  (contexto a llamadas    │ (variables extraídas de la llamada)
-       ▼  en curso)                              │
-┌──────────────────────────────────────────────────────┐
-│  HappyRobot                                          │
-│  workflows: call_responder · call_civilian ·         │
-│             notify_authority · sms                   │
-└──────────────────────────────────────────────────────┘
+```text
+HappyRobot: llamadas, mensajes, agentes
+      │ INSERT observación                  ▲ trigger / signals / cancel
+      ▼                                     │
+Twin (PostgreSQL vía REST/SQL) ◄────────► FastAPI
+  crisis_observations                       polling + validación + recibos
+  crisis_receipts                           proyección WorldState en memoria
+  crisis_world                              planner + revisión LLM opcional
+  crisis_assignments                        reservas + aprobación humana
+  crisis_commands                           outbox persistente
+  crisis_journal                            │
+      ▲                                     ▼
+      └── ingesta HTTP / webhook ◄── simulador / dashboard (SSE + controles)
 ```
 
-## Ciclo del orquestador (`app/agent/orchestrator.py`)
+## Propiedad de datos y persistencia
 
-Se despierta cuando entra un evento o cada `AGENT_TICK_SECONDS`:
+Los agentes escriben **solo observaciones** en `crisis_observations`. El backend es el dueño
+del estado consolidado, las asignaciones, decisiones, recibos y órdenes. Se conserva el
+informe original y se emite una observación nueva para corregirlo, sin editar el anterior.
+Esta separación es un contrato de integración; hay que configurar los permisos de los
+agentes en Twin. No se presupone que compartir una API key imponga aislamiento por tabla.
 
-1. **Percibir** — `apply_event` muta el mundo y devuelve *hechos* ("Candeleda pasa a crítico").
-   Un evento sin hechos es ruido → `relevant=false`.
-2. **Replanificar** — `replan_needed` detecta tareas que ya no valen (frente contenido, medio
-   averiado, carretera cortada, cambio de viento). Se cancelan y se avisa a las llamadas en curso
-   con una *signal* de HappyRobot.
-3. **Priorizar** — `propose` genera tareas con prioridad 0-100 y su razón, contando solo con los
-   medios disponibles. Si hay `OPENAI_API_KEY`, el LLM revisa: filtra eventos, reordena, descarta
-   y resume. Recibe también las *lecciones* de ejecuciones anteriores.
-4. **Actuar** — `Executor` asigna el medio más fiable, y dispara el workflow de HappyRobot que
-   toca según el rol del contacto. Las tareas de `approval_required_for` (por defecto evacuar)
-   quedan `awaiting_approval` hasta que el operador las apruebe.
-5. **Explicar** — cada vuelta deja una `Decision` (resumen, prioridades, acciones, descartes).
+`crisis_world` guarda un snapshot versionado por incidente. `WorldState` es su proyección
+local y puede recuperarse al reiniciar. El dashboard recibe un extracto reciente, mientras
+que la persistencia incluye todas las tareas y órdenes, también pendientes y ambiguas.
+Los eventos y decisiones en memoria se limitan a 2.000 y 500; Twin conserva el journal.
 
-## Contrato con HappyRobot
+La versión v1 usa una única sentencia SQL con CTEs para guardar conjuntamente snapshot,
+recibos, asignaciones, comandos y journal. La actualización exige `version = expected_version`.
+Un conflicto revierte la propuesta local: no se publica por SSE ni se envía a HappyRobot.
+Al decidir o reclamar un envío también se comprueba, en la misma sentencia, que no haya
+observaciones pendientes. Esto evita enviar una orden con datos que llegaron entre el último
+poll y el guardado. Dos escritores del mismo incidente no pueden confirmar la misma versión.
 
-### Lo que enviamos al disparar un workflow (`payload`)
+El comportamiento SQL está probado sobre PostgreSQL 17, detrás de un transporte HTTP que
+reproduce `/twin/sql`. La admisión de DDL/CTEs, permisos y límites en el Twin del equipo
+requiere validación con su API key. No se asumen CDC, triggers ni `LISTEN/NOTIFY`.
+`HAPPYROBOT_ENVIRONMENT` afecta workflows; la selección de Twin depende de organización,
+credencial y región. Los IDs de incidente aíslan escenarios dentro de esa base.
+
+## Contrato que escriben los agentes
+
+Fila en `crisis_observations`:
+
+| Columna | Valor |
+|---|---|
+| `observation_id` | ID estable y global; mismo ID en todos los reintentos |
+| `incident_id` | incidente objetivo |
+| `body` | objeto JSON completo siguiente |
+| `received_at` | dejar el valor por defecto del servidor |
 
 ```json
 {
-  "task_id": "task_ab12", "task_kind": "dispatch_resource", "task_title": "...",
-  "instructions": "...", "priority": 90,
-  "contact_id": "ct_bomb1", "contact_name": "Sgto. Ruiz", "contact_role": "firefighter",
-  "phone": "+34...", "language": "es",
-  "incident": "Incendio forestal Sierra de Gredos", "zone": "Poyales del Hoyo",
-  "zone_status": {...}, "weather": {...}, "threats": ["Frente Sur llega a Poyales en 40 min"],
-  "roads_closed": ["AV-923"],
-  "callback_url": "https://<PUBLIC_BASE_URL>/api/v1/webhooks/happyrobot"
+  "observation_id": "obs-llamada-123-resultado-1",
+  "schema_version": 1,
+  "incident_id": "incendio-gredos-demo",
+  "kind": "call_outcome",
+  "observed_at": "2026-09-19T10:00:00Z",
+  "source": "happyrobot",
+  "source_run_id": "RUN_ID",
+  "command_id": "ACT_ID",
+  "title": "La ambulancia acepta la misión",
+  "severity": "high",
+  "payload": {
+    "outcome": "accepted",
+    "eta_minutes": 12,
+    "summary": "Salimos ahora"
+  }
 }
 ```
 
-### Lo que el workflow nos devuelve (último nodo → webhook)
+Los IDs del envelope y de la fila deben coincidir. `observed_at` lleva zona horaria y representa
+el momento de observación, no el momento de un reintento. Los agentes deben enviarlo siempre.
+`entity_id` es metadato opcional; la referencia operativa va en el payload indicado aquí:
 
-`POST /api/v1/webhooks/happyrobot` con header `X-Webhook-Secret` y JSON:
+| `kind` | Payload |
+|---|---|
+| `fire_spread` | `front_id`; opcionales `heading_deg`, `speed_kmh`, `intensity`, `contained_pct`, `threatens: {zone_id: eta_minutes}` |
+| `wind_change` | `wind_from_deg`, `wind_kmh` |
+| `road_blocked`, `road_open` | `road_id`, opcional `reason` |
+| `injured_reported`, `civilians_reported` | `count`, con `zone_id` en envelope o payload |
+| `resource_status` | `resource_id`, `status`, opcionales `eta_minutes`, `task_id` |
+| `call_outcome`, `message_outcome` | resultado correlacionado, descrito más abajo |
+| `integration_down`, `integration_up` | `name: happyrobot` o `llm` |
+| `note` | texto en `title`, payload opcional |
 
-| campo | tipo | uso |
-|---|---|---|
-| `task_id` | str | enlaza con la tarea (o `run_id` / `action_id`) |
-| `outcome` | accepted · rejected · no_answer · voicemail · busy · failed · info | estado de la tarea y fiabilidad del contacto |
-| `eta_minutes` | float | ETA del medio |
-| `injured_count` | int | genera evento `injured_reported` → ambulancia |
-| `civilians_count` | int | actualiza personas presentes |
-| `road_blocked` | str | genera evento `road_blocked` → replan |
-| `evacuation_confirmed` | bool | zona pasa a `in_progress` |
-| `resource_status` | enum | estado del medio |
-| `shelter_capacity` | int | capacidad del albergue |
-| `summary`, `transcript` | str | contexto para el dashboard |
+Los contadores son valores absolutos. Los informes `resource_status` guardan `reported_status`
+y `reported_at` sin sobrescribir una reserva activa. `reserved` pertenece al backend.
+Para confirmar disponibilidad tras una misión hay que incluir su `task_id`; un informe de
+otra misión o anterior a la reserva no libera la unidad. Marcar una tarea `done` tampoco
+demuestra por sí mismo que el vehículo esté disponible.
 
-Todo es opcional salvo el enlace: cualquier variable extra va en `extra`.
+La API ofrece `POST /api/v1/observations` con el mismo envelope y `X-API-Key`.
+`POST /events`, `/events/batch`, el simulador y el webhook se convierten al mismo contrato.
+Una respuesta `202` confirma recepción; el resultado de aplicación se consulta en
+`GET /api/v1/receipts`, con `X-API-Key`. Un ID repetido con otro contenido se rechaza.
 
-## Intervención humana
+## Sincronización y datos atrasados
 
-- `POST /control/pause` · `/resume` · `/tick`
-- `POST /control/tasks/{id}/approve` `{approved, note}`
-- `POST /control/tasks/{id}/priority` · `/status`
-- `POST /control/tasks` (tarea manual) · `/call` · `/sms` · `/note`
-- `PATCH /control/agent` `{approval_required_for, tick_seconds}`
+Cada `TWIN_POLL_SECONDS` se consultan observaciones sin recibo, ordenadas por
+`received_at, observation_id`, con límite `TWIN_BATCH_SIZE`. Se guardan por lotes y la consulta
+siguiente excluye los recibos ya confirmados. No se usa un cursor temporal que pueda saltarse
+inserciones concurrentes con fechas antiguas. Tras 20 lotes se continúa en la siguiente vuelta,
+sin despachar mientras queden datos pendientes. Una respuesta Twin truncada detiene la operación.
 
-## Demo
+Cada observación se valida sobre una copia. Incidentes/referencias desconocidos, tipos o rangos
+inválidos y fechas futuras generan un recibo `invalid`; la copia se descarta. Se comparan relojes
+por frente, carretera, recurso o tipo de contador; los datos atrasados generan `ignored`.
+Las notas se conservan aunque lleguen tarde. Solo después del guardado atómico se publica el
+nuevo world state.
 
-```bash
-curl -X POST localhost:8000/api/v1/scenario/reset -H 'X-API-Key: dev-secret' \
-  -H 'content-type: application/json' -d '{"phones": {"firefighter": "+34600..."}}'
-curl localhost:8000/api/v1/scenario/script          # guion de 10 pasos
-curl -X POST localhost:8000/api/v1/scenario/step/2 -H 'X-API-Key: dev-secret'  # el viento rola
-curl -N localhost:8000/api/v1/stream                 # SSE
+Los hechos derivados de un callback (heridos, carretera, recurso) tienen IDs deterministas y
+se validan en la misma transacción que su observación raíz. Quedan en snapshot/journal,
+con un único recibo raíz; no necesitan otra inserción en la bandeja de entrada.
+Un callback con heridos pero sin zona identificable conserva el aviso con
+`location_unconfirmed=true`; un operador debe aportar la ubicación antes de asignar asistencia.
+
+## Decisiones y reservas
+
+1. Sincronizar y leer una versión coherente del incidente.
+2. Reevaluar tareas vigentes: destino, contención, amenaza y disponibilidad del recurso.
+3. Crear propuestas de asistencia, extinción, avisos, evacuación, albergues y carreteras.
+4. Opcionalmente revisar prioridades, resumen, descartes y recurso sugerido con un LLM.
+5. Revalidar observaciones nuevas y comprobar en código tipos de unidad, contacto, reserva,
+   disponibilidad y acceso. El LLM no envía órdenes ni escribe asignaciones.
+6. Ordenar por prioridad y seleccionar medios considerando ETA, distancia aproximada,
+   capacidad, fiabilidad del contacto y cobertura restante. Ambulancias/autobuses sin capacidad
+   declarada no se asignan. Se asigna un recurso por tarea; la cobertura es una preferencia,
+   no un cálculo de flota óptima.
+7. Las tareas que requieren aprobación quedan `awaiting_approval`, sin reservar ni llamar.
+   Una aprobación asigna contra el estado actual, no contra el plan original.
+8. Confirmar decisión, reserva y orden `pending` en Twin. Rechazar una evacuación impide que
+   el siguiente tick vuelva a crearla automáticamente; el operador puede crear una tarea nueva.
+9. Reclamar y revalidar cada envío, guardar `sending` e invocar HappyRobot.
+10. Registrar resultado y volver a percibir. Viento y cortes generan Signals para las
+    conversaciones suscritas a `crisis.update`.
+
+El modelo de carreteras comprueba accesos abiertos al destino; no calcula rutas completas.
+Una carretera que cambia provoca replanificación/señales y bloquea órdenes terrestres
+pendientes sin acceso. Las misiones ya en marcha requieren confirmación humana/conversacional
+para reasignarlas; no se declara libre una unidad por cancelar su llamada.
+
+## Outbox y resultados HappyRobot
+
+```text
+pending → sending → dispatched → completed / failed
+                  ↘ unknown
+pending → skipped (tarea invalidada, rechazo o caducidad)
 ```
 
-Sin `HAPPYROBOT_API_KEY` se usa un cliente simulado que registra las llamadas en el log; el
-webhook se puede invocar a mano para cerrar el bucle.
+El estado de una acción describe la **comunicación**. Una llamada aceptada puede estar
+`completed` mientras la tarea sigue `accepted` y la unidad `en_route`.
+
+El payload del workflow incluye `command_id` (= `action_id`), `task_id`, `resource_ids`,
+`incident_id`, `world_state_version`, contacto/teléfono, instrucciones, clima, carreteras,
+`observations_table` y `callback_url`. Workflows: `call_responder`, `call_civilian`,
+`notify_authority`, `sms`.
+
+Preferentemente el agente inserta la observación en Twin. Como alternativa, envía
+`POST /api/v1/webhooks/happyrobot` con `X-Webhook-Secret`:
+
+```json
+{
+  "observation_id": "obs-llamada-123-resultado-1",
+  "command_id": "ACT_ID",
+  "run_id": "RUN_ID",
+  "observed_at": "2026-09-19T10:00:00Z",
+  "outcome": "accepted",
+  "eta_minutes": 12,
+  "summary": "Salimos ahora"
+}
+```
+
+También admite `task_id` si solo hay una comunicación correlacionable y los campos
+`injured_count`, `civilians_count`, `road_blocked`, `evacuation_confirmed`, `resource_status`,
+`shelter_capacity`, `session_id`, `transcript`, `extra`.
+`outcome`: `accepted`, `rejected`, `no_answer`, `voicemail`, `busy`, `failed`, `info`.
+La correlación se comprueba; no basta con citar una tarea distinta. Para información posterior
+usa una observación nueva con `outcome=info` y fecha nueva.
+
+Sin ID explícito el webhook calcula uno estable del cuerpo. Sin fecha usa la de creación
+de la orden para conservar compatibilidad y no dejar que un callback tardío libere una misión
+posterior. Los agentes nuevos deben enviar ID y fecha explícitos. Si se usan ambas vías
+Twin/webhook para la misma observación, hay que normalizar exactamente el mismo envelope;
+lo recomendado es elegir una vía por workflow.
+
+Un fallo de conexión previo al envío o un `429` tiene como máximo tres intentos con espera.
+Timeouts tras enviar, respuestas malformadas y errores POST `5xx` quedan `unknown` y no se
+reenvían automáticamente. Los comandos `sending` encontrados al arrancar pasan a `unknown`.
+Las órdenes pendientes se recuperan y se envían al reanudar el agente; con
+`AGENT_AUTOSTART=false` se necesita un tick manual. Las comunicaciones caducan en diez minutos
+antes de su primer envío (señales en dos).
+
+`POST /control/actions/{id}/reconcile` consulta un `run_id` conocido sin reenviar.
+Un run terminado sin resultado operativo conserva la incertidumbre y la reserva.
+Si falta el run ID, hay que localizar `command_id` en HappyRobot y aportar una observación
+correlacionada; no existe un botón de reenvío ciego. Un reinicio concurrente puede marcar
+`unknown` un envío de otro proceso todavía activo; esto es conservador y evita duplicarlo.
+
+## API del dashboard e intervención
+
+Todos los endpoints cuelgan de `/api/v1`:
+
+- `/state`, `/tasks`, `/resources`, `/contacts`, `/actions`, `/decisions`, `/timeline`.
+- `/stream`: snapshot inicial y snapshots confirmados; `id` SSE y `version` coinciden.
+  Al reconectar se recibe otro snapshot, sin replay de deltas. Ante un hueco o `resync`,
+  descargar `/state`. No aplicar snapshots más antiguos que el que ya se muestra.
+- `/control/pause`, `/resume`, `/tick`, `/agent`.
+- `/control/tasks`, `/tasks/{id}/approve`, `/priority`, `/status`.
+- `/control/call`, `/sms`, `/note`, `/actions/{id}/reconcile`.
+- `/control/incident`: inicialización explícita, solo si no hay incidente activo.
+- `/history/runs`, `/history/runs/{id}/journal`, `/history/lessons`.
+
+Escrituras y control requieren `X-API-Key`; el webhook usa su propio secret.
+El esquema OpenAPI de `/docs` describe los campos completos. El dashboard no debe mutar
+las tablas del backend. `MemoryStore` conserva estos contratos para una demo sin credenciales;
+no persiste tras cerrar el proceso. Configuración y comandos: [API](../apps/api/README.md).
+
+## Límites operativos de esta versión
+
+El despliegue previsto es un único proceso activo por incidente; CAS protege escrituras
+concurrentes, pero no hay elección de líder ni leases distribuidos. El snapshot crece con
+tareas/órdenes: un límite de respuesta Twin puede detener la sincronización y exige archivar
+o evolucionar la proyección, nunca ignorar truncamientos. Los endpoints de histórico devuelven
+hasta 250 entradas (50 incidentes), y recibos hasta 250 en Twin.
+La persistencia no convierte la heurística demo en un motor geográfico ni valida protocolos
+operativos de emergencias. Frontend, simulador físico y despliegue público quedan separados.

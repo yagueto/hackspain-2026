@@ -30,7 +30,10 @@ WorkflowKind = Literal["call_responder", "call_civilian", "notify_authority", "s
 
 
 class HappyRobotError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, ambiguous: bool = False, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.ambiguous = ambiguous
+        self.retryable = retryable
 
 
 class HappyRobotClient:
@@ -63,11 +66,24 @@ class HappyRobotClient:
             raise HappyRobotError("HAPPYROBOT_API_KEY no configurada")
         try:
             resp = await self._client.request(method, path, **kw)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise HappyRobotError("No se pudo conectar con HappyRobot", retryable=True) from exc
         except httpx.HTTPError as exc:
-            raise HappyRobotError(f"{method} {path}: {exc}") from exc
+            raise HappyRobotError(
+                "Respuesta de HappyRobot desconocida", ambiguous=method == "POST"
+            ) from exc
         if resp.status_code >= 400:
-            raise HappyRobotError(f"{method} {path}: {resp.status_code} {resp.text[:300]}")
-        data: dict[str, Any] = resp.json() if resp.content else {}
+            raise HappyRobotError(
+                f"{method} {path}: {resp.status_code}",
+                ambiguous=method == "POST" and resp.status_code >= 500,
+                retryable=resp.status_code == 429,
+            )
+        try:
+            data: dict[str, Any] = resp.json() if resp.content else {}
+            if not isinstance(data, dict):
+                raise ValueError("respuesta no es objeto")
+        except ValueError as exc:
+            raise HappyRobotError("Respuesta inválida", ambiguous=method == "POST") from exc
         return data
 
     # ------------------------------------------------------------ runs

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import require_api_key
-from app.domain.models import Event, EventKind, EventSource, Severity, now
+from app.domain.models import Event, EventSource, new_id
 from app.domain.scenario import seed_wildfire
+from app.domain.state import WorldState
 from app.runtime import Runtime, get_runtime
 
 router = APIRouter(prefix="/scenario", tags=["scenario"], dependencies=[Depends(require_api_key)])
@@ -24,22 +25,17 @@ class SeedIn(BaseModel):
 @router.post("/reset")
 async def reset(body: SeedIn | None = None, rt: Runtime = Depends(get_runtime)) -> dict[str, str]:
     body = body or SeedIn()
-    rt.state.reset()
-    seed_wildfire(rt.state, body.phones)
-    run_id = f"run_{now().strftime('%Y%m%d_%H%M%S')}"
-    await rt.store.start_run(
-        run_id, now().isoformat(), rt.state.incident.name if rt.state.incident else ""
-    )
-    rt.state.add_event(
-        Event(
-            source=EventSource.system,
-            kind=EventKind.note,
-            severity=Severity.high,
-            title="Escenario iniciado: incendio declarado en la ladera sur",
-        )
-    )
-    if body.autostart_agent:
-        rt.orchestrator.start()
+    if not rt.settings.seed_demo or rt.settings.happyrobot_mode == "live":
+        raise HTTPException(409, "reset solo disponible en modo demo simulado")
+    await rt.orchestrator.stop()
+    state = WorldState()
+    seed_wildfire(state, body.phones)
+    run_id = new_id("demo")
+    if state.incident:
+        state.incident.id = run_id
+    snapshot = await rt.store.create(state.snapshot(full=True))
+    rt.state.restore(snapshot, emit=True)
+    rt.orchestrator.start(body.autostart_agent)
     return {"run_id": run_id, "incident": rt.state.incident.name if rt.state.incident else ""}
 
 
@@ -124,4 +120,8 @@ async def get_script() -> list[dict[str, object]]:
 @router.post("/step/{n}", status_code=202)
 async def play_step(n: int, rt: Runtime = Depends(get_runtime)) -> Event:
     s = SCRIPT[n % len(SCRIPT)]
-    return rt.state.add_event(Event.model_validate({"source": EventSource.simulator, **s}))
+    if not rt.settings.seed_demo:
+        raise HTTPException(409, "escenario demo deshabilitado")
+    return await rt.orchestrator.ingest_event(
+        Event.model_validate({"source": EventSource.simulator, **s})
+    )

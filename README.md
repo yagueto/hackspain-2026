@@ -20,9 +20,14 @@ Cada app es autocontenida (su propio `pyproject.toml` / `package.json`). Ver el 
 
 ```bash
 cd apps/api
-cp .env.example .env      # rellena HAPPYROBOT_API_KEY, etc.
+cp .env.example .env      # por defecto: demo en memoria y comunicaciones simuladas
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
 Docs interactivas en http://localhost:8000/docs
+
+La persistencia duradera usa **HappyRobot Twin**. Los agentes insertan observaciones y el
+backend consolida el world state, reserva recursos y envía órdenes mediante una outbox.
+Configuración, migración y pruebas: [API](apps/api/README.md).
+Contrato de datos y decisiones: [arquitectura](docs/architecture.md).
