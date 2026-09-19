@@ -1,21 +1,33 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.local"), env_file_encoding="utf-8", extra="ignore"
+    )
 
     api_key: str = "dev-secret"
     cors_origins: str = "http://localhost:3000"
-    storage_backend: Literal["memory", "twin"] = "memory"
+    storage_backend: Literal["memory", "postgres", "twin"] = "memory"
+    database_url: SecretStr = SecretStr("")
     incident_id: str = "incendio-gredos-demo"
     seed_demo: bool = True
     seed_phones: str = ""  # JSON opcional rol->teléfono real para la demo
-    twin_poll_seconds: float = Field(default=2, ge=0.1)
-    twin_batch_size: int = Field(default=100, ge=1, le=250)
+    store_poll_seconds: float = Field(
+        default=2,
+        ge=0.1,
+        validation_alias=AliasChoices("store_poll_seconds", "TWIN_POLL_SECONDS"),
+    )
+    store_batch_size: int = Field(
+        default=100,
+        ge=1,
+        le=250,
+        validation_alias=AliasChoices("store_batch_size", "TWIN_BATCH_SIZE"),
+    )
     happyrobot_mode: Literal["simulated", "live"] = "simulated"
     public_base_url: str = "http://localhost:8000"
 

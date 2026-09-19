@@ -178,7 +178,7 @@ async def test_twin_failure_prevents_external_send_and_uncommitted_sse(runtime: 
     with pytest.raises(StoreError):
         await rt.orchestrator.tick()
     assert rt.state.tasks == {}
-    assert not rt.state.integrations["twin"]
+    assert not rt.state.integrations["storage"]
     assert all(change.type != "snapshot" for change in list(queue._queue))
     assert isinstance(rt.hr, FakeHappyRobotClient)
     assert rt.hr.calls == []

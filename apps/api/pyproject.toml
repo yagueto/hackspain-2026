@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.28.1",
     "openai>=3.16.2",
+    "psycopg[binary]==3.2.10",
     "pydantic>=2.8",
     "pydantic-settings>=2.15.0",
     "sse-starlette>=3.4.11",
@@ -16,7 +17,6 @@ dependencies = [
 dev = [
     "anyio>=4.15.1",
     "mypy>=2.3.1",
-    "psycopg[binary]==3.2.10",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.8",

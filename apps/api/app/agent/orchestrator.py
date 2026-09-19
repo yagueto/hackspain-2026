@@ -60,7 +60,7 @@ class Orchestrator:
     def start(self, autoplan: bool = True) -> None:
         self._autoplan = autoplan
         if self._task is None:
-            self._task = asyncio.create_task(self._loop(), name="twin-sync")
+            self._task = asyncio.create_task(self._loop(), name="store-sync")
 
     async def stop(self) -> None:
         if self._task:
@@ -112,7 +112,7 @@ class Orchestrator:
                 if candidate.resources[rid].assigned_task_id != task.id:
                     raise ValueError("reserva inconsistente")
         candidate.version = expected + 1
-        candidate.integrations["twin"] = True
+        candidate.integrations["storage"] = True
         try:
             await self.store.save(
                 candidate.snapshot(full=True),
@@ -123,7 +123,7 @@ class Orchestrator:
         except VersionConflict:
             raise
         except StoreError:
-            self.state.set_integration("twin", False)
+            self.state.set_integration("storage", False)
             raise
         self.state.restore(candidate.snapshot(full=True), emit=True)
 
@@ -143,7 +143,7 @@ class Orchestrator:
                 rows = await self.store.pending(self.incident_id, self.batch_size)
                 if not rows:
                     self.state.last_synced_at = now()
-                    self.state.integrations["twin"] = True
+                    self.state.integrations["storage"] = True
                     return
                 candidate = self.state.copy()
                 receipts = []
@@ -173,7 +173,7 @@ class Orchestrator:
         except VersionConflict:
             raise
         except StoreError:
-            self.state.set_integration("twin", False)
+            self.state.set_integration("storage", False)
             raise
 
     @asynccontextmanager

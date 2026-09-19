@@ -20,6 +20,7 @@ from app.domain.state import WorldState
 from app.integrations.happyrobot import FakeHappyRobotClient, HappyRobotClient
 from app.runtime import Runtime
 from app.store import persistence
+from app.store.postgres import PostgresStore
 from app.store.twin import TwinStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -36,11 +37,15 @@ def build_runtime(
         not settings.happyrobot_api_key or not settings.happyrobot_webhook_secret
     ):
         raise ValueError("modo live requiere API key y webhook secret")
-    if settings.happyrobot_mode == "live" and settings.storage_backend != "twin":
+    if settings.happyrobot_mode == "live" and settings.storage_backend == "memory":
         log.warning("modo live con persistencia en memoria: el estado se pierde al reiniciar")
-    store = store or (
-        TwinStore(settings) if settings.storage_backend == "twin" else persistence.MemoryStore()
-    )
+    if store is None:
+        if settings.storage_backend == "postgres":
+            store = PostgresStore(settings)
+        elif settings.storage_backend == "twin":
+            store = TwinStore(settings)
+        else:
+            store = persistence.MemoryStore()
     hr: HappyRobotClient = (
         HappyRobotClient(settings)
         if settings.happyrobot_mode == "live"
@@ -54,8 +59,8 @@ def build_runtime(
         store,
         reviewer,
         settings.agent_tick_seconds,
-        settings.twin_poll_seconds,
-        settings.twin_batch_size,
+        settings.store_poll_seconds,
+        settings.store_batch_size,
     )
     return Runtime(settings, state, store, hr, executor, orchestrator)
 
@@ -69,7 +74,7 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
         try:
             await rt.store.open()
             snapshot = await rt.store.load(settings.incident_id)
-            if snapshot is None and settings.storage_backend == "memory" and settings.seed_demo:
+            if snapshot is None and settings.storage_backend != "twin" and settings.seed_demo:
                 phones = json.loads(settings.seed_phones) if settings.seed_phones else None
                 seed_wildfire(rt.state, phones=phones)
                 if rt.state.incident:
@@ -133,7 +138,7 @@ def create_app(settings: Settings | None = None, store: persistence.Store | None
             "happyrobot": rt.hr.configured,
             "llm": rt.orchestrator.reviewer.enabled,
             "storage": settings.storage_backend,
-            "synchronized": rt.state.integrations.get("twin", False),
+            "synchronized": rt.state.integrations.get("storage", False),
             "version": rt.state.version,
             "last_synced_at": rt.state.last_synced_at,
         }
