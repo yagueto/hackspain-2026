@@ -32,11 +32,11 @@ def build_runtime(
     if settings.storage_backend == "twin" and not settings.happyrobot_api_key:
         raise ValueError("Twin requiere HAPPYROBOT_API_KEY; usa STORAGE_BACKEND=memory para demo")
     if settings.happyrobot_mode == "live" and (
-        not settings.happyrobot_api_key
-        or not settings.happyrobot_webhook_secret
-        or settings.storage_backend != "twin"
+        not settings.happyrobot_api_key or not settings.happyrobot_webhook_secret
     ):
-        raise ValueError("modo live requiere Twin, API key y webhook secret")
+        raise ValueError("modo live requiere API key y webhook secret")
+    if settings.happyrobot_mode == "live" and settings.storage_backend != "twin":
+        log.warning("modo live con persistencia en memoria: el estado se pierde al reiniciar")
     store = store or (
         TwinStore(settings) if settings.storage_backend == "twin" else persistence.MemoryStore()
     )
