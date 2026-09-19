@@ -2,6 +2,7 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   ElementRef,
@@ -11,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import * as L from 'leaflet';
+import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
 import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
@@ -36,6 +37,11 @@ export class OperationalMap {
   protected readonly tileError = signal(false);
   protected readonly centerLabel = signal('40.7340° N · 3.8760° O');
   protected readonly resolvedLocations = signal<readonly MapLocation[]>([]);
+  protected readonly visibleLocations = computed(() =>
+    this.resolvedLocations().filter((location) =>
+      this.isVisible(location, this.showIncidents(), this.showUnits()),
+    ),
+  );
   private readonly canvas = viewChild.required<ElementRef<HTMLDivElement>>('mapCanvas');
   private readonly geocoding = inject(Geocoding);
   private readonly destroyRef = inject(DestroyRef);
@@ -55,6 +61,7 @@ export class OperationalMap {
         attributionControl: true,
         minZoom: 3,
         maxZoom: 19,
+        zoomSnap: 0.25,
       }).setView([40.734, -3.876], 13);
       this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
@@ -107,15 +114,13 @@ export class OperationalMap {
   }
 
   protected fitLocations(): void {
-    const visible = this.resolvedLocations().filter((location) =>
-      this.isVisible(location, this.showIncidents(), this.showUnits()),
-    );
+    const visible = this.visibleLocations();
     if (visible.length && this.map) {
       this.map.fitBounds(
         L.latLngBounds(
           visible.map((location) => [location.coordinates.lat, location.coordinates.lng]),
         ),
-        { padding: [65, 65], maxZoom: 15, animate: false },
+        { padding: [48, 58], maxZoom: 15, animate: false },
       );
     }
   }
@@ -142,7 +147,7 @@ export class OperationalMap {
     const pending = uniqueAddresses.filter((address) => !known.has(normalizeAddress(address)));
     const resolved = [...locations];
     const missing: string[] = [];
-    this.resolvedLocations.set(resolved);
+    this.resolvedLocations.set([...resolved]);
     this.missingAddresses.set([]);
     this.lookupFailed.set(false);
     this.locating.set(pending.length > 0);

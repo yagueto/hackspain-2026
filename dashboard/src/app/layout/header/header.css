@@ -128,6 +128,22 @@ nav button:disabled {
     gap: 17px;
   }
 }
+@media (max-height: 760px) and (min-width: 801px) {
+  .topbar {
+    height: 46px;
+  }
+  .brand {
+    width: 28px;
+    height: 28px;
+  }
+  .avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .profile-name > span {
+    display: none;
+  }
+}
 @media (max-width: 600px) {
   .topbar {
     height: 57px;

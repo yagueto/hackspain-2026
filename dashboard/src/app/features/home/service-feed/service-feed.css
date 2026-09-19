@@ -69,7 +69,7 @@
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 12px 11px;
+  padding: 6px 11px;
   border: 1px solid #3c4349;
   border-left: 3px solid #8c99a5;
   border-radius: 5px;
@@ -233,6 +233,33 @@
   }
   .message {
     font-size: 9px;
+  }
+}
+@media (max-height: 760px) and (min-width: 801px) {
+  .services-panel {
+    padding: 9px 8px 8px;
+  }
+  .services-heading {
+    margin-bottom: 7px;
+  }
+  .feed-list {
+    gap: 5px;
+  }
+  .communication {
+    padding: 4px 8px;
+  }
+  .communication-body {
+    gap: 5px;
+  }
+  .tags > span {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .feed-footer {
+    display: none;
+  }
+  .feed-actions {
+    gap: 3px;
   }
 }
 @media (max-width: 480px) {

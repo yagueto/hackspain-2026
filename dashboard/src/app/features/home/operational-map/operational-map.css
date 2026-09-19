@@ -218,6 +218,20 @@
   border-radius: 50%;
   background: var(--blue);
 }
+@media (max-height: 760px) and (min-width: 801px) {
+  .map-panel {
+    padding: 9px 8px 0;
+  }
+  .map-heading {
+    margin-bottom: 8px;
+  }
+  .panel-subtitle {
+    margin-top: 2px;
+  }
+  .map-footer {
+    height: 24px;
+  }
+}
 @media (max-width: 1000px) {
   .map-provider {
     display: none;

@@ -10,6 +10,7 @@
     <div
       #mapCanvas
       class="map-canvas"
+      role="region"
       aria-label="Mapa de incidencias y recursos. Usa las flechas para desplazarte y los botones para cambiar el zoom."
     ></div>
     <div class="map-sector">
@@ -32,7 +33,12 @@
     @if (missingAddresses().length && !locating()) {
       <div class="map-notice warning" role="status">
         <details>
-          <summary>{{ missingAddresses().length }} direcciones sin ubicar</summary>
+          <summary>
+            {{ missingAddresses().length }}
+            {{
+              missingAddresses().length === 1 ? 'dirección sin ubicar' : 'direcciones sin ubicar'
+            }}
+          </summary>
           <p>
             {{
               lookupFailed()
@@ -78,7 +84,9 @@
     </div>
   </div>
   <footer class="map-footer">
-    <span><span class="footer-dot"></span> {{ resolvedLocations().length }} puntos en el mapa</span
+    <span
+      ><span class="footer-dot"></span> {{ visibleLocations().length }}
+      {{ visibleLocations().length === 1 ? 'punto' : 'puntos' }} en el mapa</span
     ><span>{{ centerLabel() }}</span>
   </footer>
 </section>

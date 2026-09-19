@@ -41,6 +41,7 @@ describe('OperationalMap', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(0);
     expect(geocode).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('0 puntos en el mapa');
   });
 
   it('reports addresses without a match rather than displaying a guessed location', async () => {
@@ -49,9 +50,27 @@ describe('OperationalMap', () => {
     fixture.componentRef.setInput('addresses', ['Dirección inexistente']);
     await fixture.whenStable();
     await vi.waitFor(() =>
-      expect(fixture.nativeElement.textContent).toContain('1 direcciones sin ubicar'),
+      expect(fixture.nativeElement.textContent).toContain('1 dirección sin ubicar'),
     );
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(0);
+  });
+
+  it('stops the batch on a network failure and supports an explicit retry', async () => {
+    geocode.mockRejectedValueOnce(new Error('offline'));
+    const fixture = TestBed.createComponent(OperationalMap);
+    fixture.componentRef.setInput('addresses', ['Madrid', 'Toledo']);
+    await fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain('2 direcciones sin ubicar'),
+    );
+    expect(geocode).toHaveBeenCalledTimes(1);
+    geocode.mockResolvedValue({ lat: 40.4, lng: -3.7 });
+    fixture.nativeElement.querySelector('.warning button').click();
+    await fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(2),
+    );
+    expect(fixture.nativeElement.querySelector('.warning')).toBeNull();
   });
 
   it('ignores stale geocoding results after inputs change', async () => {
