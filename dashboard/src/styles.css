@@ -33,6 +33,11 @@
   --blue: var(--text);
   --danger: #a23e4b;
   --danger-surface: #fcf0f1;
+  --attention-background: #fff0f0;
+  --attention-highlight: #ffdada;
+  --attention-border: #ac2836;
+  --attention-option-border: #e6a5ab;
+  --attention-text: #1d1313;
   font-family:
     'Inter',
     system-ui,
@@ -239,21 +244,65 @@ h2 {
   width: 21px;
   height: 21px;
 }
-.marker-label {
+.marker-labels {
   position: absolute;
-  top: 36px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 180px;
+  top: 0;
+  left: 100%;
+  padding-left: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.marker-label {
+  display: none;
+  width: max-content;
+  max-width: min(260px, 55vw);
+  white-space: nowrap;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.marker-label strong {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px 4px;
-  background: var(--panel);
+}
+.marker-label-summary {
+  display: block;
   color: var(--muted);
-  border-radius: 3px;
-  font-size: 11px;
-  line-height: 1.3;
+}
+.marker-label-summary[hidden],
+.marker-label-details {
+  display: none;
+}
+.marker-label-details > span {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.marker-label.is-persistent,
+.marker-labels:is(.is-hovered, :hover, :focus-within) .marker-label,
+.operation-marker:focus-visible .marker-label {
+  display: block;
+}
+.marker-labels:is(.is-hovered, :hover, :focus-within) .marker-label-details:not([hidden]),
+.operation-marker:focus-visible .marker-label-details:not([hidden]) {
+  display: block;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.marker-label:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .map-marker.kind-incident,
 .map-marker.kind-incident .marker-symbol {
@@ -264,21 +313,14 @@ h2 {
   width: 27px;
   height: 27px;
 }
-.map-marker.kind-incident .marker-label {
-  left: 51px;
-  top: 13px;
-  transform: none;
-  font-size: 12px;
-}
 .map-marker:is(.is-related, .is-selected) .marker-symbol {
   background: var(--marker-selected);
   color: var(--marker-selected-icon);
   border-color: var(--marker-selected);
 }
-.map-marker:is(.is-related, .is-selected) .marker-label {
+.marker-label.is-persistent {
   background: var(--selected);
   color: var(--text);
-  font-weight: 700;
 }
 .map-marker.kind-place .marker-symbol {
   width: 30px;
@@ -321,23 +363,6 @@ h2 {
   border-radius: 50%;
   background: var(--en-route);
 }
-.leaflet-tooltip.route-eta {
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: none;
-  font-family: inherit;
-}
-.route-eta strong,
-.route-eta span {
-  display: block;
-}
-.route-eta span {
-  color: var(--muted);
-  font-size: 11px;
-}
 .map-popup button {
   color: var(--text);
   background: var(--tag);
@@ -345,6 +370,15 @@ h2 {
   border-radius: 4px;
   padding: 3px 6px;
   cursor: pointer;
+}
+@keyframes attention-pulse {
+  0%,
+  100% {
+    background-color: var(--attention-background);
+  }
+  50% {
+    background-color: var(--attention-highlight);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,

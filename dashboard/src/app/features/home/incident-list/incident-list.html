@@ -13,13 +13,19 @@
         [class.selected]="selectedId() === incident.id"
         [class.awaiting-human]="!!pending"
         [attr.data-urgency]="pending?.urgency"
+        (click)="pending && responseRequested.emit(incident.id)"
       >
         <button
           type="button"
           class="incident-select"
-          [attr.aria-label]="'Mostrar ' + incident.id + ' en el mapa'"
-          [attr.aria-pressed]="selectedId() === incident.id"
-          (click)="incidentSelected.emit(incident.id)"
+          [attr.aria-label]="
+            pending ? 'Ver detalles de ' + incident.id : 'Mostrar ' + incident.id + ' en el mapa'
+          "
+          [attr.aria-pressed]="pending ? null : selectedId() === incident.id"
+          (click)="
+            $event.stopPropagation();
+            pending ? responseRequested.emit(incident.id) : incidentSelected.emit(incident.id)
+          "
         >
           <app-icon class="incident-icon" [name]="incident.icon" />
           <span class="priority" [attr.aria-label]="'Prioridad ' + priority(incident)">{{
@@ -31,21 +37,12 @@
           <span class="incident-area" [title]="incident.area">{{ incident.area }}</span>
         </button>
         <div class="incident-actions">
-          @if (pending) {
-            <button
-              type="button"
-              class="respond-button"
-              [attr.aria-label]="'Responder ' + pending.count + ' preguntas de ' + incident.id"
-              (click)="responseRequested.emit(incident.id)"
-            >
-              Responder {{ pending.count }}
-            </button>
-          }
           <a
             class="detail-link"
             routerLink="/"
             [queryParams]="{ incidencia: incident.id }"
             [attr.aria-label]="'Ver detalles de ' + incident.id"
+            (click)="$event.stopPropagation()"
           >
             <span>Detalles</span><app-icon name="chevron" />
           </a>

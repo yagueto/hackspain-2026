@@ -5,8 +5,7 @@
   [attr.aria-labelledby]="'prompt-' + question().id"
 >
   <header>
-    <span class="question-incident">{{ question().incidentId }}</span>
-    <span class="urgency">{{ urgencyLabels[question().urgency] }}</span>
+    <h3 [id]="'prompt-' + question().id">{{ question().prompt }}</h3>
     <time
       class="countdown"
       [class.last-seconds]="seconds() <= 15"
@@ -16,8 +15,6 @@
       >{{ countdown() }}</time
     >
   </header>
-  <p class="question-context">{{ context() }}</p>
-  <h3 [id]="'prompt-' + question().id">{{ question().prompt }}</h3>
   <form (submit)="submit($event)">
     @if (question().input !== 'text') {
       <fieldset>
@@ -63,13 +60,9 @@
           placeholder="Escribe las instrucciones…"
           [value]="draft().text"
           (input)="changeText(answer.value)"
-          [attr.aria-describedby]="'default-' + question().id"
         ></textarea>
       </label>
     }
-    <p class="default-answer" [id]="'default-' + question().id">
-      <span>Al vencer el plazo:</span> {{ log.answerLabel(question(), question().defaultAnswer) }}
-    </p>
     @if (log.errors()[question().id]) {
       <p class="answer-error" role="alert">{{ log.errors()[question().id] }}</p>
     }

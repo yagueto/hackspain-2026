@@ -10,21 +10,6 @@
 h2 {
   font-size: 16px;
 }
-.human-label {
-  color: var(--danger);
-  font-size: 12px;
-}
-.human-label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-.human-label app-icon {
-  width: 16px;
-  height: 16px;
-}
 .timeline {
   list-style: none;
   margin: 18px 0 0;
@@ -77,38 +62,14 @@ p {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.awaiting-human .event-content {
-  padding: 12px;
-  border: 1px solid var(--danger);
-  border-radius: 7px;
-  background: var(--danger-surface);
-  animation: awaiting-response 1.8s ease-in-out infinite;
+.timeline-event.awaiting-human {
+  display: block;
 }
-.awaiting-human .timeline-dot,
-.awaiting-human .timeline-dot::before {
-  background: var(--danger);
-}
-.awaiting-human > time,
 .update-error {
   color: var(--danger);
 }
 .update-error {
   margin-top: 12px;
-}
-@keyframes awaiting-response {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-  50% {
-    box-shadow: 0 0 0 3px var(--danger-surface);
-    border-color: transparent;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .awaiting-human .event-content {
-    animation: none;
-  }
 }
 @media (max-width: 600px) {
   .timeline-event {

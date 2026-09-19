@@ -21,6 +21,7 @@ import { Theme } from '../../../core/services/theme';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
 import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
+import { MarkerLabels } from './marker-labels';
 
 @Component({
   selector: 'app-operational-map',
@@ -89,6 +90,7 @@ export class OperationalMap {
   private readonly markers = new Map<string, L.Marker>();
   private readonly markerAppearances = new Map<string, string>();
   private routeLayer?: ResourceRouteLayer;
+  private labels?: MarkerLabels;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
   private readonly retryVersion = signal(0);
@@ -124,6 +126,8 @@ export class OperationalMap {
       this.haloLayer = L.layerGroup().addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
+      this.labels = new MarkerLabels(this.map, (location) => this.selectLocation(location));
+      this.map.on('zoomend moveend resize', () => this.renderLabels());
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);
@@ -347,7 +351,6 @@ export class OperationalMap {
       if (!marker) {
         marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
           icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
-          title: `${location.label} · ${location.address}`,
           alt: location.label,
           keyboard: true,
         }).addTo(this.markerLayer);
@@ -361,10 +364,12 @@ export class OperationalMap {
           { maxWidth: 250 },
         );
         marker.on('click', () => {
-          if (location.kind === 'unit') this.unitSelected.emit(location.id);
-          else if (location.kind === 'incident' && location.incidentId)
-            this.incidentSelected.emit(location.incidentId);
+          this.selectLocation(location);
         });
+        marker.on('mouseover', () => this.labels?.hover(location.id, true));
+        marker.on('mouseout', () => this.labels?.hover(location.id, false));
+        marker.getElement()?.addEventListener('focus', () => this.labels?.hover(location.id, true));
+        marker.getElement()?.addEventListener('blur', () => this.labels?.hover(location.id, false));
         marker.on('popupopen', () => {
           const current = this.resolvedLocations().find((item) => item.id === location.id);
           if (current)
@@ -377,8 +382,15 @@ export class OperationalMap {
         }
         const point = L.latLng(location.coordinates.lat, location.coordinates.lng);
         if (!marker.getLatLng().equals(point)) marker.setLatLng(point);
-        marker.getElement()?.setAttribute('title', `${location.label} · ${location.address}`);
       }
+      const state = this.routeStates().get(location.id);
+      if (location.route?.status === 'active' && state?.status === 'ready') {
+        marker.unbindPopup();
+      } else if (!marker.getPopup()) {
+        marker.bindPopup(this.popupContent(location, state), { maxWidth: 250 });
+        if (selected) marker.openPopup();
+      }
+      marker.getElement()?.setAttribute('aria-label', location.label);
       marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
       if (selected) selectedMarker = marker;
     }
@@ -409,6 +421,23 @@ export class OperationalMap {
         this.lastFocus = null;
       }
     }
+    this.renderLabels();
+  }
+
+  private selectLocation(location: MapLocation): void {
+    if (location.kind === 'unit') this.unitSelected.emit(location.id);
+    else if (location.kind === 'incident' && location.incidentId)
+      this.incidentSelected.emit(location.incidentId);
+  }
+
+  private renderLabels(): void {
+    this.labels?.render(
+      this.visibleLocations(),
+      this.markers,
+      this.routeStates(),
+      this.selectedUnitId(),
+      this.selectedIncidentId(),
+    );
   }
 
   private async loadRoutes(locations: readonly MapLocation[], signal: AbortSignal): Promise<void> {
@@ -511,10 +540,7 @@ export class OperationalMap {
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
     symbol.append(createIconSvg(location.icon));
-    const label = document.createElement('span');
-    label.className = 'marker-label';
-    label.textContent = location.label;
-    element.append(symbol, label);
+    element.append(symbol);
     const size = location.kind === 'incident' ? 46 : 34;
     return L.divIcon({
       html: element,

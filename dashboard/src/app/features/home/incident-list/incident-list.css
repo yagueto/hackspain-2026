@@ -106,15 +106,17 @@
   color: var(--text);
   text-decoration: underline;
 }
-.respond-button {
-  font-size: 11px;
-  color: var(--danger);
-  background: var(--danger-surface);
-  border: 1px solid var(--danger);
-  border-radius: 4px;
-  padding: 4px;
-  white-space: nowrap;
+.incident-row.awaiting-human {
+  background: var(--attention-background);
+  color: var(--attention-text);
+  animation: attention-pulse 3s ease-in-out infinite;
   cursor: pointer;
+}
+.awaiting-human :is(.priority, .incident-id, .incident-status, .incident-area, .detail-link) {
+  color: var(--attention-text);
+}
+.awaiting-human .incident-icon {
+  color: var(--attention-border);
 }
 @media (max-width: 800px) {
   .incident-row {
@@ -144,10 +146,5 @@
   }
   .detail-link span {
     display: none;
-  }
-  .respond-button {
-    max-width: 65px;
-    white-space: normal;
-    font-size: 10px;
   }
 }

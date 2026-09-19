@@ -10,13 +10,12 @@ import {
   input,
 } from '@angular/core';
 import { OperationLogEvent } from '../../../core/models/operation-log';
-import { Icon } from '../../../shared/icon/icon';
 import { OperationLogStore } from './operation-log-store';
 import { UrgentQuestionCard } from './urgent-question-card';
 
 @Component({
   selector: 'app-operation-timeline',
-  imports: [DatePipe, Icon, UrgentQuestionCard],
+  imports: [DatePipe, UrgentQuestionCard],
   templateUrl: './operation-timeline.html',
   styleUrl: './operation-timeline.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

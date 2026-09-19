@@ -21,13 +21,14 @@
           : undefined;
       @let awaiting = question?.status === 'pending';
       <li class="timeline-event" [class.awaiting-human]="awaiting" [attr.data-event-id]="event.id">
-        <time [attr.datetime]="event.occurredAt" [attr.title]="event.occurredAt">{{
-          event.occurredAt | date: 'dd/MM · HH:mm' : '+0200'
-        }}</time>
-        <span class="timeline-dot" aria-hidden="true"></span>
+        @if (!awaiting) {
+          <time [attr.datetime]="event.occurredAt" [attr.title]="event.occurredAt">{{
+            event.occurredAt | date: 'dd/MM · HH:mm' : '+0200'
+          }}</time>
+          <span class="timeline-dot" aria-hidden="true"></span>
+        }
         <div class="event-content">
           @if (awaiting && question) {
-            <span class="human-label"><app-icon name="radio" /> Requiere tu respuesta</span>
             <app-urgent-question-card [question]="question" />
           } @else {
             <h3>{{ question ? 'Pregunta resuelta' : event.title }}</h3>
