@@ -1,10 +1,10 @@
-# Arquitectura: Twin, world state y orquestador
+# Arquitectura: persistencia, world state y orquestador
 
 ```text
 HappyRobot: llamadas, mensajes, agentes
-      │ INSERT observación                  ▲ trigger / signals / cancel
+      │ observación por HTTP                ▲ trigger / signals / cancel
       ▼                                     │
-Twin (PostgreSQL vía REST/SQL) ◄────────► FastAPI
+PostgreSQL (esquema crisis v1) ◄────────► FastAPI
   crisis_observations                       polling + validación + recibos
   crisis_receipts                           proyección WorldState en memoria
   crisis_world                              planner + revisión LLM opcional
@@ -17,16 +17,16 @@ Twin (PostgreSQL vía REST/SQL) ◄────────► FastAPI
 
 ## Propiedad de datos y persistencia
 
-Los agentes escriben **solo observaciones** en `crisis_observations`. El backend es el dueño
-del estado consolidado, las asignaciones, decisiones, recibos y órdenes. Se conserva el
-informe original y se emite una observación nueva para corregirlo, sin editar el anterior.
-Esta separación es un contrato de integración; hay que configurar los permisos de los
-agentes en Twin. No se presupone que compartir una API key imponga aislamiento por tabla.
+Los agentes no escriben en la base: aportan **solo observaciones** por HTTP y el backend las
+traduce a `crisis_observations`. El backend es el dueño del estado consolidado, las
+asignaciones, decisiones, recibos y órdenes. Se conserva el informe original y se emite una
+observación nueva para corregirlo, sin editar el anterior. La credencial de PostgreSQL es
+exclusiva del backend; no se reparte a los agentes ni al dashboard.
 
 `crisis_world` guarda un snapshot versionado por incidente. `WorldState` es su proyección
 local y puede recuperarse al reiniciar. El dashboard recibe un extracto reciente, mientras
 que la persistencia incluye todas las tareas y órdenes, también pendientes y ambiguas.
-Los eventos y decisiones en memoria se limitan a 2.000 y 500; Twin conserva el journal.
+Los eventos y decisiones en memoria se limitan a 2.000 y 500; `crisis_journal` conserva el resto.
 
 La versión v1 usa una única sentencia SQL con CTEs para guardar conjuntamente snapshot,
 recibos, asignaciones, comandos y journal. La actualización exige `version = expected_version`.
@@ -35,11 +35,10 @@ Al decidir o reclamar un envío también se comprueba, en la misma sentencia, qu
 observaciones pendientes. Esto evita enviar una orden con datos que llegaron entre el último
 poll y el guardado. Dos escritores del mismo incidente no pueden confirmar la misma versión.
 
-El comportamiento SQL está probado sobre PostgreSQL 17, detrás de un transporte HTTP que
-reproduce `/twin/sql`. La admisión de DDL/CTEs, permisos y límites en el Twin del equipo
-requiere validación con su API key. No se asumen CDC, triggers ni `LISTEN/NOTIFY`.
-`HAPPYROBOT_ENVIRONMENT` afecta workflows; la selección de Twin depende de organización,
-credencial y región. Los IDs de incidente aíslan escenarios dentro de esa base.
+El comportamiento SQL está probado sobre PostgreSQL 17, con un schema temporal por test.
+No se asumen CDC, triggers ni `LISTEN/NOTIFY`. Cada consulta abre su conexión con
+`statement_timeout = 15s`. `HAPPYROBOT_ENVIRONMENT` afecta a los workflows, no a la base.
+Los IDs de incidente aíslan escenarios dentro de la misma base.
 
 ## Contrato que escriben los agentes
 
@@ -100,11 +99,12 @@ Una respuesta `202` confirma recepción; el resultado de aplicación se consulta
 
 ## Sincronización y datos atrasados
 
-Cada `TWIN_POLL_SECONDS` se consultan observaciones sin recibo, ordenadas por
-`received_at, observation_id`, con límite `TWIN_BATCH_SIZE`. Se guardan por lotes y la consulta
+Cada `STORE_POLL_SECONDS` se consultan observaciones sin recibo, ordenadas por
+`received_at, observation_id`, con límite `STORE_BATCH_SIZE`. Se guardan por lotes y la consulta
 siguiente excluye los recibos ya confirmados. No se usa un cursor temporal que pueda saltarse
 inserciones concurrentes con fechas antiguas. Tras 20 lotes se continúa en la siguiente vuelta,
-sin despachar mientras queden datos pendientes. Una respuesta Twin truncada detiene la operación.
+sin despachar mientras queden datos pendientes. Un error o timeout de la base detiene la
+operación, marca `integrations.storage` como caído y bloquea el despacho.
 
 Cada observación se valida sobre una copia. Incidentes/referencias desconocidos, tipos o rangos
 inválidos y fechas futuras generan un recibo `invalid`; la copia se descarta. Se comparan relojes
@@ -132,7 +132,7 @@ Un callback con heridos pero sin zona identificable conserva el aviso con
    no un cálculo de flota óptima.
 7. Las tareas que requieren aprobación quedan `awaiting_approval`, sin reservar ni llamar.
    Una aprobación asigna contra el estado actual, no contra el plan original.
-8. Confirmar decisión, reserva y orden `pending` en Twin. Rechazar una evacuación impide que
+8. Confirmar decisión, reserva y orden `pending` en la base. Rechazar una evacuación impide que
    el siguiente tick vuelva a crearla automáticamente; el operador puede crear una tarea nueva.
 9. Reclamar y revalidar cada envío, guardar `sending` e invocar HappyRobot.
 10. Registrar resultado y volver a percibir. Viento y cortes generan Signals para las
@@ -164,8 +164,7 @@ habla con Telegram ni con ningún puente intermedio. El payload de un aviso llev
 el chat de destino lo resuelve HappyRobot, porque un teléfono no es un chat de Telegram.
 Una orden con un workflow que no corresponde a su `kind` falla en vez de cambiar de canal.
 
-Preferentemente el agente inserta la observación en Twin. Como alternativa, envía
-`POST /api/v1/webhooks/happyrobot` con `X-Webhook-Secret`:
+El agente reporta el resultado con `POST /api/v1/webhooks/happyrobot` y `X-Webhook-Secret`:
 
 ```json
 {
@@ -188,9 +187,9 @@ usa una observación nueva con `outcome=info` y fecha nueva.
 
 Sin ID explícito el webhook calcula uno estable del cuerpo. Sin fecha usa la de creación
 de la orden para conservar compatibilidad y no dejar que un callback tardío libere una misión
-posterior. Los agentes nuevos deben enviar ID y fecha explícitos. Si se usan ambas vías
-Twin/webhook para la misma observación, hay que normalizar exactamente el mismo envelope;
-lo recomendado es elegir una vía por workflow.
+posterior. Los agentes nuevos deben enviar ID y fecha explícitos. Si se combinan el webhook y
+`POST /api/v1/observations` para la misma observación, hay que normalizar exactamente el mismo
+envelope; lo recomendado es elegir una vía por workflow.
 
 Un fallo de conexión previo al envío o un `429` tiene como máximo tres intentos con espera.
 Timeouts tras enviar, respuestas malformadas y errores POST `5xx` quedan `unknown` y no se
@@ -215,7 +214,7 @@ Todos los endpoints cuelgan de `/api/v1`:
   descargar `/state`. No aplicar snapshots más antiguos que el que ya se muestra.
 - `/control/pause`, `/resume`, `/tick`, `/agent`.
 - `/control/tasks`, `/tasks/{id}/approve`, `/priority`, `/status`.
-- `/control/call`, `/telegram`, `/sms` (alias obsoleto de Telegram), `/note`,
+- `/control/call`, `/telegram`, `/note`,
   `/actions/{id}/reconcile` (sirve también para avisos, que ahora tienen `run_id`).
 - `/control/incident`: inicialización explícita, solo si no hay incidente activo.
 - `/history/runs`, `/history/runs/{id}/journal`, `/history/lessons`.
@@ -229,8 +228,8 @@ no persiste tras cerrar el proceso. Configuración y comandos: [API](../apps/api
 
 El despliegue previsto es un único proceso activo por incidente; CAS protege escrituras
 concurrentes, pero no hay elección de líder ni leases distribuidos. El snapshot crece con
-tareas/órdenes: un límite de respuesta Twin puede detener la sincronización y exige archivar
-o evolucionar la proyección, nunca ignorar truncamientos. Los endpoints de histórico devuelven
-hasta 250 entradas (50 incidentes), y recibos hasta 250 en Twin.
+tareas/órdenes: cada guardado reescribe el JSON completo, así que un incidente largo puede
+agotar el `statement_timeout` y exige archivar o evolucionar la proyección. Los endpoints de
+histórico devuelven hasta 250 entradas (50 incidentes), y los recibos hasta 250.
 La persistencia no convierte la heurística demo en un motor geográfico ni valida protocolos
 operativos de emergencias. Frontend, simulador físico y despliegue público quedan separados.

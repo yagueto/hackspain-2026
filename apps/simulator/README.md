@@ -1,7 +1,7 @@
 # crisis-simulator
 
 Genera el "mundo" de la demo: eventos aleatorios con cadencia realista y
-respuestas simuladas a las llamadas/SMS que el agente dispara vía HappyRobot.
+respuestas simuladas a las llamadas y avisos que el agente dispara vía HappyRobot.
 
 ```bash
 uv sync
@@ -21,7 +21,7 @@ uv run python simulator.py --seed 7 --min-delay 3 --max-delay 8
   con un outcome aleatorio (aceptada 62 %, info, no_answer, busy, rejected,
   voicemail), a veces con `eta_minutes`, `injured_count`, `civilians_count`,
   `evacuation_confirmed`, `shelter_capacity` o un `road_blocked` sorpresa.
-- **SMS** → mismo webhook con `action_id` (genera `message_outcome`).
+- **Avisos de Telegram** → mismo webhook con `action_id` (genera `message_outcome`).
 - **Operador** → `POST /control/tasks/{id}/approve`: aprueba el 90 % de las
   tareas `awaiting_approval` tras 8–25 s.
 - **Chat/ruido** → eventos `note` con jerga de grupos de vecinos/redes: no

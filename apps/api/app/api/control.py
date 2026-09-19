@@ -175,7 +175,6 @@ class TelegramIn(BaseModel):
     message: str = Field(min_length=1, max_length=4096)
 
 
-@router.post("/sms", deprecated=True)
 @router.post("/telegram")
 async def manual_telegram(body: TelegramIn, rt: Runtime = Depends(get_runtime)) -> Action:
     async with rt.orchestrator.edit() as state:

@@ -24,7 +24,7 @@ from app.integrations.happyrobot import HappyRobotClient, HappyRobotError, Workf
 from app.store.persistence import Store
 
 # Workflows que cada tipo de orden puede disparar. Una orden con un workflow fuera de esta
-# tabla (p.ej. las `sms` históricas) falla en vez de reenrutarse a otro canal.
+# tabla falla en vez de reenrutarse a otro canal.
 KIND_TO_WORKFLOWS: dict[ActionKind, tuple[WorkflowKind, ...]] = {
     ActionKind.call: ("call_responder", "call_civilian", "notify_authority"),
     ActionKind.telegram: ("send_telegram",),

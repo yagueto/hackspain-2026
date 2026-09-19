@@ -166,11 +166,6 @@ class WorldState:
         self._emit("action", action)
         return action
 
-    def set_agent(self, agent: AgentConfig) -> AgentConfig:
-        self.agent = agent
-        self._emit("agent", agent)
-        return agent
-
     def set_integration(self, name: str, up: bool) -> None:
         self.integrations[name] = up
         self._emit("integration", {"name": name, "up": up})
