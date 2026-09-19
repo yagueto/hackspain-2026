@@ -188,7 +188,6 @@ class Orchestrator:
         if observation.incident_id != self.incident_id:
             raise ValueError("incident_id no coincide con el incidente activo")
         await self.store.observe(observation)
-        self.state.dirty.set()
 
     async def ingest_event(self, event: Event) -> Event:
         await self.ingest(

@@ -10,10 +10,9 @@ HEADERS = {"X-API-Key": "test"}
 
 
 @pytest.fixture
-async def client(tmp_path: object) -> AsyncIterator[AsyncClient]:
+async def client() -> AsyncIterator[AsyncClient]:
     settings = Settings(
         api_key="test",
-        database_path=f"{tmp_path}/test.db",
         agent_autostart=False,
         happyrobot_api_key="",
         openai_api_key="",

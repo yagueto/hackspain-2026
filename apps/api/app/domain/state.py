@@ -55,8 +55,6 @@ class WorldState:
         self.field_clocks: dict[str, datetime] = {}
         self.event_facts: dict[str, list[str]] = {}
         self._subscribers: set[asyncio.Queue[Change]] = set()
-        self.lock = asyncio.Lock()
-        self.dirty = asyncio.Event()  # el orquestador se despierta cuando hay algo nuevo
 
     # ------------------------------------------------------------- pub/sub
 
@@ -79,14 +77,6 @@ class WorldState:
                 q.put_nowait(Change(type="resync", data={}, version=self.version))
 
     # ------------------------------------------------------------- mutations
-
-    def reset(self) -> None:
-        subscribers = self._subscribers
-        lock, dirty = self.lock, self.dirty
-        self.__init__()  # type: ignore[misc]
-        self._subscribers = subscribers
-        self.lock, self.dirty = lock, dirty
-        self._emit("reset", {})
 
     def restore(self, snapshot: WorldSnapshot, *, emit: bool = False) -> None:
         self.incident = snapshot.incident.model_copy(deep=True)
@@ -116,7 +106,6 @@ class WorldState:
 
     def add_event(self, event: Event) -> Event:
         self.events.append(event)
-        self.dirty.set()
         self._emit("event", event)
         return event
 
@@ -236,6 +225,3 @@ class WorldState:
             field_clocks=self.field_clocks,
             event_facts=self.event_facts if full else {},
         )
-
-
-state = WorldState()
