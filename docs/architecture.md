@@ -130,8 +130,12 @@ Un callback con heridos pero sin zona identificable conserva el aviso con
    capacidad, fiabilidad del contacto y cobertura restante. Ambulancias/autobuses sin capacidad
    declarada no se asignan. Se asigna un recurso por tarea; la cobertura es una preferencia,
    no un cálculo de flota óptima.
-7. Las tareas que requieren aprobación quedan `awaiting_approval`, sin reservar ni llamar.
-   Una aprobación asigna contra el estado actual, no contra el plan original.
+7. El agente decide solo. Únicamente lo crítico —avisos `vital` y evacuaciones, según
+   `AgentConfig.approval_required_severities` y `approval_required_for`— queda
+   `awaiting_approval`, sin reservar ni llamar; a los `escalate_after_seconds` sin
+   confirmar se avisa una vez por Telegram y se sigue esperando. Lo demás reserva y
+   prepara la orden al instante, retenida `hold_seconds` para que el operador pueda
+   anularla. Una aprobación asigna contra el estado actual, no contra el plan original.
 8. Confirmar decisión, reserva y orden `pending` en la base. Rechazar una evacuación impide que
    el siguiente tick vuelva a crearla automáticamente; el operador puede crear una tarea nueva.
 9. Reclamar y revalidar cada envío, guardar `sending` e invocar HappyRobot.
@@ -212,8 +216,11 @@ Todos los endpoints cuelgan de `/api/v1`:
 - `/stream`: snapshot inicial y snapshots confirmados; `id` SSE y `version` coinciden.
   Al reconectar se recibe otro snapshot, sin replay de deltas. Ante un hueco o `resync`,
   descargar `/state`. No aplicar snapshots más antiguos que el que ya se muestra.
-- `/control/pause`, `/resume`, `/tick`, `/agent`.
-- `/control/tasks`, `/tasks/{id}/approve`, `/priority`, `/status`.
+- `/control/pause` (parada de emergencia: frena también las órdenes retenidas, sin cancelar
+  lo ya enviado), `/resume`, `/tick`, `/agent` (autonomía, frontera crítica, ventanas).
+- `/control/tasks`, `/tasks/{id}/approve`, `/priority`,
+  `/status` (con `cancelled` es el override de una decisión automática: anula la orden
+  no enviada y libera la unidad).
 - `/control/call`, `/telegram`, `/note`,
   `/actions/{id}/reconcile` (sirve también para avisos, que ahora tienen `run_id`).
 - `/control/incident`: inicialización explícita, solo si no hay incidente activo.

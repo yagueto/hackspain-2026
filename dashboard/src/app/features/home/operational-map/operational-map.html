@@ -1,0 +1,77 @@
+<section class="panel map-panel" aria-labelledby="map-title">
+  <h2 id="map-title" class="sr-only">Mapa operativo</h2>
+  <div class="map-viewport">
+    <div
+      #mapCanvas
+      class="map-canvas"
+      role="region"
+      aria-label="Mapa de incidencias y recursos. Usa las flechas para desplazarte y los botones para cambiar el zoom."
+    ></div>
+    <button
+      class="fit-button"
+      type="button"
+      (click)="fitLocations()"
+      title="Centrar todos los puntos"
+      aria-label="Centrar todos los puntos"
+    >
+      <app-icon name="locate" />
+    </button>
+    @if (locating()) {
+      <div class="map-notice" role="status">
+        <span class="loading-dot"></span> Localizando direcciones…
+      </div>
+    }
+    @if (missingAddresses().length && !locating()) {
+      <div class="map-notice warning" role="status">
+        <details>
+          <summary>
+            {{ missingAddresses().length }}
+            {{
+              missingAddresses().length === 1 ? 'dirección sin ubicar' : 'direcciones sin ubicar'
+            }}
+          </summary>
+          <p>
+            {{
+              lookupFailed()
+                ? 'El servicio de geocodificación no está disponible.'
+                : 'No se han encontrado coincidencias.'
+            }}
+          </p>
+          <ul>
+            @for (address of missingAddresses(); track address) {
+              <li>{{ address }}</li>
+            }
+          </ul>
+        </details>
+        @if (lookupFailed()) {
+          <button type="button" (click)="retry()">Reintentar</button>
+        }
+      </div>
+    }
+    @if (tileError()) {
+      <div class="tile-notice" role="status">
+        No se ha podido cargar parte del mapa.
+        <button type="button" (click)="retry()">Reintentar</button>
+      </div>
+    }
+    <div class="map-legend" aria-label="Capas del mapa">
+      <button
+        type="button"
+        [class.layer-hidden]="!showIncidents()"
+        [attr.aria-pressed]="showIncidents()"
+        (click)="showIncidents.set(!showIncidents())"
+      >
+        <span class="legend-dot incident-dot"></span> Incidencia
+      </button>
+      <span class="legend-separator"></span>
+      <button
+        type="button"
+        [class.layer-hidden]="!showUnits()"
+        [attr.aria-pressed]="showUnits()"
+        (click)="showUnits.set(!showUnits())"
+      >
+        <span class="legend-dot unit-dot"></span> Unidad
+      </button>
+    </div>
+  </div>
+</section>

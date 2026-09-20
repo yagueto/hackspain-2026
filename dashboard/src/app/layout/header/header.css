@@ -1,0 +1,248 @@
+:host {
+  display: block;
+  position: relative;
+  z-index: 1100;
+}
+.topbar {
+  min-height: 52px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.brand {
+  display: inline-flex;
+  color: var(--muted);
+}
+.brand app-icon {
+  width: 23px;
+  height: 23px;
+}
+nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+nav a,
+nav button {
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+nav :is(a, button):hover {
+  color: var(--text);
+  background: var(--tag);
+}
+nav .active {
+  color: var(--text);
+  background: var(--selected);
+  border-color: var(--separator);
+}
+.header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.connection-indicator {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  background: var(--tag);
+  color: var(--muted);
+  cursor: pointer;
+}
+.connection-indicator.failed {
+  color: var(--danger);
+}
+.demo-indicator {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 10px;
+}
+.demo-indicator > span {
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: var(--icon);
+}
+.autonomy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.autonomy-state {
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.autonomy-state.stopped {
+  color: var(--danger);
+}
+.operator-key input {
+  width: 118px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.panic {
+  padding: 6px 11px;
+  color: #fff3f3;
+  background: #8c2b2b;
+  border: 1px solid #b04141;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.panic.resume {
+  color: #eaf5ee;
+  background: #2f6446;
+  border-color: #3f8159;
+}
+.panic:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.autonomy-message {
+  max-width: 240px;
+  color: var(--danger);
+  font-size: 11px;
+}
+.date {
+  display: flex;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.profile {
+  position: relative;
+  color: var(--text);
+}
+.profile summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.profile summary::-webkit-details-marker {
+  display: none;
+}
+.profile-name {
+  font-size: 14px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  background: var(--selected);
+  color: var(--muted);
+  border-radius: 50%;
+  width: 29px;
+  height: 29px;
+}
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  width: 180px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.menu-label {
+  display: block;
+  padding: 8px;
+  color: var(--muted);
+}
+.profile-menu button {
+  width: 100%;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  text-align: left;
+  padding: 9px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.profile-menu button:hover,
+.profile-menu button[aria-pressed='true'] {
+  background: var(--selected);
+}
+.pending-count {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+  color: var(--danger);
+  background: var(--danger-surface);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1200px) {
+  .header-meta {
+    width: 100%;
+    margin-left: 0;
+  }
+  .profile {
+    margin-left: auto;
+  }
+}
+@media (max-width: 700px) {
+  .topbar {
+    gap: 10px;
+    padding: 12px;
+  }
+  nav {
+    flex: 1;
+    gap: 2px;
+    justify-content: space-between;
+  }
+  nav a,
+  nav button {
+    font-size: 13px;
+    padding: 6px;
+  }
+  .header-meta {
+    gap: 10px;
+  }
+  .autonomy {
+    width: 100%;
+  }
+  .operator-key input {
+    width: 106px;
+  }
+  .date {
+    font-size: 10px;
+  }
+  .profile-name {
+    display: none;
+  }
+}

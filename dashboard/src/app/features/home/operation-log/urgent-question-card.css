@@ -1,0 +1,139 @@
+:host {
+  display: block;
+}
+.question-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+:host(.related) .question-card {
+  background: var(--selected);
+  font-weight: 700;
+}
+:host(.related) h3 {
+  font-weight: 700;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.question-incident {
+  font-weight: 650;
+  color: var(--muted);
+}
+.urgency {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+.countdown {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.last-seconds {
+  color: var(--danger);
+}
+h3 {
+  margin: 10px 0;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+fieldset {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.answer-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--tag);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.answer-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.answer-option.chosen {
+  border-color: var(--border);
+  background: var(--selected);
+}
+input {
+  margin: 2px 0 0;
+  accent-color: var(--muted);
+}
+.custom-answer {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+textarea {
+  resize: vertical;
+  min-height: 70px;
+  max-height: 160px;
+  width: 100%;
+  padding: 8px;
+  background: var(--tag);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1.5;
+}
+textarea:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: 2px;
+}
+.default-answer {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.default-answer > span {
+  color: var(--muted);
+}
+.submit-answer {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--panel);
+  background: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.submit-answer:hover:not(:disabled) {
+  background: var(--muted);
+}
+.submit-answer:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.answer-error {
+  margin-bottom: 8px;
+  color: var(--danger);
+  font-size: 12px;
+}

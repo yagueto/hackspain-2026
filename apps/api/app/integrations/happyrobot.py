@@ -144,7 +144,7 @@ class FakeHappyRobotClient(HappyRobotClient):
 
     async def _request(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
         self.calls.append({"method": method, "path": path, **kw})
-        log.info("FAKE HappyRobot %s %s %s", method, path, kw.get("json"))
+        log.info("FAKE HappyRobot %s %s", method, path)
         if path.endswith("/runs") and method == "POST":
             return {"run_id": f"fake_{uuid.uuid4().hex[:10]}", "status": "queued"}
         if path == "/signals/":

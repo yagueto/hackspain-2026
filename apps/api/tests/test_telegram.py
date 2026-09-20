@@ -97,6 +97,7 @@ async def test_workflow_receives_the_documented_payload() -> None:
             "incident_id": rt.state.incident.id if rt.state.incident else "",
             "contact_id": "ct_camping",
             "contact_name": rt.state.contacts["ct_camping"].name,
+            "task_id": None,
             "message": message,
             "callback_url": f"{rt.settings.public_base_url}/api/v1/webhooks/happyrobot",
         }

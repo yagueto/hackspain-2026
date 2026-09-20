@@ -1,0 +1,58 @@
+<section class="panel incident-panel" aria-labelledby="incidents-title">
+  <div class="panel-heading">
+    <div class="heading-title">
+      <h2 id="incidents-title">Incidencias</h2>
+      <span class="count-badge">{{ incidents().length }}</span>
+    </div>
+  </div>
+  <div id="incidents-list" class="incident-list" tabindex="0" aria-label="Lista de incidencias">
+    @for (incident of sortedIncidents(); track incident.id) {
+      @let pending = attention().get(incident.id);
+      <article
+        class="incident-row"
+        [class.selected]="selectedId() === incident.id"
+        [class.awaiting-human]="!!pending"
+        [attr.data-urgency]="pending?.urgency"
+      >
+        <button
+          type="button"
+          class="incident-select"
+          [attr.aria-label]="'Mostrar ' + incident.id + ' en el mapa'"
+          [attr.aria-pressed]="selectedId() === incident.id"
+          (click)="incidentSelected.emit(incident.id)"
+        >
+          <app-icon class="incident-icon" [name]="incident.icon" />
+          <span class="priority" [attr.aria-label]="'Prioridad ' + priority(incident)">{{
+            priority(incident)
+          }}</span>
+          <span class="incident-id">{{ incident.id }}</span>
+          <span class="incident-name" [title]="incident.title">{{ incident.title }}</span>
+          <span class="incident-status" [title]="incident.status">{{ incident.status }}</span>
+          <span class="incident-area" [title]="incident.area">{{ incident.area }}</span>
+        </button>
+        <div class="incident-actions">
+          @if (pending) {
+            <button
+              type="button"
+              class="respond-button"
+              [attr.aria-label]="'Responder ' + pending.count + ' preguntas de ' + incident.id"
+              (click)="responseRequested.emit(incident.id)"
+            >
+              Responder {{ pending.count }}
+            </button>
+          }
+          <a
+            class="detail-link"
+            routerLink="/incidencias"
+            [queryParams]="{ incidencia: incident.id }"
+            [attr.aria-label]="'Ver detalles de ' + incident.id"
+          >
+            <span>Detalles</span><app-icon name="chevron" />
+          </a>
+        </div>
+      </article>
+    } @empty {
+      <p class="empty-state">No hay incidencias en seguimiento.</p>
+    }
+  </div>
+</section>

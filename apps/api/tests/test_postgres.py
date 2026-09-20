@@ -72,6 +72,42 @@ async def test_migration_idempotent_and_schema_version_guard(pg: PostgresStore) 
         await pg.migrate()
 
 
+async def test_open_bootstraps_an_empty_database_but_never_a_partial_schema() -> None:
+    dsn = os.environ.get("TEST_POSTGRES_DSN")
+    if not dsn:
+        pytest.skip("TEST_POSTGRES_DSN no configurado")
+
+    async def store_on(schema: str) -> PostgresStore:
+        async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+            await conn.execute(SQL("CREATE SCHEMA {}").format(Identifier(schema)))
+        return PostgresStore(
+            Settings(database_url=make_conninfo(dsn, options=f"-c search_path={schema}"))
+        )
+
+    async def drop(schema: str) -> None:
+        async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+            await conn.execute(SQL("DROP SCHEMA {} CASCADE").format(Identifier(schema)))
+
+    empty, partial = f"test_{uuid.uuid4().hex}", f"test_{uuid.uuid4().hex}"
+    try:
+        # Base recién creada: arranca el esquema sin exigir el comando manual.
+        fresh = await store_on(empty)
+        await fresh.open()
+        assert await fresh.query("SELECT version FROM crisis_schema_version") == [{"version": 1}]
+        await fresh.open()  # idempotente
+
+        # Esquema a medias: podría ser una base ajena o una migración interrumpida.
+        half = await store_on(partial)
+        await half.query("CREATE TABLE crisis_world (incident_id text PRIMARY KEY)")
+        with pytest.raises(StoreError, match="incompleto"):
+            await half.open()
+        tables = {t.name for t in await half.inspect_schema()}
+        assert tables == {"crisis_world"}  # no se ha creado nada por su cuenta
+    finally:
+        for schema in (empty, partial):
+            await drop(schema)
+
+
 async def test_atomic_snapshot_receipt_assignment_outbox_and_cas(pg: PostgresStore) -> None:
     initial = snapshot()
     await pg.create(initial)
@@ -302,6 +338,61 @@ async def test_restart_api_on_postgres_without_happyrobot_key(pg: PostgresStore)
             assert health["synchronized"]
 
 
+async def test_chatbot_location_persists_in_postgres_and_emits_snapshot(pg: PostgresStore) -> None:
+    settings = Settings(
+        storage_backend="postgres",
+        database_url=pg._dsn,
+        agent_autostart=False,
+        happyrobot_webhook_secret="intake-test",
+    )
+    payload = {
+        "run_id": "chat-postgres",
+        "timestamp": now().isoformat(),
+        "emergency_type": "incendio",
+        "severity": "grave",
+        "location": {
+            "raw_text": "Ubicación de prueba",
+            "lat": 40.1,
+            "lng": -4.2,
+            "confirmed": True,
+        },
+    }
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        changes = app.state.rt.state.subscribe()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/webhooks/happyrobot/inbound",
+                json=payload,
+                headers={"X-Webhook-Secret": "intake-test"},
+            )
+            assert response.status_code == 202
+            change = await asyncio.wait_for(changes.get(), timeout=1)
+            assert change.type == "snapshot"
+            assert change.data["incoming_calls"][0]["location"]["lat"] == 40.1
+            saved = (await client.get("/api/v1/state")).json()
+        app.state.rt.state.unsubscribe(changes)
+    restarted = create_app(settings)
+    async with restarted.router.lifespan_context(restarted):
+        restored = restarted.state.rt.state.snapshot()
+        assert len(restored.incoming_calls) == 1
+        assert restored.incoming_calls[0].location.lng == -4.2
+        assert restored.version == saved["version"]
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(restarted), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/webhooks/happyrobot/inbound",
+                json=payload,
+                headers={"X-Webhook-Secret": "intake-test"},
+            )
+            assert response.status_code == 202
+            assert restarted.state.rt.state.version == restored.version
+            assert len(restarted.state.rt.state.incoming_calls) == 1
+
+
 class InvalidRowStore(MemoryStore):
     async def pending(self, incident_id: str, limit: int) -> list[ObservationRow]:
         if "bad" not in self.processed:
@@ -329,3 +420,54 @@ async def test_invalid_observation_cannot_partially_mutate_snapshot() -> None:
     await rt.orchestrator.synchronize()
     assert rt.state.fronts["front_sur"] == next(f for f in initial.fronts if f.id == "front_sur")
     await rt.hr.aclose()
+
+
+async def test_coordination_survives_sql_restore_and_concurrent_answers(pg: PostgresStore) -> None:
+    from app.domain.models import CoordinationAnswer, CoordinationQuestionIn
+    from tests.test_durable_api import coordination_question
+
+    initial = snapshot()
+    await pg.create(initial)
+    settings = Settings(agent_autostart=False, geocoding_enabled=False)
+    left = build_runtime(settings, store=pg)
+    right = build_runtime(settings, store=pg)
+    try:
+        left.state.restore(initial)
+        question = await left.orchestrator.create_question(
+            CoordinationQuestionIn.model_validate(coordination_question("sql-question"))
+        )
+        stored = await pg.load(initial.incident.id)
+        right.state.restore(stored)
+        assert right.state.coordination_questions[question.id] == question
+        answers = [
+            CoordinationAnswer(option_ids=["note"]),
+            CoordinationAnswer(option_ids=["maintain"]),
+        ]
+        results = await asyncio.gather(
+            left.orchestrator.answer_question(question.id, answers[0]),
+            right.orchestrator.answer_question(question.id, answers[1]),
+            return_exceptions=True,
+        )
+        assert all(
+            not isinstance(result, Exception) or isinstance(result, VersionConflict)
+            for result in results
+        )
+        stored = await pg.load(initial.incident.id)
+        saved = stored.coordination_questions[0]
+        assert saved.status == "resolved"
+        assert saved.resolution.answer in answers
+        response_events = [
+            event
+            for event in stored.recent_events
+            if event.payload.get("question_id") == question.id
+            and event.payload.get("log_kind") == "answer"
+        ]
+        assert len(response_events) == 1
+        replay = await right.orchestrator.answer_question(question.id, answers[1])
+        assert replay == saved
+        assert len((await pg.load(initial.incident.id)).coordination_questions) == 1
+    finally:
+        await left.hr.aclose()
+        await right.hr.aclose()
+        await left.geocoder.close()
+        await right.geocoder.close()

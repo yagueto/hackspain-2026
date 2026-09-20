@@ -18,7 +18,9 @@ from pydantic import (
     Field,
     JsonValue,
     field_validator,
+    model_validator,
 )
+from pydantic.alias_generators import to_camel
 
 
 def now() -> datetime:
@@ -59,6 +61,7 @@ class EventKind(StrEnum):
     injured_reported = "injured_reported"
     resource_status = "resource_status"
     call_outcome = "call_outcome"
+    incoming_call = "incoming_call"
     message_outcome = "message_outcome"
     integration_down = "integration_down"
     integration_up = "integration_up"
@@ -256,6 +259,7 @@ class Action(BaseModel):
     workflow: str | None = None
     decision_id: str | None = None
     expires_at: datetime | None = None
+    hold_until: datetime | None = None
 
 
 class Task(BaseModel):
@@ -280,6 +284,13 @@ class Task(BaseModel):
     preferred_resource_id: str | None = None
     approved_at: datetime | None = None
     cancellation_requested: bool = False
+    incoming_call_id: str | None = None
+    incoming_call_timestamp: datetime | None = None
+    target_location: Location | None = None
+    autonomous: bool = False  # la decidió el agente, no un operador
+    hold_until: datetime | None = None  # margen para anular antes de enviar
+    blocked_reason: str = ""  # por qué no puede despacharse todavía
+    escalated_at: datetime | None = None
 
 
 class Decision(BaseModel):
@@ -309,9 +320,233 @@ class Incident(BaseModel):
 
 
 class AgentConfig(BaseModel):
+    """Frontera entre lo que el agente decide solo y lo que somete a un humano.
+
+    Todo es autónomo salvo lo crítico: las evacuaciones masivas y los avisos cuya
+    severidad figura en `approval_required_severities`. Lo autónomo se retiene
+    `hold_seconds` antes de enviarse para que el operador pueda anularlo.
+    """
+
     mode: AgentMode = AgentMode.running
+    autonomous: bool = True
     approval_required_for: list[TaskKind] = Field(default_factory=lambda: [TaskKind.evacuate_zone])
+    approval_required_severities: list[str] = Field(default_factory=lambda: ["vital"])
     tick_seconds: float = 10.0
+    hold_seconds: float = Field(default=10.0, ge=0)
+    escalate_after_seconds: float = Field(default=30.0, ge=0)
+
+
+class IntakeFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, str_strip_whitespace=True)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def normalize_unknown(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().lower() in ("", "null", "none"):
+            return None
+        return value
+
+
+class ReportedLocation(IntakeFields):
+    raw_text: str | None = Field(default=None, max_length=2000)
+    street: str | None = None
+    number: str | None = None
+    floor_door: str | None = None
+    city: str | None = None
+    road: str | None = None
+    kilometer: str | None = None
+    direction: str | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+    confirmed: bool = False
+    # Ya no condiciona la búsqueda: el agente localiza cualquier aviso sin GPS. Se conserva
+    # porque el workflow de intake lo sigue enviando y borrarlo rompería sus referencias.
+    public_search_allowed: bool = False
+    accuracy_m: float | None = Field(default=None, gt=0)
+
+    @field_validator("lat", "lng", "accuracy_m", mode="before")
+    @classmethod
+    def reject_boolean_coordinate(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("una coordenada/precisión debe ser numérica, no booleana")
+        return value
+
+    @model_validator(mode="after")
+    def coordinate_pair(self) -> ReportedLocation:
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("lat y lng deben proporcionarse juntas")
+        return self
+
+
+class ReportedVictims(IntakeFields):
+    count: int | None = Field(default=None, ge=0)
+    conscious: bool | None = None
+    breathing: bool | None = None
+    trapped: bool | None = None
+    minors_involved: bool | None = None
+
+
+class Caller(IntakeFields):
+    name: str | None = None
+    phone: str | None = None
+    is_victim: bool | None = None
+
+
+class GeocodedPlace(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    lat: float = Field(ge=-90, le=90, strict=True)
+    lng: float = Field(ge=-180, le=180, strict=True)
+    label: str = Field(min_length=1, max_length=2000)
+    kind: str = ""
+
+
+class LocationResolution(BaseModel):
+    status: Literal[
+        "not_requested", "resolved", "ambiguous", "not_found", "unavailable", "confirmed"
+    ] = "not_requested"
+    candidates: list[GeocodedPlace] = Field(default_factory=list)
+    selected: GeocodedPlace | None = None
+    provider: Literal["nominatim", "operator"] = "nominatim"
+    error: str = ""
+
+
+class IncomingCallIn(IntakeFields):
+    run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_:-]+$")
+    timestamp: AwareDatetime
+    emergency_type: Literal[
+        "sanitaria", "incendio", "seguridad", "trafico", "rescate", "otra", "desconocida"
+    ]
+    severity: Literal["vital", "grave", "moderada", "leve", "no_emergencia"]
+    escalation_required: bool = True
+    location: ReportedLocation = Field(default_factory=ReportedLocation)
+    victims: ReportedVictims = Field(default_factory=ReportedVictims)
+    caller: Caller = Field(default_factory=Caller)
+    active_hazards: str | None = None
+    notes: str | None = Field(default=None, max_length=10000)
+
+
+class IncomingCall(IncomingCallIn):
+    resolution: LocationResolution = Field(default_factory=LocationResolution)
+
+
+class CoordinationFields(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        allow_inf_nan=False,
+        str_strip_whitespace=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+        serialize_by_alias=True,
+    )
+
+
+class CoordinationAction(CoordinationFields):
+    type: Literal["none", "note", "set-status", "assign-resource"] = "none"
+    task_id: str | None = None
+    status: Literal["done", "cancelled"] | None = None
+    expected_status: TaskStatus | None = None
+    expected_updated_at: AwareDatetime | None = None
+    resource_id: str | None = None
+    expected_incident_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_target(self) -> CoordinationAction:
+        if self.type in ("set-status", "assign-resource") and (
+            not self.task_id or not self.expected_status or not self.expected_updated_at
+        ):
+            raise ValueError("la acción requiere tarea y versión esperada")
+        if self.type == "set-status" and not self.status:
+            raise ValueError("falta el estado de destino")
+        if self.type == "assign-resource" and not self.resource_id:
+            raise ValueError("falta el recurso")
+        return self
+
+
+class CoordinationAnswer(CoordinationFields):
+    option_ids: list[str] = Field(default_factory=list, max_length=12)
+    text: str = Field(default="", max_length=1000)
+    custom: bool = False
+
+
+class CoordinationOption(CoordinationFields):
+    id: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=200)
+    action: CoordinationAction = Field(default_factory=CoordinationAction)
+
+
+class CoordinationQuestionIn(CoordinationFields):
+    id: str = Field(
+        default_factory=lambda: new_id("question"),
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9_:-]+$",
+    )
+    incident_id: str = Field(min_length=1, max_length=160)
+    prompt: str = Field(min_length=1, max_length=2000)
+    urgency: Literal["critical", "high", "moderate"] = "moderate"
+    input: Literal["text", "options", "mixed"] = "options"
+    options: list[CoordinationOption] = Field(default_factory=list, max_length=12)
+    multiple: bool = False
+    text_action: CoordinationAction = Field(default_factory=lambda: CoordinationAction(type="note"))
+    default_answer: CoordinationAnswer
+    expires_at: AwareDatetime | None = None
+    timeout_seconds: float | None = Field(default=None, gt=0, le=86400)
+
+    def accepts(self, answer: CoordinationAnswer) -> bool:
+        if answer.custom:
+            return self.input != "options" and not answer.option_ids and bool(answer.text)
+        return (
+            self.input != "text"
+            and not answer.text
+            and bool(answer.option_ids)
+            and (self.multiple or len(answer.option_ids) == 1)
+            and len(set(answer.option_ids)) == len(answer.option_ids)
+            and set(answer.option_ids) <= {option.id for option in self.options}
+        )
+
+    def actions_for(self, answer: CoordinationAnswer) -> list[CoordinationAction]:
+        return (
+            [self.text_action]
+            if answer.custom
+            else [option.action for option in self.options if option.id in answer.option_ids]
+        )
+
+    @model_validator(mode="after")
+    def validate_question(self) -> CoordinationQuestionIn:
+        if self.id in ("__proto__", "constructor", "prototype"):
+            raise ValueError("identificador reservado")
+        if len({option.id for option in self.options}) != len(self.options):
+            raise ValueError("opciones duplicadas")
+        if self.input != "text" and not self.options:
+            raise ValueError("faltan opciones")
+        if not self.accepts(self.default_answer):
+            raise ValueError("respuesta por defecto inválida")
+        if any(
+            action.type not in ("none", "note") for action in self.actions_for(self.default_answer)
+        ):
+            raise ValueError("un vencimiento no puede confirmar, cancelar ni movilizar recursos")
+        return self
+
+
+class CoordinationResolution(CoordinationFields):
+    question_id: str
+    incident_id: str
+    idempotency_key: str
+    answer: CoordinationAnswer
+    answer_label: str
+    source: Literal["human", "timeout"]
+    answered_at: AwareDatetime = Field(default_factory=now)
+    outcome: str
+    applied: bool
+
+
+class CoordinationQuestion(CoordinationQuestionIn):
+    received_at: AwareDatetime = Field(default_factory=now)
+    expires_at: AwareDatetime = Field(default_factory=now)
+    sequence: int
+    status: Literal["pending", "resolved"] = "pending"
+    resolution: CoordinationResolution | None = None
+    request_hash: str = ""
 
 
 class WorldSnapshot(BaseModel):
@@ -328,6 +563,8 @@ class WorldSnapshot(BaseModel):
     recent_events: list[Event]
     recent_decisions: list[Decision]
     recent_actions: list[Action]
+    incoming_calls: list[IncomingCall] = Field(default_factory=list)
+    coordination_questions: list[CoordinationQuestion] = Field(default_factory=list)
     agent: AgentConfig
     integrations: dict[str, bool]
     generated_at: datetime = Field(default_factory=now)

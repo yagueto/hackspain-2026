@@ -4,12 +4,17 @@ import math
 from datetime import timedelta
 
 from app.agent.planner import Proposal, zone_eta
+from app.domain.autonomy import hold_until
+from app.domain.intake import NO_LOCATION, report_location
 from app.domain.models import (
     Action,
     ActionKind,
     ActionStatus,
     Contact,
     ContactRole,
+    Event,
+    EventKind,
+    EventSource,
     Location,
     Resource,
     ResourceStatus,
@@ -30,6 +35,8 @@ KIND_TO_WORKFLOWS: dict[ActionKind, tuple[WorkflowKind, ...]] = {
     ActionKind.telegram: ("send_telegram",),
 }
 
+NO_RESOURCE = "Sin medios o contacto compatibles y accesibles; en espera."
+
 ROLE_TO_WORKFLOW: dict[ContactRole, WorkflowKind] = {
     ContactRole.firefighter: "call_responder",
     ContactRole.ambulance: "call_responder",
@@ -48,7 +55,31 @@ def distance(a: Location, b: Location) -> float:
     return 6371 * 2 * math.asin(min(1, math.sqrt(hav)))
 
 
+def location_pending(state: WorldState, task: Task) -> bool:
+    """El aviso sigue vigente pero todavía no hay una ubicación utilizable.
+
+    Se distingue de una ubicación *modificada* porque no invalida nada: la misión no
+    puede salir todavía, pero descartarla perdería el aviso.
+    """
+    if not task.incoming_call_id or task.target_location:
+        return False
+    report = state.incoming_calls.get(task.incoming_call_id)
+    return bool(
+        report
+        and report.timestamp == task.incoming_call_timestamp
+        and report_location(report) is None
+    )
+
+
 def invalid_task(state: WorldState, task: Task) -> str:
+    if task.incoming_call_id:
+        report = state.incoming_calls.get(task.incoming_call_id)
+        if not report or report.timestamp != task.incoming_call_timestamp:
+            return "el aviso cambió; se requiere una nueva revisión"
+        if not location_pending(state, task) and (
+            not task.target_location or task.target_location != report_location(report)
+        ):
+            return "ubicación pendiente o modificada; se requiere revisión"
     if task.zone_id and task.zone_id not in (state.zones | state.fronts | state.roads):
         return "destino desconocido"
     front = state.fronts.get(task.zone_id or "")
@@ -113,12 +144,14 @@ class Executor:
             prop.task.zone_id or ""
         )
 
+        target_location = prop.task.target_location or (target.location if target else None)
+
         def score(resource: Resource) -> float:
             contact = self.state.contact_for_resource(resource.id)
             rel = reliability.get(contact.id, contact.reliability) if contact else 0
             eta = resource.eta_minutes
-            if eta is None:
-                eta = distance(resource.location, target.location) * 1.5 if target else 30
+            if eta is None or prop.task.incoming_call_id:
+                eta = distance(resource.location, target_location) * 1.5 if target_location else 30
             same_type = sum(r.type == resource.type for r in candidates)
             coverage = 15 if same_type == 1 and prop.task.priority < 90 else 0
             return -eta - coverage + min(resource.capacity, 50) / 10 + rel * 5
@@ -132,7 +165,17 @@ class Executor:
             "task_id": task.id,
             "task_kind": task.kind,
             "task_title": task.title,
-            "instructions": task.description,
+            "instructions": task.description
+            + (
+                f"\nDestino aprobado: {task.target_location.label}; "
+                f"latitud {task.target_location.lat}, longitud {task.target_location.lng}."
+                if task.target_location
+                else ""
+            ),
+            "target_location": task.target_location.model_dump(mode="json")
+            if task.target_location
+            else None,
+            "incoming_call_id": task.incoming_call_id,
             "priority": task.priority,
             "contact_id": contact.id,
             "contact_name": contact.name,
@@ -160,10 +203,16 @@ class Executor:
         ) and not task.approved_at:
             task.status = TaskStatus.awaiting_approval
             return task
+        if location_pending(self.state, task):
+            # Sin destino no se moviliza a nadie, pero el aviso no se descarta.
+            task.status = TaskStatus.proposed
+            task.blocked_reason = NO_LOCATION
+            return task
         reason = invalid_task(self.state, task)
         if reason:
             task.status, task.outcome = TaskStatus.cancelled, reason
             return task
+        task.blocked_reason = ""
         resource = self._pick_resource(prop, reliability) if prop.wants_resource_types else None
         contact = self.state.contacts.get(task.assignee_contact_id or "")
         if resource:
@@ -179,8 +228,14 @@ class Executor:
             )
         if (prop.wants_resource_types and not resource) or not contact:
             task.status = TaskStatus.proposed
-            task.outcome = "Sin medios o contacto compatibles y accesibles; en espera."
+            task.outcome = NO_RESOURCE
             return task
+        if task.outcome == NO_RESOURCE:
+            task.outcome = ""  # ya hay medio: la espera dejó de ser el estado de la misión
+        if task.autonomous and task.hold_until and task.hold_until <= now():
+            # La ventana se consumió esperando un medio libre. Se reabre al asignarlo: si no,
+            # una misión que esperó horas saldría sin margen alguno para anularla.
+            task.hold_until = hold_until(self.state.agent, False)
         if resource:
             resource.status = ResourceStatus.reserved
             resource.assigned_task_id = task.id
@@ -226,6 +281,7 @@ class Executor:
             decision_id=task.decision_id,
             state_version=self.state.version + 1,
             expires_at=now() + timedelta(minutes=10),
+            hold_until=task.hold_until,
         )
         action.request = {
             **self._briefing(task, contact),
@@ -235,13 +291,33 @@ class Executor:
         task.action_ids.append(action.id)
         task.status = TaskStatus.dispatching
         self.state.upsert_task(task)
+        if task.autonomous:
+            self.state.add_event(
+                Event(
+                    source=EventSource.system,
+                    kind=EventKind.note,
+                    title=f"Decisión automática: {task.title} → {contact.name}",
+                    payload={
+                        "task_id": task.id,
+                        "action_id": action.id,
+                        "reason": task.priority_reason,
+                        "hold_until": task.hold_until.isoformat() if task.hold_until else None,
+                    },
+                )
+            )
         return self.state.upsert_action(action)
 
-    async def message(self, contact: Contact, message: str) -> Action:
+    async def message(
+        self, contact: Contact | None, message: str, task_id: str | None = None
+    ) -> Action:
+        """El chat de destino lo resuelve el workflow; el contacto solo etiqueta el aviso."""
+        name = contact.name if contact else "Coordinación"
+        # Sin `task_id` en la acción a propósito: el outbox trata una orden con tarea como
+        # misión y la cancelaría por "requiere aprobación", que es justo el caso que avisa.
         action = Action(
             kind=ActionKind.telegram,
-            contact_id=contact.id,
-            summary=f"Telegram: aviso para {contact.name}",
+            contact_id=contact.id if contact else None,
+            summary=f"Telegram: aviso para {name}",
             workflow="send_telegram",
             state_version=self.state.version + 1,
             expires_at=now() + timedelta(minutes=10),
@@ -251,8 +327,9 @@ class Executor:
             "action_id": action.id,
             "channel": "telegram",
             "message": message,
-            "contact_id": contact.id,
-            "contact_name": contact.name,
+            "contact_id": contact.id if contact else None,
+            "contact_name": name,
+            "task_id": task_id,
             "incident_id": self.state.incident.id if self.state.incident else "",
             "callback_url": f"{self.public_base_url}/api/v1/webhooks/happyrobot",
         }
@@ -268,6 +345,11 @@ class Executor:
                 expires_at=now() + timedelta(minutes=2),
             )
         )
+
+    def complete_task(self, task: Task, outcome: str) -> None:
+        if task.status not in (TaskStatus.accepted, TaskStatus.in_progress):
+            raise ValueError("solo puede finalizarse una misión aceptada o en curso")
+        self.state.set_task_status(task.id, TaskStatus.done, outcome or "Finalizada por operador")
 
     async def cancel_task(self, task: Task, reason: str) -> None:
         if task.cancellation_requested:

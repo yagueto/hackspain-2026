@@ -1,0 +1,50 @@
+:host {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  min-width: 14px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+:host::before {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 5px;
+  background: transparent;
+  transition: background 120ms;
+}
+span {
+  position: relative;
+  width: 2px;
+  height: 40px;
+  border-radius: 3px;
+  background: transparent;
+  transition:
+    height 120ms,
+    background 120ms;
+}
+:host(:hover)::before,
+:host(:focus-visible)::before,
+:host(:active)::before {
+  background: var(--tag);
+}
+:host(:hover) span,
+:host(:focus-visible) span,
+:host(:active) span {
+  height: 60px;
+  background: var(--icon);
+}
+:host(:focus-visible) {
+  outline: 2px solid var(--border);
+  outline-offset: -2px;
+  border-radius: 5px;
+}
+@media (max-width: 800px) {
+  :host {
+    display: none;
+  }
+}

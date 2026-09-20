@@ -1,0 +1,23 @@
+<nav class="pagination" [attr.aria-label]="'Paginación de ' + label()">
+  <button
+    type="button"
+    class="previous"
+    [disabled]="page() === 0"
+    [attr.aria-label]="'Página anterior de ' + label()"
+    [attr.aria-controls]="controls()"
+    (click)="pageChanged.emit(page() - 1)"
+  >
+    <app-icon name="chevron" />
+  </button>
+  <span aria-live="polite" aria-atomic="true">Página {{ page() + 1 }} de {{ pageCount() }}</span>
+  <button
+    type="button"
+    class="next"
+    [disabled]="page() + 1 >= pageCount()"
+    [attr.aria-label]="'Página siguiente de ' + label()"
+    [attr.aria-controls]="controls()"
+    (click)="pageChanged.emit(page() + 1)"
+  >
+    <app-icon name="chevron" />
+  </button>
+</nav>

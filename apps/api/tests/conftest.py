@@ -1,12 +1,21 @@
 from collections.abc import AsyncIterator
+from weakref import WeakKeyDictionary
 
 import pytest
 from httpx import ASGITransport, AsyncClient, AsyncHTTPTransport, Request, Response
 
 from app.config import Settings, get_settings
 from app.main import create_app
+from app.runtime import Runtime
 
 HEADERS = {"X-API-Key": "test"}
+
+_RUNTIMES: WeakKeyDictionary[AsyncClient, Runtime] = WeakKeyDictionary()
+
+
+def runtime_of(client: AsyncClient) -> Runtime:
+    """Acceso al runtime vivo detrás de un cliente de test."""
+    return _RUNTIMES[client]
 
 
 @pytest.fixture(autouse=True)
@@ -30,10 +39,12 @@ async def client() -> AsyncIterator[AsyncClient]:
         agent_autostart=False,
         happyrobot_api_key="",
         openai_api_key="",
+        geocoding_enabled=False,  # quien lo necesite lo activa con su propio transporte
         _env_file=None,  # type: ignore[call-arg]
     )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
+            _RUNTIMES[c] = app.state.rt
             yield c
