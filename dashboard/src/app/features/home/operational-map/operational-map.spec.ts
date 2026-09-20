@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MOCK_UNITS } from '../../../core/data/operations.mock';
 import { Coordinates } from '../../../core/models/operations';
 import { Geocoding } from '../../../core/services/geocoding';
@@ -19,6 +20,31 @@ describe('OperationalMap', () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('fits markers only after the map layout has a measurable viewport', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const fit = vi.spyOn(L.Map.prototype, 'fitBounds');
+    const fixture = TestBed.createComponent(OperationalMap);
+    fixture.componentRef.setInput('locations', [MOCK_UNITS[0], MOCK_UNITS[1]]);
+    await fixture.whenStable();
+    expect(fit).not.toHaveBeenCalled();
+    const canvas = fixture.nativeElement.querySelector('.map-canvas') as HTMLElement;
+    Object.defineProperties(canvas, {
+      clientWidth: { configurable: true, value: 640 },
+      clientHeight: { configurable: true, value: 600 },
+    });
+    for (const frame of frames.splice(0)) frame(0);
+    expect(fit).toHaveBeenCalled();
+  });
+
   it('uses provided coordinates and geocodes only unique unknown addresses', async () => {
     geocode.mockResolvedValue({ lat: 40.425, lng: -3.689 });
     const fixture = TestBed.createComponent(OperationalMap);
@@ -32,7 +58,12 @@ describe('OperationalMap', () => {
     await vi.waitFor(() => expect(geocode).toHaveBeenCalledTimes(1));
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(2);
-    expect(fixture.nativeElement.textContent).toContain('2 puntos en el mapa');
+    expect(
+      fixture.nativeElement.querySelector('.map-provider, .map-sector, .map-footer'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.leaflet-control-attribution')?.textContent,
+    ).toContain('OpenStreetMap');
   });
 
   it('toggles unit visibility and emits selections from markers', async () => {
@@ -50,7 +81,9 @@ describe('OperationalMap', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.operation-marker').length).toBe(0);
     expect(geocode).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('0 puntos en el mapa');
+    expect(
+      fixture.nativeElement.querySelectorAll('.map-legend button')[1].getAttribute('aria-pressed'),
+    ).toBe('false');
   });
 
   it('reports addresses without a match rather than displaying a guessed location', async () => {

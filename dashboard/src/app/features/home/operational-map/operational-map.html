@@ -1,8 +1,5 @@
 <section class="panel map-panel" aria-labelledby="map-title">
-  <div class="panel-heading map-heading">
-    <h2 id="map-title">Mapa operativo</h2>
-    <span class="map-provider"><app-icon name="layers" /> OpenStreetMap</span>
-  </div>
+  <h2 id="map-title" class="sr-only">Mapa operativo</h2>
   <div class="map-viewport">
     <div
       #mapCanvas
@@ -10,9 +7,6 @@
       role="region"
       aria-label="Mapa de incidencias y recursos. Usa las flechas para desplazarte y los botones para cambiar el zoom."
     ></div>
-    <div class="map-sector">
-      <span class="sector-dot"></span> ZONA OPERATIVA <span class="sector-divider"></span> MADRID
-    </div>
     <button
       class="fit-button"
       type="button"
@@ -80,10 +74,4 @@
       </button>
     </div>
   </div>
-  <footer class="map-footer">
-    <span
-      ><span class="footer-dot"></span> {{ visibleLocations().length }}
-      {{ visibleLocations().length === 1 ? 'punto' : 'puntos' }} en el mapa</span
-    ><span>{{ centerLabel() }}</span>
-  </footer>
 </section>

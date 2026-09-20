@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
@@ -14,12 +15,13 @@ describe('Home resource selection', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
+        provideRouter([]),
         {
           provide: Operations,
           useValue: {
-            incidents: signal(MOCK_INCIDENTS),
-            communications: signal(MOCK_COMMUNICATIONS),
-            units: signal(MOCK_UNITS),
+            incidents: signal(MOCK_INCIDENTS.slice(0, 4)),
+            communications: signal(MOCK_COMMUNICATIONS.slice(0, 6)),
+            units: signal(MOCK_UNITS.slice(0, 12)),
             snapshot: signal(null),
             meta: signal({ happyrobot_mode: 'simulated', geocoding_enabled: true }),
             start: vi.fn(),
@@ -88,7 +90,7 @@ describe('Home resource selection', () => {
     ]);
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLButtonElement>('.incident-row')!.click();
+    element.querySelector<HTMLButtonElement>('.incident-select')!.click();
     await fixture.whenStable();
     expect(element.querySelector('.incident-detail')?.textContent).toContain(
       'Dirección privada de prueba',
@@ -184,6 +186,19 @@ describe('Home resource selection', () => {
     expect(button.disabled).toBe(true);
   });
 
+  it('preserves a coordinate correction draft when only the incident status changes', async () => {
+    const fixture = await setup();
+    fixture.componentInstance.selectIncident('INC-001');
+    await fixture.whenStable();
+    fixture.componentInstance.latitude.set('40.1234');
+    const incidents = TestBed.inject(Operations).incidents as WritableSignal<Incident[]>;
+    incidents.update((items) =>
+      items.map((item) => (item.id === 'INC-001' ? { ...item, status: 'En atención' } : item)),
+    );
+    await fixture.whenStable();
+    expect(fixture.componentInstance.latitude()).toBe('40.1234');
+  });
+
   it('shows the automatic decision with its reason and lets the operator override it', async () => {
     const operations = TestBed.inject(Operations);
     const report = {
@@ -264,14 +279,14 @@ describe('Home resource selection', () => {
       [0, 'B-03'],
       [2, 'H-01'],
     ] as const) {
-      element.querySelectorAll<HTMLButtonElement>('.communication')[row].click();
+      element.querySelectorAll<HTMLButtonElement>('.resource-select')[row].click();
       await fixture.whenStable();
       expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
         unitId,
       );
       expect(element.querySelector('.map-popup strong')?.textContent).toBe(unitId);
-      expect(element.querySelectorAll('.incident-row[aria-pressed="true"]').length).toBe(0);
-      expect(element.querySelectorAll('.communication[aria-pressed="true"]').length).toBe(1);
+      expect(element.querySelectorAll('.incident-select[aria-pressed="true"]').length).toBe(0);
+      expect(element.querySelectorAll('.resource-select[aria-pressed="true"]').length).toBe(1);
       expect(element.querySelectorAll('.communication.related').length).toBe(1);
       expect(panTo).toHaveBeenCalledWith(
         expect.objectContaining(MOCK_UNITS.find((unit) => unit.id === unitId)!.coordinates),
@@ -289,7 +304,7 @@ describe('Home resource selection', () => {
       'BUS-04',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('BUS-04');
-    expect(element.querySelector('.communication[aria-pressed="true"]')?.textContent).toContain(
+    expect(element.querySelector('.resource-select[aria-pressed="true"]')?.textContent).toContain(
       'BUS-04',
     );
     expect(element.querySelectorAll('.incident-row.selected').length).toBe(0);
@@ -301,13 +316,15 @@ describe('Home resource selection', () => {
     element.querySelectorAll<HTMLButtonElement>('.map-legend button')[1].click();
     await fixture.whenStable();
     expect(element.querySelectorAll('.map-marker.kind-unit').length).toBe(0);
-    element.querySelector<HTMLButtonElement>('.communication')!.click();
+    element.querySelector<HTMLButtonElement>('.resource-select')!.click();
     await fixture.whenStable();
     expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
       'B-03',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('B-03');
-    expect(element.querySelectorAll('.map-marker.kind-unit').length).toBe(10);
+    expect(element.querySelectorAll('.map-marker.kind-unit').length).toBe(
+      MOCK_UNITS.slice(0, 12).filter((unit) => unit.kind === 'unit').length,
+    );
   });
 
   it('supports resources without a communication in the feed', async () => {
@@ -326,15 +343,15 @@ describe('Home resource selection', () => {
   it('restores incident selection and associated resources after selecting a resource', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLButtonElement>('.communication')!.click();
+    element.querySelector<HTMLButtonElement>('.resource-select')!.click();
     await fixture.whenStable();
-    element.querySelectorAll<HTMLButtonElement>('.incident-row')[1].click();
+    element.querySelector<HTMLButtonElement>('[aria-label="Mostrar INC-002 en el mapa"]')!.click();
     await fixture.whenStable();
     expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
       'INC-002',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('INC-002');
-    expect(element.querySelectorAll('.communication[aria-pressed="true"]').length).toBe(0);
+    expect(element.querySelectorAll('.resource-select[aria-pressed="true"]').length).toBe(0);
     expect(element.querySelectorAll('.communication.related').length).toBe(1);
     expect(element.querySelectorAll('.map-marker.kind-unit.is-related').length).toBe(3);
   });

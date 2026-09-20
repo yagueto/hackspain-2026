@@ -1,31 +1,45 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   signal,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MapLocation } from '../../core/models/operations';
 import { GeocodedPlace, OperationalTask } from '../../core/models/world';
 import { Operations } from '../../core/services/operations';
 import { IncidentList } from './incident-list/incident-list';
 import { OperationalMap } from './operational-map/operational-map';
 import { ServiceFeed } from './service-feed/service-feed';
+import { SplitPane } from '../../shared/split-pane/split-pane';
+import { IncidentStore } from '../incidents/incident-store';
+import { OperationLogStore } from './operation-log/operation-log-store';
+import { OperationLogPanel } from './operation-log/operation-log-panel';
 
 @Component({
   selector: 'app-home',
-  imports: [OperationalMap, IncidentList, ServiceFeed],
+  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, OperationLogPanel, RouterLink],
+  host: { '(window:keydown)': 'handleKeyboard($event)' },
   templateUrl: './home.html',
   styleUrl: './home.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Home {
   readonly operations = inject(Operations);
-  readonly incidents = this.operations.incidents;
+  private readonly store = inject(IncidentStore);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  protected readonly log = inject(OperationLogStore);
+  protected readonly logOverlay = signal(false);
+  readonly incidents = this.store.incidents;
   readonly communications = this.operations.communications;
-  readonly units = this.operations.units;
+  readonly units = this.store.units;
   readonly addresses = computed(() =>
     this.incidents()
       .filter((incident) => incident.coordinates)
@@ -33,6 +47,7 @@ export class Home {
   );
   readonly selectedIncidentId = signal<string | null>(null);
   readonly selectedUnitId = signal<string | null>(null);
+  readonly visibleUnitIds = signal<readonly string[] | null>(null);
   readonly selectedIncident = computed(() =>
     this.incidents().find((incident) => incident.id === this.selectedIncidentId()),
   );
@@ -103,6 +118,7 @@ export class Home {
               icon: incident.icon,
               kind: 'incident' as const,
               incidentId: incident.id,
+              radiusMeters: incident.radiusMeters,
             },
           ]
         : [],
@@ -112,11 +128,49 @@ export class Home {
 
   constructor() {
     this.operations.start();
+    this.log.start();
+    this.route?.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const id = params.get('incidencia');
+      if (id) this.selectedIncidentId.set(id);
+      if (params.get('registro') === 'misiones') {
+        this.log.incidentFilter.set(id);
+        this.log.view.set('missions');
+        this.log.open.set(true);
+      }
+    });
     effect(() => {
-      if (!this.incidents().some((incident) => incident.id === this.selectedIncidentId()))
+      if (
+        (this.operations.snapshot() || this.operations.connection() === 'live') &&
+        !this.incidents().some((incident) => incident.id === this.selectedIncidentId())
+      )
         this.selectedIncidentId.set(null);
       if (!this.units().some((unit) => unit.id === this.selectedUnitId()))
         this.selectedUnitId.set(null);
+    });
+    let lastCoordinates = '';
+    effect(() => {
+      const point = this.selectedIncident()?.coordinates;
+      const version = JSON.stringify([this.selectedIncidentId(), point?.lat, point?.lng]);
+      if (version === lastCoordinates) return;
+      lastCoordinates = version;
+      this.latitude.set(point?.lat.toString() || '');
+      this.longitude.set(point?.lng.toString() || '');
+    });
+    effect((onCleanup) => {
+      if (!this.log.open() || !this.logOverlay()) return;
+      const previous = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      onCleanup(() => {
+        document.body.style.overflow = previous;
+      });
+    });
+    afterNextRender(() => {
+      const media = window.matchMedia?.('(max-width: 1199px)');
+      if (!media) return;
+      const update = () => this.logOverlay.set(media.matches);
+      update();
+      media.addEventListener('change', update);
+      this.destroyRef.onDestroy(() => media.removeEventListener('change', update));
     });
   }
 
@@ -136,22 +190,39 @@ export class Home {
     );
   }
 
-  selectIncident(id: string): void {
-    if (this.incidents().some((incident) => incident.id === id)) {
-      this.selectedUnitId.set(null);
-      this.selectedIncidentId.set(id);
-      this.reviewedLocation.set(null);
-      this.operatorMessage.set('');
-      const coordinates = this.selectedIncident()?.coordinates;
-      this.latitude.set(coordinates?.lat.toString() || '');
-      this.longitude.set(coordinates?.lng.toString() || '');
+  protected closeLog(): void {
+    this.log.open.set(false);
+    queueMicrotask(() => document.getElementById('log-toggle')?.focus({ preventScroll: true }));
+  }
+
+  protected handleKeyboard(event: KeyboardEvent): void {
+    if (event.isComposing) return;
+    if (
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 'i'
+    ) {
+      event.preventDefault();
+      if (!event.repeat) void this.log.generateDemoQuestion();
+    } else if (event.key === 'Escape' && this.log.open()) {
+      event.preventDefault();
+      this.closeLog();
     }
+  }
+
+  selectIncident(id: string): void {
+    if (!this.incidents().some((incident) => incident.id === id)) return;
+    this.selectedUnitId.set(null);
+    this.selectedIncidentId.update((selected) => (selected === id ? null : id));
+    this.reviewedLocation.set(null);
+    this.operatorMessage.set('');
   }
 
   async searchLocation(): Promise<void> {
     const report = this.selectedReport();
-    if (!report) return;
-    await this.runOperatorAction(() => this.operations.geocode(report));
+    if (report) await this.runOperatorAction(() => this.operations.geocode(report));
   }
 
   async chooseLocation(location: GeocodedPlace): Promise<void> {
@@ -184,7 +255,8 @@ export class Home {
   }
 
   async approveTask(task: OperationalTask, approved: boolean): Promise<void> {
-    if (approved && (!this.locationReviewed() || !task.target_location)) return;
+    if (approved && (!this.operations.meta() || !this.locationReviewed() || !task.target_location))
+      return;
     await this.runOperatorAction(() =>
       this.operations.approve(task, approved, this.locationReviewed()),
     );
@@ -226,7 +298,7 @@ export class Home {
   selectUnit(id: string): void {
     if (this.units().some((unit) => unit.kind === 'unit' && unit.id === id)) {
       this.selectedIncidentId.set(null);
-      this.selectedUnitId.set(id);
+      this.selectedUnitId.update((selected) => (selected === id ? null : id));
     }
   }
 }

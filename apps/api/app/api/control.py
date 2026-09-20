@@ -7,7 +7,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 
 from app.agent.planner import Proposal
 from app.api.deps import require_api_key
-from app.domain.autonomy import needs_confirmation
+from app.domain.autonomy import hold_until, needs_confirmation
 from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     Action,
@@ -15,6 +15,9 @@ from app.domain.models import (
     AgentConfig,
     AgentMode,
     ContactRole,
+    CoordinationAnswer,
+    CoordinationQuestion,
+    CoordinationQuestionIn,
     Decision,
     Event,
     EventKind,
@@ -68,6 +71,7 @@ async def resume(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
                 title="Autonomía reactivada por el operador",
             )
         )
+    rt.orchestrator.start(autoplan=True)
     return rt.state.agent
 
 
@@ -78,6 +82,7 @@ async def resume_simulated(rt: Runtime = Depends(get_runtime)) -> AgentConfig:
     async with rt.orchestrator.edit() as state:
         state.agent.mode = AgentMode.running
     await rt.orchestrator.dispatch_pending()
+    rt.orchestrator.start(autoplan=True)
     return rt.state.agent
 
 
@@ -178,8 +183,9 @@ async def confirm_report_location(
 
 
 class PriorityIn(BaseModel):
-    priority: int
-    reason: str = "Override del operador"
+    priority: int = Field(ge=0, le=100)
+    reason: str = Field(default="Override del operador", max_length=2000)
+    expected_updated_at: AwareDatetime | None = None
 
 
 @router.post("/tasks/{task_id}/priority")
@@ -190,14 +196,26 @@ async def override_priority(
         t = state.tasks.get(task_id)
         if not t:
             raise HTTPException(404)
-        t.priority = max(0, min(100, body.priority))
+        if body.expected_updated_at and body.expected_updated_at != t.updated_at:
+            raise HTTPException(409, "la tarea ha cambiado; revisa su estado actual")
+        t.priority = body.priority
         t.priority_reason = body.reason
+        state.upsert_task(t)
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title=f"Prioridad actualizada: {t.title}",
+                payload={"task_id": t.id, "summary": f"Prioridad {t.priority}. {body.reason}"},
+            )
+        )
     return rt.state.tasks[task_id]
 
 
 class StatusIn(BaseModel):
     status: TaskStatus
-    outcome: str = ""
+    outcome: str = Field(default="", max_length=2000)
+    expected_updated_at: AwareDatetime | None = None
 
 
 @router.post("/tasks/{task_id}/status")
@@ -206,21 +224,96 @@ async def set_status(task_id: str, body: StatusIn, rt: Runtime = Depends(get_run
         t = state.tasks.get(task_id)
         if not t:
             raise HTTPException(404)
+        if body.expected_updated_at and body.expected_updated_at != t.updated_at:
+            raise HTTPException(409, "la tarea ha cambiado; revisa su estado actual")
         if body.status == TaskStatus.cancelled:
+            if t.status in (TaskStatus.done, TaskStatus.rejected, TaskStatus.failed):
+                raise HTTPException(409, "la misión ya está cerrada")
             await rt.executor.bind(state).cancel_task(t, body.outcome or "Cancelada por operador")
         elif body.status == TaskStatus.done:
-            state.set_task_status(task_id, body.status, body.outcome)
+            rt.executor.bind(state).complete_task(t, body.outcome)
         else:
             raise HTTPException(409, "usa aprobación o una observación de estado de la unidad")
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title=f"Misión actualizada: {t.title}",
+                payload={"task_id": t.id, "summary": f"{t.status}: {t.outcome}"},
+            )
+        )
     await rt.orchestrator.dispatch_pending()
     return rt.state.tasks[task_id]
 
 
+@router.post("/questions", status_code=201)
+async def create_question(
+    body: CoordinationQuestionIn, rt: Runtime = Depends(get_runtime)
+) -> CoordinationQuestion:
+    return await rt.orchestrator.create_question(body)
+
+
+@router.post("/questions/{question_id}/answer")
+async def answer_question(
+    question_id: str, body: CoordinationAnswer, rt: Runtime = Depends(get_runtime)
+) -> CoordinationQuestion:
+    if question_id not in rt.state.coordination_questions:
+        raise HTTPException(404, "pregunta desconocida")
+    return await rt.orchestrator.answer_question(question_id, body)
+
+
+@router.post("/questions/demo", status_code=201)
+async def demo_question(rt: Runtime = Depends(get_runtime)) -> CoordinationQuestion:
+    if not rt.settings.seed_demo or rt.settings.happyrobot_mode != "simulated":
+        raise HTTPException(
+            409, "las preguntas de prueba solo están disponibles en la demo simulada"
+        )
+    candidates = [f"call:{run_id}" for run_id in rt.state.incoming_calls] + list(rt.state.zones)
+    if not candidates:
+        raise HTTPException(409, "no hay incidencias para preparar una pregunta")
+    sequence = len(rt.state.coordination_questions)
+    incident_id = candidates[sequence % len(candidates)]
+    input_kind = ("options", "text", "mixed")[sequence % 3]
+    body = CoordinationQuestionIn.model_validate(
+        {
+            "incidentId": incident_id,
+            "prompt": (
+                f"Revisión de coordinación de {incident_id}: "
+                "¿mantener el plan o registrar una instrucción?"
+            ),
+            "urgency": ("moderate", "critical", "high")[sequence % 3],
+            "input": input_kind,
+            "options": []
+            if input_kind == "text"
+            else [
+                {
+                    "id": "maintain",
+                    "label": "Mantener la actuación actual",
+                    "action": {"type": "none"},
+                },
+                {
+                    "id": "review",
+                    "label": "Registrar revisión de accesos",
+                    "action": {"type": "note"},
+                },
+            ],
+            "defaultAnswer": {
+                "optionIds": [] if input_kind == "text" else ["maintain"],
+                "text": "Mantener el plan y solicitar revisión del coordinador."
+                if input_kind == "text"
+                else "",
+                "custom": input_kind == "text",
+            },
+        }
+    )
+    return await rt.orchestrator.create_question(body)
+
+
 class ManualTaskIn(BaseModel):
     kind: TaskKind = TaskKind.other
-    title: str
-    description: str = ""
-    priority: int = 50
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=10000)
+    priority: int = Field(default=50, ge=0, le=100)
     zone_id: str | None = None
     contact_id: str | None = None
     resource_types: list[ResourceType] = Field(default_factory=list)
@@ -240,6 +333,10 @@ async def create_task(body: ManualTaskIn, rt: Runtime = Depends(get_runtime)) ->
         status=TaskStatus.proposed,
     )
     async with rt.orchestrator.edit() as state:
+        if not body.title.strip():
+            raise HTTPException(422, "el título no puede estar vacío")
+        if body.zone_id and body.zone_id not in (state.zones | state.fronts | state.roads):
+            raise HTTPException(404, "destino desconocido")
         if body.contact_id and body.contact_id not in state.contacts:
             raise HTTPException(404, "contacto desconocido")
         t.requires_approval = needs_confirmation(state.agent, t.kind, None)
@@ -250,14 +347,27 @@ async def create_task(body: ManualTaskIn, rt: Runtime = Depends(get_runtime)) ->
             TaskKind.close_road: [ResourceType.police_unit],
             TaskKind.evacuate_zone: [ResourceType.evacuation_bus],
         }.get(t.kind, [])
-        await rt.executor.bind(state).execute(Proposal(t, types, body.contact_roles), {})
+        roles = body.contact_roles or {
+            TaskKind.warn_civilian: [ContactRole.civilian],
+            TaskKind.brief_authority: [ContactRole.mayor],
+            TaskKind.open_shelter: [ContactRole.shelter],
+        }.get(t.kind, [])
+        await rt.executor.bind(state).execute(Proposal(t, types, roles), {})
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title=f"Misión creada: {t.title}",
+                payload={"task_id": t.id},
+            )
+        )
     await rt.orchestrator.dispatch_pending()
     return rt.state.tasks[t.id]
 
 
 class CallIn(BaseModel):
     contact_id: str
-    instructions: str
+    instructions: str = Field(min_length=1, max_length=4096)
     task_id: str | None = None
 
 
@@ -280,6 +390,9 @@ async def manual_call(body: CallIn, rt: Runtime = Depends(get_runtime)) -> Actio
         )
         if task.assignee_contact_id and task.assignee_contact_id != contact.id:
             raise HTTPException(409, "el contacto no corresponde a la tarea")
+        if not body.instructions.strip():
+            raise HTTPException(422, "las instrucciones no pueden estar vacías")
+        task.description = body.instructions.strip()
         action = await rt.executor.bind(state).call(task, contact)
     await rt.orchestrator.dispatch_pending()
     return rt.state.actions[action.id]
@@ -302,15 +415,27 @@ async def manual_telegram(body: TelegramIn, rt: Runtime = Depends(get_runtime)) 
 
 
 class NoteIn(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=2000)
     zone_id: str | None = None
+    incident_id: str | None = None
 
 
 @router.post("/note", status_code=202)
 async def operator_note(body: NoteIn, rt: Runtime = Depends(get_runtime)) -> Event:
+    if not body.title.strip():
+        raise HTTPException(422, "la nota no puede estar vacía")
+    incident_id = body.incident_id or body.zone_id or rt.orchestrator.incident_id
+    known = {rt.orchestrator.incident_id, *rt.state.zones, *rt.state.fronts, *rt.state.roads}
+    known.update(f"call:{run_id}" for run_id in rt.state.incoming_calls)
+    if incident_id not in known:
+        raise HTTPException(404, "incidencia desconocida")
     return await rt.orchestrator.ingest_event(
         Event(
-            source=EventSource.operator, kind=EventKind.note, title=body.title, zone_id=body.zone_id
+            source=EventSource.operator,
+            kind=EventKind.note,
+            title=body.title.strip(),
+            zone_id=body.zone_id,
+            payload={"incident_id": incident_id, "summary": body.title.strip()},
         )
     )
 
@@ -329,6 +454,41 @@ async def configure_agent(body: AgentConfigIn, rt: Runtime = Depends(get_runtime
     async with rt.orchestrator.edit() as state:
         for field, value in body.model_dump(exclude_none=True).items():
             setattr(state.agent, field, value)
+        for task in state.open_tasks():
+            if task.approved_at or any(
+                state.actions[aid].status not in (ActionStatus.pending, ActionStatus.skipped)
+                for aid in task.action_ids
+            ):
+                continue
+            report = state.incoming_calls.get(task.incoming_call_id or "")
+            required = needs_confirmation(
+                state.agent, task.kind, report.severity if report else None
+            )
+            if task.requires_approval == required:
+                continue
+            if required:
+                await rt.executor.bind(state).cancel_task(
+                    task, "Cambio de política: requiere confirmación"
+                )
+                task.resource_ids = []
+                task.status = TaskStatus.awaiting_approval
+                task.hold_until = None
+                task.outcome = "Pendiente de confirmación por la política actualizada"
+                task.cancellation_requested = False
+            elif task.status == TaskStatus.awaiting_approval:
+                task.status = TaskStatus.proposed
+                task.hold_until = hold_until(state.agent, False)
+                task.outcome = ""
+            task.requires_approval = required
+            task.autonomous = not required
+            state.upsert_task(task)
+        state.add_event(
+            Event(
+                source=EventSource.operator,
+                kind=EventKind.note,
+                title="Política del agente actualizada por operador",
+            )
+        )
     rt.orchestrator.tick_seconds = rt.state.agent.tick_seconds
     return rt.state.agent
 
@@ -341,7 +501,13 @@ async def initialize_incident(
         raise HTTPException(409, "el incidente ya está inicializado")
     if body.incident.id != rt.settings.incident_id:
         raise HTTPException(409, "incident.id debe coincidir con INCIDENT_ID")
-    if body.tasks or body.recent_actions or body.recent_events or body.recent_decisions:
+    if (
+        body.tasks
+        or body.recent_actions
+        or body.recent_events
+        or body.recent_decisions
+        or body.coordination_questions
+    ):
         raise HTTPException(422, "inicializa solo catálogos y estado, sin órdenes ni histórico")
     if any(r.assigned_task_id or r.assigned_zone_id for r in body.resources):
         raise HTTPException(422, "las unidades iniciales no deben tener asignaciones")

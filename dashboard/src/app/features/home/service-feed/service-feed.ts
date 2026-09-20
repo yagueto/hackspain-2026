@@ -1,22 +1,33 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { Communication } from '../../../core/models/operations';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { Communication, MapLocation } from '../../../core/models/operations';
 import { Icon } from '../../../shared/icon/icon';
-import { PaginatedList } from '../../../shared/pagination/paginated-list';
-import { Pagination } from '../../../shared/pagination/pagination';
 
 @Component({
   selector: 'app-service-feed',
-  imports: [Icon, PaginatedList, Pagination],
+  imports: [Icon, RouterLink],
   templateUrl: './service-feed.html',
   styleUrl: './service-feed.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServiceFeed {
   readonly communications = input.required<readonly Communication[]>();
+  readonly resources = input.required<readonly MapLocation[]>();
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
   readonly unitSelected = output<string>();
-  protected readonly resourceKey = (item: Communication) => item.vehicle;
+  readonly visibleUnitsChanged = output<readonly string[] | null>();
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly filtersOpen = signal(false);
   protected readonly selectedServices = signal<readonly string[]>([]);
   protected readonly services = computed(() => [
@@ -28,6 +39,38 @@ export class ServiceFeed {
       (item) => !this.filterCount() || this.selectedServices().includes(item.service),
     ),
   );
+
+  constructor() {
+    effect(() => {
+      this.visibleUnitsChanged.emit(
+        this.filterCount() ? this.filteredCommunications().map((item) => item.vehicle) : null,
+      );
+    });
+    effect(() => {
+      this.selectedUnitId();
+      this.selectedIncidentId();
+      queueMicrotask(() =>
+        this.element.nativeElement
+          .querySelector('.related')
+          ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }),
+      );
+    });
+  }
+
+  protected resource(id: string): MapLocation | undefined {
+    return this.resources().find((resource) => resource.kind === 'unit' && resource.id === id);
+  }
+
+  protected resourceStatus(item: Communication): string {
+    const unit = this.resource(item.vehicle);
+    if (unit?.resourceStatus) return unit.resourceStatus;
+    const route = unit?.route;
+    return route?.status === 'active'
+      ? 'En ruta'
+      : route?.status === 'completed'
+        ? 'En destino'
+        : item.status;
+  }
 
   protected toggleService(service: string): void {
     this.selectedServices.update((selected) =>

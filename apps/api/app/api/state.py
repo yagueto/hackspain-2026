@@ -13,8 +13,17 @@ router = APIRouter(tags=["state"])
 
 
 @router.get("/meta")
-async def get_meta(rt: Runtime = Depends(get_runtime)) -> dict[str, str | bool | float]:
+async def get_meta(rt: Runtime = Depends(get_runtime)) -> dict[str, Any]:
     return {
+        "happyrobot_environment": rt.settings.happyrobot_environment,
+        "happyrobot_configured": rt.hr.configured,
+        "llm_enabled": rt.orchestrator.reviewer.enabled,
+        "workflows": {
+            "call_responder": bool(rt.settings.happyrobot_wf_call_responder),
+            "call_civilian": bool(rt.settings.happyrobot_wf_call_civilian),
+            "notify_authority": bool(rt.settings.happyrobot_wf_notify_authority),
+            "send_telegram": bool(rt.settings.happyrobot_wf_telegram),
+        },
         "seed_demo": rt.settings.seed_demo,
         "happyrobot_mode": rt.settings.happyrobot_mode,
         "storage": rt.settings.storage_backend,
