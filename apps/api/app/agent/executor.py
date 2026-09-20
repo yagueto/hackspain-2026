@@ -4,6 +4,7 @@ import math
 from datetime import timedelta
 
 from app.agent.planner import Proposal, zone_eta
+from app.domain.autonomy import hold_until
 from app.domain.intake import NO_LOCATION, report_location
 from app.domain.models import (
     Action,
@@ -33,6 +34,8 @@ KIND_TO_WORKFLOWS: dict[ActionKind, tuple[WorkflowKind, ...]] = {
     ActionKind.call: ("call_responder", "call_civilian", "notify_authority"),
     ActionKind.telegram: ("send_telegram",),
 }
+
+NO_RESOURCE = "Sin medios o contacto compatibles y accesibles; en espera."
 
 ROLE_TO_WORKFLOW: dict[ContactRole, WorkflowKind] = {
     ContactRole.firefighter: "call_responder",
@@ -225,8 +228,14 @@ class Executor:
             )
         if (prop.wants_resource_types and not resource) or not contact:
             task.status = TaskStatus.proposed
-            task.outcome = "Sin medios o contacto compatibles y accesibles; en espera."
+            task.outcome = NO_RESOURCE
             return task
+        if task.outcome == NO_RESOURCE:
+            task.outcome = ""  # ya hay medio: la espera dejó de ser el estado de la misión
+        if task.autonomous and task.hold_until and task.hold_until <= now():
+            # La ventana se consumió esperando un medio libre. Se reabre al asignarlo: si no,
+            # una misión que esperó horas saldría sin margen alguno para anularla.
+            task.hold_until = hold_until(self.state.agent, False)
         if resource:
             resource.status = ResourceStatus.reserved
             resource.assigned_task_id = task.id

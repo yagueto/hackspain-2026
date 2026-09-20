@@ -1,11 +1,12 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
 
+from app.agent.executor import NO_RESOURCE
 from app.config import Settings
-from app.domain.models import now
+from app.domain.models import ResourceStatus, ResourceType, now
 from app.integrations.geocoding import NominatimGeocoder
 from app.main import create_app
 from app.store.persistence import MemoryStore
@@ -171,6 +172,36 @@ async def test_grave_intake_dispatches_without_operator_approval(
         next(r for r in state["resources"] if r["assigned_task_id"] == task["id"])["status"]
         == "reserved"
     )
+
+
+async def test_mission_waiting_for_a_unit_dispatches_with_a_fresh_override_window(
+    client: httpx.AsyncClient,
+) -> None:
+    """Sin medio libre la misión espera; al liberarse uno, sale con margen para anularla."""
+    rt = runtime_of(client)
+    async with rt.orchestrator.edit() as s:
+        for resource in s.resources.values():
+            if resource.type == ResourceType.fire_engine:
+                resource.status = ResourceStatus.out_of_service
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
+    task = (await client.get("/api/v1/tasks")).json()[0]
+    assert task["status"] == "proposed"
+    assert task["outcome"] == NO_RESOURCE
+    assert (await client.get("/api/v1/actions")).json() == []
+    # La ventana original caduca mientras la misión sigue esperando un medio.
+    async with rt.orchestrator.edit() as s:
+        s.tasks[task["id"]].hold_until = now() - timedelta(minutes=30)
+        next(
+            r for r in s.resources.values() if r.type == ResourceType.fire_engine
+        ).status = ResourceStatus.available
+    await rt.orchestrator.reconcile_intake()
+    updated = (await client.get("/api/v1/tasks")).json()[0]
+    assert updated["status"] == "dispatching"
+    assert updated["outcome"] == ""  # la espera dejó de ser el estado de la misión
+    action = (await client.get("/api/v1/actions")).json()[0]
+    assert action["status"] == "pending"
+    assert action["hold_until"] is not None
+    assert datetime.fromisoformat(action["hold_until"]) > now()
 
 
 async def test_vital_report_waits_for_human_confirmation(client: httpx.AsyncClient) -> None:

@@ -181,9 +181,16 @@ export function toOperations(
           ? 'Bloqueada: ubicación no resoluble'
           : !point
             ? 'Ubicación pendiente'
-            : current
-              ? TASK_LABELS[current.status] || current.status
-              : 'Recibida',
+            : active.some((task) => task.status === 'dispatching')
+              ? 'Automático · orden preparada'
+              : active.some((task) => task.status === 'dispatched')
+                ? 'Enviada automáticamente'
+                : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
+                  active.some((task) => task.status === 'proposed')
+                  ? 'Automático · sin unidad disponible'
+                  : current
+                    ? TASK_LABELS[current.status] || current.status
+                    : 'Recibida',
       coordinates: point,
       icon: emergencyIcons[call.emergency_type] ?? 'pin',
       locationStatus,
