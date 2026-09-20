@@ -27,7 +27,7 @@ main {
 .statusbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
   padding: var(--page-inset) var(--page-inset) calc(var(--page-inset) / 2);
   color: var(--muted);
