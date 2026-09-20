@@ -66,7 +66,7 @@
   @if (log.view() === 'activity') {
     @if (log.pendingTasks().length) {
       <button type="button" class="other-pending" (click)="log.view.set('missions')">
-        {{ log.pendingTasks().length }} decisiones críticas pendientes · Ver misiones
+        {{ log.pendingTasks().length }} decisiones en modo manual pendientes · Ver misiones
       </button>
     }
     @if (log.incidentFilter() && log.pending().length > log.visiblePending().length) {
@@ -241,7 +241,12 @@
             @if (task.outcome) {
               <p>{{ task.outcome }}</p>
             }
-            @if (holdRemaining(task); as seconds) {
+            @if (log.allocationQuestion(task.id); as question) {
+              <p class="stream-error">Conflicto de recursos pendiente de decisión humana.</p>
+              <button type="button" (click)="log.openForIncident(question.incidentId)">
+                Elegir incidente
+              </button>
+            } @else if (holdRemaining(task); as seconds) {
               <p>
                 {{
                   operations.paused()
@@ -268,7 +273,7 @@
                   (click)="approve(task, true)"
                   [disabled]="busy() || !operations.operatorKey() || !canSend()"
                 >
-                  Confirmar orden crítica</button
+                  Confirmar orden manual</button
                 ><button
                   type="button"
                   (click)="approve(task, false)"
@@ -423,8 +428,8 @@
             <h3>Política del agente</h3>
             <p>Estado: {{ agent.mode === 'paused' ? 'Parada activa' : 'En ejecución' }}</p>
             <label class="live-confirmation"
-              ><input #autonomous type="checkbox" [checked]="agent.autonomous" />Decisiones no
-              críticas autónomas</label
+              ><input #autonomous type="checkbox" [checked]="agent.autonomous" />Asignación autónoma
+              de los servicios disponibles</label
             >
             <label
               >Retención (segundos)<input
@@ -449,8 +454,9 @@
                 [value]="agent.tick_seconds ?? 10"
             /></label>
             <p>
-              Requieren confirmación: {{ agent.approval_required_severities?.join(', ') }} ·
-              {{ agent.approval_required_for?.join(', ') }}
+              El agente coordina varios servicios según el aviso, también en casos vitales. Si los
+              medios no alcanzan para dos incidentes, el operador elige el destino; el conflicto no
+              se resuelve por vencimiento.
             </p>
             <button
               type="button"

@@ -11,15 +11,18 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
+from app.agent.allocation import allocation_problem, refresh_allocations
 from app.agent.executor import (
     NO_RESOURCE,
     Executor,
+    allocation_pending,
     invalid_task,
     location_pending,
     reachable,
 )
 from app.agent.llm import LLMReviewer, Review
 from app.agent.planner import Proposal, propose, replan_needed
+from app.domain.autonomy import hold_until, needs_confirmation
 from app.domain.intake import prepare_intake_tasks
 from app.domain.models import (
     ActionKind,
@@ -40,10 +43,11 @@ from app.domain.models import (
     Resource,
     ResourceStatus,
     Severity,
+    TaskKind,
     TaskStatus,
     now,
 )
-from app.domain.movement import advance
+from app.domain.movement import advance, clear_travel
 from app.domain.observations import apply_observation
 from app.domain.state import WorldState
 from app.store.persistence import Store, StoreError, VersionConflict
@@ -249,6 +253,17 @@ class Orchestrator:
             changed = False
             for report in candidate.incoming_calls.values():
                 changed = prepare_intake_tasks(candidate, report) or changed
+            for task in candidate.open_tasks():
+                if task.status == TaskStatus.awaiting_approval and not needs_confirmation(
+                    candidate.agent, task.kind, None
+                ):
+                    task.requires_approval = False
+                    task.autonomous = True
+                    task.status = TaskStatus.proposed
+                    task.hold_until = hold_until(candidate.agent, False)
+                    task.outcome = ""
+                    candidate.upsert_task(task)
+                    changed = True
             for action in candidate.actions.values():
                 if action.status == ActionStatus.sending:
                     action.status = ActionStatus.unknown
@@ -368,6 +383,9 @@ class Orchestrator:
             if not relevant:
                 decision.discarded_events.append(event.title)
         reliability = {c.id: c.reliability for c in s.contacts.values()}
+        for proposal in proposals:
+            s.tasks[proposal.task.id] = proposal.task
+        refresh_allocations(s)
         for proposal in sorted(proposals + waiting, key=lambda p: -p.task.priority):
             proposal.task.decision_id = decision.id
             await executor.execute(proposal, reliability)
@@ -393,43 +411,43 @@ class Orchestrator:
         Solo construye la orden; enviarla es cosa de `dispatch_pending`, que respeta la
         ventana para anular y la parada de emergencia.
         """
-        stale = self._stale_intake_tasks(self.state)
         # Solo se abre una transacción por lo que cambia. Una misión sin medio libre seguiría
         # entrando aquí en cada ciclo y, al commitear sin cambios, escribiría en la base y
         # refrescaría el dashboard cada dos segundos para siempre. La espera se explica una
         # vez y después se calla hasta que algo se mueva.
-        idle = self.executor.bind(self.state)
-        ready: list[str] = []
-        stalled: list[str] = []
-        for waiting in self.state.tasks.values():
-            if not (
-                waiting.autonomous
-                and waiting.status == TaskStatus.proposed
-                and not waiting.action_ids
-            ):
-                continue
-            if idle.can_progress(waiting):
-                ready.append(waiting.id)
-            elif not location_pending(self.state, waiting) and waiting.outcome != NO_RESOURCE:
-                stalled.append(waiting.id)
-        if not stale and not ready and not stalled:
-            return
-        async with self.edit() as s:
+        async with self._tick_lock:
+            await self._synchronize()
+            s = self.state.copy()
             executor = self.executor.bind(s)
+            changed = False
             for task_id in self._stale_intake_tasks(s):
                 await executor.cancel_task(s.tasks[task_id], invalid_task(s, s.tasks[task_id]))
+                changed = True
+            changed = refresh_allocations(s) or changed
             reliability = {c.id: c.reliability for c in s.contacts.values()}
-            for task_id in stalled + sorted(ready, key=lambda i: -s.tasks[i].priority):
-                task = s.tasks.get(task_id)
-                if not task or task.status != TaskStatus.proposed or task.action_ids:
+            for task in s.open_tasks():
+                if (
+                    not (task.autonomous or task.approved_at)
+                    or task.status != TaskStatus.proposed
+                    or task.action_ids
+                ):
                     continue
-                if task_id in stalled:
+                if allocation_pending(s, task):
+                    if task.outcome != NO_RESOURCE:
+                        task.outcome = NO_RESOURCE
+                        changed = True
+                    continue
+                if executor.can_progress(task):
+                    await executor.execute(
+                        Proposal(task, task.resource_types, task.contact_roles), reliability
+                    )
+                    changed = True
+                elif not location_pending(s, task) and task.outcome != NO_RESOURCE:
                     task.outcome = NO_RESOURCE
                     s.upsert_task(task)
-                    continue
-                await executor.execute(
-                    Proposal(task, task.resource_types, task.contact_roles), reliability
-                )
+                    changed = True
+            if changed:
+                await self._commit(s, require_synced=True)
 
     def _mission_target(self, state: WorldState, resource: Resource) -> Location | None:
         task = state.tasks.get(resource.assigned_task_id or "")
@@ -636,6 +654,8 @@ class Orchestrator:
     ) -> str:
         if action.type in ("none", "note"):
             return ""
+        if action.type == "allocate-resource":
+            return allocation_problem(state, question, action)
         task = state.tasks.get(action.task_id or "")
         if (
             not task
@@ -690,6 +710,58 @@ class Orchestrator:
             return "el recurso no es compatible o accesible"
         return invalid_task(state, task)
 
+    async def _allocate_resource(self, state: WorldState, action: CoordinationAction) -> str:
+        task = state.tasks[action.task_id or ""]
+        resource = state.resources[action.resource_id or ""]
+        source = state.tasks.get(resource.assigned_task_id or "")
+        if source and source.id == task.id:
+            for aid in task.action_ids:
+                order = state.actions[aid]
+                if order.status == ActionStatus.pending:
+                    order.expires_at = now() + timedelta(minutes=10)
+                    order.hold_until = None
+            task.hold_until = None
+            return f"{resource.name} mantiene la misión {task.title}."
+        executor = self.executor.bind(state)
+        if source:
+            sent = any(
+                state.actions[aid].status not in (ActionStatus.pending, ActionStatus.skipped)
+                for aid in source.action_ids
+            )
+            await executor.cancel_task(source, f"Reasignación elegida por operador a {task.title}")
+            source.status = TaskStatus.proposed
+            source.resource_ids = []
+            source.action_ids = []
+            source.assignee_contact_id = None
+            source.preferred_resource_id = None
+            source.cancellation_requested = False
+            source.reassigned_from_task_id = None
+            source.outcome = NO_RESOURCE
+            state.upsert_task(source)
+            task.reassigned_from_task_id = source.id if sent else None
+        resource.status = ResourceStatus.reserved
+        resource.assigned_task_id = task.id
+        resource.assigned_zone_id = task.zone_id
+        estimated = resource.position_estimated
+        clear_travel(resource)
+        resource.position_estimated = estimated
+        resource.eta_minutes = None
+        state.field_clocks[f"resource:{resource.id}"] = now()
+        task.resource_ids = [resource.id]
+        task.preferred_resource_id = resource.id
+        contact = state.contact_for_resource(resource.id)
+        if contact is None:
+            raise ValueError("el recurso no tiene contacto")
+        task.assignee_contact_id = contact.id
+        if task.kind == TaskKind.evacuate_zone and task.zone_id in state.zones:
+            state.zones[task.zone_id].evacuation_status = "ordered"
+        task.approved_at = now()
+        task.autonomous = False
+        task.hold_until = None
+        task.outcome = "Asignación elegida por operador; pendiente de aceptación de la unidad."
+        await executor.call(task, contact)
+        return f"Orden preparada para {resource.name}: {task.title}; aún no implica aceptación."
+
     async def answer_question(
         self, question_id: str, answer: CoordinationAnswer, *, timed_out: bool = False
     ) -> CoordinationQuestion:
@@ -699,15 +771,21 @@ class Orchestrator:
                 raise ValueError("pregunta desconocida")
             if question.status == "resolved":
                 return question
-            expired = now() >= question.expires_at
+            expired = question.expires_at is not None and now() >= question.expires_at
             if timed_out and not expired:
                 return question
             chosen = question.default_answer if expired else answer
             if not question.accepts(chosen):
                 raise ValueError("respuesta inválida para esta pregunta")
             actions = question.actions_for(chosen)
+            if question.allocation_task_ids and all(a.type == "none" for a in actions):
+                return question
             targets = [f"task:{a.task_id}" for a in actions if a.type not in ("none", "note")]
-            targets += [f"resource:{a.resource_id}" for a in actions if a.type == "assign-resource"]
+            targets += [
+                f"resource:{a.resource_id}"
+                for a in actions
+                if a.type in ("assign-resource", "allocate-resource")
+            ]
             problem = (
                 "acciones incompatibles sobre la misma tarea o recurso"
                 if len(set(targets)) != len(targets)
@@ -728,10 +806,13 @@ class Orchestrator:
                 )
             )
             results = []
+            question.status = "resolved"
             if not problem:
                 executor = self.executor.bind(state)
                 for action in actions:
-                    if action.type == "set-status":
+                    if action.type == "allocate-resource":
+                        results.append(await self._allocate_resource(state, action))
+                    elif action.type == "set-status":
                         task = state.tasks[action.task_id or ""]
                         if action.status == "cancelled":
                             await executor.cancel_task(task, label)
@@ -790,7 +871,7 @@ class Orchestrator:
         due = [
             q
             for q in self.state.coordination_questions.values()
-            if q.status == "pending" and q.expires_at <= now()
+            if q.status == "pending" and q.expires_at is not None and q.expires_at <= now()
         ]
         for question in due:
             await self.answer_question(question.id, question.default_answer, timed_out=True)
@@ -801,6 +882,9 @@ class Orchestrator:
 
     async def _dispatch_pending(self) -> None:
         await self._synchronize()
+        candidate = self.state.copy()
+        if refresh_allocations(candidate):
+            await self._commit(candidate, require_synced=True)
         pending = sorted(
             (a for a in self.state.actions.values() if a.status == ActionStatus.pending),
             key=lambda a: (
@@ -811,6 +895,9 @@ class Orchestrator:
         ids = [a.id for a in pending]
         for aid in ids:
             await self._synchronize()
+            candidate = self.state.copy()
+            if refresh_allocations(candidate):
+                await self._commit(candidate, require_synced=True)
             if self.state.agent.mode != AgentMode.running:
                 return
             s = self.state.copy()
@@ -823,7 +910,11 @@ class Orchestrator:
                 continue
             task = s.tasks.get(action.task_id or "")
             reason = ""
-            if action.expires_at and action.expires_at <= now():
+            if (
+                action.expires_at
+                and action.expires_at <= now()
+                and not (task and allocation_pending(s, task))
+            ):
                 if task:
                     await self.executor.bind(s).cancel_task(task, "orden expirada sin enviar")
                 else:
@@ -838,9 +929,7 @@ class Orchestrator:
                 reason = invalid_task(s, task)
                 if task.status in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.rejected):
                     reason = "tarea cerrada"
-                if (
-                    task.requires_approval or task.kind in s.agent.approval_required_for
-                ) and not task.approved_at:
+                if (task.requires_approval or not s.agent.autonomous) and not task.approved_at:
                     reason = "requiere aprobación"
                 for rid in task.resource_ids:
                     resource = s.resources[rid]
@@ -849,6 +938,8 @@ class Orchestrator:
                 if reason:
                     await self.executor.bind(s).cancel_task(task, reason)
                     await self._commit(s)
+                    continue
+                if allocation_pending(s, task):
                     continue
                 contact = s.contacts.get(action.contact_id or "")
                 if contact and action.kind == ActionKind.call:

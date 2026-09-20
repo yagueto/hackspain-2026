@@ -6,14 +6,18 @@
 >
   <header>
     <h3 [id]="'prompt-' + question().id">{{ question().prompt }}</h3>
-    <time
-      class="countdown"
-      [class.last-seconds]="seconds() <= 15"
-      [attr.datetime]="question().expiresAt"
-      aria-label="Tiempo restante"
-      aria-live="off"
-      >{{ countdown() }}</time
-    >
+    @if (question().expiresAt) {
+      <time
+        class="countdown"
+        [class.last-seconds]="seconds() <= 15"
+        [attr.datetime]="question().expiresAt"
+        aria-label="Tiempo restante"
+        aria-live="off"
+        >{{ countdown() }}</time
+      >
+    } @else {
+      <span class="countdown">Decisión humana · sin caducidad</span>
+    }
   </header>
   <form (submit)="submit($event)">
     @if (question().input !== 'text') {
@@ -73,7 +77,12 @@
       <p>Introduce la clave de operador en la cabecera para responder.</p>
     }
     <p class="default-answer" [id]="'default-' + question().id">
-      <span>Al vencer el plazo:</span> {{ log.answerLabel(question(), question().defaultAnswer) }}
+      @if (question().expiresAt) {
+        <span>Al vencer el plazo:</span> {{ log.answerLabel(question(), question().defaultAnswer) }}
+      } @else {
+        No se elegirá un incidente ni se desviará una unidad automáticamente. Los servicios sin
+        conflicto continúan; este recurso espera tu decisión o nuevos medios disponibles.
+      }
     </p>
     @if (log.errors()[question().id]) {
       <p class="answer-error" role="alert">{{ log.errors()[question().id] }}</p>

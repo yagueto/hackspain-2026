@@ -119,6 +119,8 @@ def outcome(state: WorldState, obs: Observation) -> list[str]:
     )
     action = resolve_action(state, body)
     task = state.tasks.get(action.task_id or "")
+    if task and action.id not in task.action_ids:
+        task = None
     success = body.outcome in ("accepted", "info")
     terminal = action.status in (ActionStatus.completed, ActionStatus.failed)
     if terminal and (action.status == ActionStatus.failed or body.outcome != "info"):
@@ -149,7 +151,11 @@ def outcome(state: WorldState, obs: Observation) -> list[str]:
                 resource.status = ResourceStatus.en_route
             if body.eta_minutes is not None:
                 resource.eta_minutes = body.eta_minutes
-            if body.outcome == "rejected" and resource.status == ResourceStatus.reserved:
+            if (
+                body.outcome == "rejected"
+                and resource.status == ResourceStatus.reserved
+                and not task.reassigned_from_task_id
+            ):
                 resource.status = ResourceStatus.available
                 resource.assigned_task_id = None
                 resource.assigned_zone_id = None

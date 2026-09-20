@@ -12,9 +12,10 @@ export class UrgentQuestionCard {
   readonly question = input.required<HumanQuestion>();
   protected readonly log = inject(OperationLogStore);
   protected readonly draft = computed(() => this.log.draft(this.question()));
-  protected readonly seconds = computed(() =>
-    Math.max(0, Math.ceil((Date.parse(this.question().expiresAt) - this.log.now()) / 1000)),
-  );
+  protected readonly seconds = computed(() => {
+    const expiry = this.question().expiresAt;
+    return expiry ? Math.max(0, Math.ceil((Date.parse(expiry) - this.log.now()) / 1000)) : Infinity;
+  });
   protected readonly countdown = computed(
     () => `${Math.floor(this.seconds() / 60)}:${String(this.seconds() % 60).padStart(2, '0')}`,
   );

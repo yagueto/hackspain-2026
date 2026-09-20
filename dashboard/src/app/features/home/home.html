@@ -35,7 +35,7 @@
             @if (!operatorKey()) {
               <p class="needs-key" role="note">
                 Introduce la clave de operador en la barra superior para intervenir: corregir la
-                ubicación, anular una decisión o confirmar una crítica.
+                ubicación, anular una decisión o resolver un conflicto de recursos.
               </p>
             }
             <details [open]="locationOpen()" (toggle)="locationOpen.set($any($event.target).open)">
@@ -114,7 +114,7 @@
                   @if (task.autonomous) {
                     <span class="badge auto">Decisión automática</span>
                   } @else if (task.requires_approval) {
-                    <span class="badge critical">Decisión crítica · requiere confirmación</span>
+                    <span class="badge critical">Modo manual · requiere confirmación</span>
                   }
                 </div>
                 @if (task.priority_reason) {
@@ -135,7 +135,18 @@
                 @if (task.outcome) {
                   <p>{{ task.outcome }}</p>
                 }
-                @if (holdRemaining(task); as remaining) {
+                @if (log.allocationQuestion(task.id); as question) {
+                  <p class="blocked">
+                    {{
+                      question.allocationResourceId
+                        ? 'Medios insuficientes. Elige qué incidente debe atender el recurso.'
+                        : 'No hay unidad reasignable. Se necesita un refuerzo o un parte de disponibilidad.'
+                    }}
+                  </p>
+                  <button type="button" (click)="log.openForIncident('call:' + report.run_id)">
+                    Revisar recursos en el registro
+                  </button>
+                } @else if (holdRemaining(task); as remaining) {
                   <div class="countdown" role="status">
                     <span
                       >{{

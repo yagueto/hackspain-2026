@@ -36,6 +36,7 @@ async def runtime() -> AsyncIterator[Runtime]:
     store = MemoryStore()
     state = WorldState()
     seed_wildfire(state)
+    state.agent.hold_seconds = 0
     await store.create(state.snapshot(full=True))
     rt = build_runtime(Settings(agent_autostart=False), state=state, store=store)
     yield rt
@@ -58,6 +59,7 @@ async def test_duplicate_observation_no_duplicate_decision_or_assignment(runtime
     obs = observation(rt, EventKind.injured_reported, zone_id="zone_camping", payload={"count": 3})
     await rt.orchestrator.ingest(obs)
     await rt.orchestrator.tick()
+    await rt.orchestrator.tick()
     original = rt.state.snapshot(full=True)
     await rt.orchestrator.ingest(obs)
     await rt.orchestrator.tick()
@@ -68,6 +70,8 @@ async def test_duplicate_observation_no_duplicate_decision_or_assignment(runtime
 
 async def test_simultaneous_ticks_and_approvals_never_double_reserve(runtime: Runtime) -> None:
     rt = runtime
+    async with rt.orchestrator.edit() as state:
+        state.agent.autonomous = False
     await asyncio.gather(*(rt.orchestrator.tick() for _ in range(4)))
     tasks = [t for t in rt.state.tasks.values() if t.resource_ids]
     ids = [rid for t in tasks for rid in t.resource_ids]

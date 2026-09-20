@@ -169,6 +169,11 @@ export function toOperations(
       (task) => !['done', 'cancelled', 'failed', 'rejected'].includes(task.status),
     );
     const current = active[0] || tasks[0];
+    const conflict = (state.coordination_questions ?? []).find(
+      (question) =>
+        question.status === 'pending' &&
+        question.allocationTaskIds?.some((id) => active.some((task) => task.id === id)),
+    );
     return {
       id: `call:${call.run_id}`,
       title: `Aviso: ${call.emergency_type}`,
@@ -176,27 +181,32 @@ export function toOperations(
       address: address(call.location),
       priority: priority(call.severity),
       // El agente no puede seguir solo: hay que destacarlo, no solo describirlo.
-      alert: active.some((task) => task.status === 'awaiting_approval')
-        ? ('critical' as const)
-        : active.some((task) => task.blocked_reason)
-          ? ('blocked' as const)
-          : undefined,
-      status: active.some((task) => task.status === 'awaiting_approval')
-        ? 'CRÍTICO · confirmar'
-        : active.some((task) => task.blocked_reason)
-          ? 'Bloqueada: ubicación no resoluble'
-          : !point
-            ? 'Ubicación pendiente'
-            : active.some((task) => task.status === 'dispatching')
-              ? 'Automático · orden preparada'
-              : active.some((task) => task.status === 'dispatched')
-                ? 'Enviada automáticamente'
-                : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
-                  active.some((task) => task.status === 'proposed')
-                  ? 'Automático · sin unidad disponible'
-                  : current
-                    ? TASK_LABELS[current.status] || current.status
-                    : 'Recibida',
+      alert:
+        conflict || active.some((task) => task.status === 'awaiting_approval')
+          ? ('critical' as const)
+          : active.some((task) => task.blocked_reason)
+            ? ('blocked' as const)
+            : undefined,
+      status: conflict
+        ? conflict.allocationResourceId
+          ? 'CRÍTICO · elegir destino del recurso'
+          : 'CRÍTICO · sin medios compatibles'
+        : active.some((task) => task.status === 'awaiting_approval')
+          ? 'Modo manual · confirmar'
+          : active.some((task) => task.blocked_reason)
+            ? 'Bloqueada: ubicación no resoluble'
+            : !point
+              ? 'Ubicación pendiente'
+              : active.some((task) => task.status === 'dispatching')
+                ? 'Automático · orden preparada'
+                : active.some((task) => task.status === 'dispatched')
+                  ? 'Enviada automáticamente'
+                  : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
+                    active.some((task) => task.status === 'proposed')
+                    ? 'Automático · sin unidad disponible'
+                    : current
+                      ? TASK_LABELS[current.status] || current.status
+                      : 'Recibida',
       coordinates: point,
       icon: emergencyIcons[call.emergency_type] ?? 'pin',
       locationStatus,
@@ -205,7 +215,11 @@ export function toOperations(
         call.notes,
         call.victims.count != null ? `Personas afectadas: ${call.victims.count}` : '',
         call.active_hazards ? `Riesgos: ${call.active_hazards}` : '',
-        call.escalation_required ? 'Requiere revisión de un operador.' : '',
+        conflict
+          ? conflict.allocationResourceId
+            ? 'Medios insuficientes: el operador debe elegir qué incidente atender.'
+            : 'Sin unidad reasignable: se necesita un refuerzo o un parte de disponibilidad.'
+          : '',
         call.location.accuracy_m ? `Precisión declarada: ${call.location.accuracy_m} m.` : '',
       ]
         .filter(Boolean)
@@ -456,7 +470,11 @@ function validSnapshot(value: unknown): value is WorldSnapshot {
           text(item['prompt']) &&
           Number.isInteger(item['sequence']) &&
           timestamp(item['receivedAt']) &&
-          timestamp(item['expiresAt']) &&
+          (timestamp(item['expiresAt']) ||
+            (item['expiresAt'] === null &&
+              strings(item['allocationTaskIds']) &&
+              item['allocationTaskIds'].length > 0)) &&
+          optional(item['allocationTaskIds'], strings) &&
           ['pending', 'resolved'].includes(String(item['status'])) &&
           ['critical', 'high', 'moderate'].includes(String(item['urgency'])) &&
           ['text', 'options', 'mixed'].includes(String(item['input'])) &&

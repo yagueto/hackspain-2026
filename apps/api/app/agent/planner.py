@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.domain.autonomy import hold_until, needs_confirmation
 from app.domain.models import (
     ContactRole,
     ResourceStatus,
@@ -106,7 +107,7 @@ def propose(state: WorldState) -> list[Proposal]:
                             priority=prio,
                             priority_reason=f"ETA del frente {eta:.0f} min con {people} personas.",
                             zone_id=z.id,
-                            requires_approval=True,
+                            requires_approval=not state.agent.autonomous,
                         ),
                         [ResourceType.police_unit, ResourceType.evacuation_bus],
                         [ContactRole.police, ContactRole.civil_protection],
@@ -243,6 +244,16 @@ def propose(state: WorldState) -> list[Proposal]:
                     )
                 )
 
+    for proposal in out:
+        task = proposal.task
+        task.requires_approval = needs_confirmation(state.agent, task.kind, None)
+        task.autonomous = not task.requires_approval
+        task.status = (
+            TaskStatus.awaiting_approval if task.requires_approval else TaskStatus.proposed
+        )
+        task.hold_until = hold_until(state.agent, task.requires_approval)
+        task.resource_types = proposal.wants_resource_types
+        task.contact_roles = proposal.contact_roles
     out.sort(key=lambda p: -p.task.priority)
     return out
 
