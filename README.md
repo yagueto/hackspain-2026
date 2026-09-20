@@ -22,8 +22,6 @@ Escuchar → Entender → Localizar → Priorizar → Asignar → Comunicar → 
                          └────────── Replanificar con nuevos datos ───┘
 ```
 
-[Lo que lo hace diferente](#lo-que-lo-hace-diferente) · [Arquitectura](#arquitectura) · [Demo local](#demo-local-sin-llamadas-reales) · [Guion de presentación](#qué-enseñar-en-una-demo) · [Verificación](#verificación)
-
 ## El problema: coordinar, no solo conversar
 
 Durante una crisis, la información llega fragmentada: una llamada de un vecino, una carretera cortada, un cambio de viento, una ambulancia que no responde. El reto no es únicamente entender cada mensaje, sino decidir **qué cambia, quién debe actuar y qué recursos siguen realmente disponibles**.
