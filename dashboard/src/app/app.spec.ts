@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { App } from './app';
+import { OperationLogStore } from './features/home/operation-log/operation-log-store';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -9,6 +10,25 @@ describe('App', () => {
       imports: [App],
       providers: [provideRouter([])],
     }).compileComponents();
+  });
+
+  it('advances once per M press, including focused decision options, but not while typing', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const advance = vi
+      .spyOn(TestBed.inject(OperationLogStore), 'advanceDemo')
+      .mockImplementation(() => {});
+    const input = document.createElement('input');
+    fixture.nativeElement.append(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', repeat: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', isComposing: true }));
+    expect(advance).not.toHaveBeenCalled();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
+    input.type = 'radio';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'M', bubbles: true }));
+    expect(advance).toHaveBeenCalledTimes(2);
   });
 
   it('creates the dashboard shell', () => {

@@ -9,14 +9,13 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
 import { MapLocation } from '../../core/models/operations';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { formatRouteDuration } from '../../core/services/routing';
 import { Icon } from '../../shared/icon/icon';
 import { OperationalMap } from '../home/operational-map/operational-map';
 import { IncidentStore } from '../incidents/incident-store';
-import { MOCK_RESOURCE_HISTORY, MOCK_RESOURCE_PROFILES } from './resources.mock';
+import { MOCK_RESOURCE_PROFILES } from './resources.mock';
 
 const normalize = (value: string) =>
   value
@@ -84,9 +83,9 @@ export class Resources {
     this.latestCommunication(this.selectedSource()?.id ?? ''),
   );
   protected readonly history = computed(() =>
-    MOCK_RESOURCE_HISTORY.filter((entry) =>
-      entry.resourceIds.includes(this.selectedSource()?.id ?? ''),
-    )
+    this.store
+      .resourceHistory()
+      .filter((entry) => entry.resourceIds.includes(this.selectedSource()?.id ?? ''))
       .map((entry) => ({
         ...entry,
         incident: this.store.incidents().find((incident) => incident.id === entry.incidentId),
@@ -171,8 +170,6 @@ export class Resources {
   }
 
   private latestCommunication(id: string) {
-    return MOCK_COMMUNICATIONS.filter((item) => item.vehicle === id).sort((a, b) =>
-      b.time.localeCompare(a.time),
-    )[0];
+    return this.store.communications().find((item) => item.vehicle === id);
   }
 }

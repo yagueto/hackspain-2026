@@ -1,3 +1,30 @@
 <a class="skip-link" href="#main-content">Saltar al contenido</a>
 <app-header />
 <main id="main-content" tabindex="-1"><router-outlet /></main>
+@if (outsideHome()) {
+  <p class="sr-only" role="alert">{{ log.notification() }}</p>
+  <button
+    type="button"
+    class="global-log-toggle"
+    [attr.aria-expanded]="log.open()"
+    aria-controls="operation-log"
+    (click)="log.open.set(!log.open())"
+  >
+    Registro
+    @if (log.pending().length) {
+      · {{ log.pending().length }} pendiente
+    }
+  </button>
+  @if (log.open()) {
+    <div class="global-log-overlay">
+      <button
+        class="global-log-backdrop"
+        type="button"
+        tabindex="-1"
+        aria-label="Cerrar registro"
+        (click)="log.open.set(false)"
+      ></button>
+      <app-operation-log-panel [modal]="true" (closeRequested)="log.open.set(false)" />
+    </div>
+  }
+}

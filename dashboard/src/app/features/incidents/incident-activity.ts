@@ -11,7 +11,7 @@ const SERVICE_NAMES: Partial<Record<IconName, string>> = {
   bus: 'Transporte',
   medical: 'Sanitarios',
   shield: 'Policía',
-  tools: 'Guardia Civil',
+  tools: 'Mantenimiento eléctrico',
   truck: 'Logística',
 };
 

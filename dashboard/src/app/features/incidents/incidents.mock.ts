@@ -9,65 +9,41 @@ export interface IncidentDetails {
 
 export type IncidentEvent = OperationLogEvent;
 
+const openedAt = new Date(Date.now() - 20 * 60000).toISOString();
+
 export const MOCK_INCIDENT_DETAILS: Record<string, IncidentDetails> = {
-  'INC-001': {
-    category: 'Forestal',
-    openedAt: '2026-09-19T14:20:00+02:00',
-    affected: 5,
-    affectedNote: 'Senderistas en la zona · 1 con movilidad reducida',
-  },
-  'INC-002': {
-    category: 'Evacuación',
-    openedAt: '2026-09-19T14:24:00+02:00',
-    affected: 32,
-    affectedNote: 'Vecinos pendientes de traslado al punto de acogida',
-  },
-  'INC-003': {
-    category: 'Sanitaria',
-    openedAt: '2026-09-19T14:26:00+02:00',
-    affected: 8,
-    affectedNote: 'Residentes · 3 requieren asistencia para el traslado',
-  },
   'INC-004': {
     category: 'Tráfico',
-    openedAt: '2026-09-19T14:28:00+02:00',
-    affected: null,
-    affectedNote: 'Número de personas pendiente de confirmar',
-  },
-  'INC-005': {
-    category: 'Tráfico',
-    openedAt: '2026-09-19T14:02:00+02:00',
-    affected: 4,
-    affectedNote: 'Dos vehículos implicados · asistencia sanitaria desplegada',
-  },
-  'INC-006': {
-    category: 'Urbana',
-    openedAt: '2026-09-19T14:04:00+02:00',
-    affected: 6,
-    affectedNote: 'Personal evacuado del almacén y del edificio contiguo',
-  },
-  'INC-007': {
-    category: 'Sanitaria',
-    openedAt: '2026-09-19T14:06:00+02:00',
-    affected: 1,
-    affectedNote: 'Conductor con necesidad de soporte vital',
+    openedAt,
+    affected: 2,
+    affectedNote:
+      'Dos ocupantes atrapados. B-07 realiza la excarcelación y no puede abandonar el rescate.',
   },
   'INC-008': {
-    category: 'Meteorológica',
-    openedAt: '2026-09-19T14:08:00+02:00',
-    affected: null,
-    affectedNote: 'Carril bloqueado · sin heridos confirmados',
-  },
-  'INC-009': {
-    category: 'Evacuación',
-    openedAt: '2026-09-19T14:10:00+02:00',
-    affected: 18,
-    affectedNote: 'Grupo de senderistas pendiente de recogida',
-  },
-  'INC-010': {
     category: 'Rescate',
-    openedAt: '2026-09-19T14:12:00+02:00',
-    affected: 1,
-    affectedNote: 'Búsqueda coordinada con equipos terrestres y apoyo aéreo',
+    openedAt,
+    affected: 3,
+    affectedNote: 'Tres vecinos atrapados. B-09 asegura la estructura y mantiene el rescate.',
+  },
+};
+
+export const DEMO_INCIDENT_DETAILS: Record<string, Omit<IncidentDetails, 'openedAt'>> = {
+  'INC-001': {
+    category: 'Industrial',
+    affected: 6,
+    affectedNote:
+      'Almacén evacuado. Dos trabajadores con inhalación leve de humo; se movilizan B-03 y A-01.',
+  },
+  'INC-002': {
+    category: 'Suministro eléctrico',
+    affected: 45,
+    affectedNote:
+      'Fallo del transformador principal. Producción detenida; T-01 espera la decisión del coordinador.',
+  },
+  'INC-003': {
+    category: 'Forestal',
+    affected: 12,
+    affectedNote:
+      'Fuego próximo a cuatro viviendas. Las tres unidades de bomberos están ocupadas; se prioriza el riesgo para las personas.',
   },
 };

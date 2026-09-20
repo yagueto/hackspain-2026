@@ -97,7 +97,7 @@ export class OperationalMap {
         minZoom: 3,
         maxZoom: 19,
         zoomSnap: 0.25,
-      }).setView([40.734, -3.876], 13);
+      }).setView([40.606, -3.711], 13);
       this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution:

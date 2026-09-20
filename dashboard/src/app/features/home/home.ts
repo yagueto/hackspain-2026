@@ -10,7 +10,6 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { MOCK_COMMUNICATIONS } from '../../core/data/operations.mock';
 import { MapLocation } from '../../core/models/operations';
 import { IncidentList } from './incident-list/incident-list';
 import { OperationalMap } from './operational-map/operational-map';
@@ -39,12 +38,7 @@ export class Home {
   private readonly logToggle = viewChild<ElementRef<HTMLButtonElement>>('logToggle');
   readonly incidents = this.store.incidents;
   readonly units = this.store.units;
-  readonly communications = computed(() =>
-    MOCK_COMMUNICATIONS.map((item) => {
-      const unit = this.units().find((unit) => unit.id === item.vehicle);
-      return unit ? { ...item, incidentId: unit.incidentId ?? 'Sin asignar' } : item;
-    }),
-  );
+  readonly communications = this.store.communications;
   readonly addresses = computed(() => this.incidents().map((incident) => incident.address));
   readonly projectedUnits = computed(() =>
     this.units().map((unit) => this.simulation.project(unit)),
@@ -97,16 +91,7 @@ export class Home {
 
   protected handleKeyboard(event: KeyboardEvent): void {
     if (event.isComposing) return;
-    if (
-      event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'i'
-    ) {
-      event.preventDefault();
-      if (!event.repeat) this.log.generateDemoQuestion();
-    } else if (event.key === 'Escape' && this.log.open()) {
+    if (event.key === 'Escape' && this.log.open()) {
       event.preventDefault();
       this.closeLog();
     }

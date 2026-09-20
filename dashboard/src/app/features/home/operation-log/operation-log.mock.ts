@@ -1,80 +1,27 @@
 import { IncomingQuestion } from '../../../core/models/operation-log';
-import { Incident, MapLocation } from '../../../core/models/operations';
+import { Incident } from '../../../core/models/operations';
 
-export function createDemoQuestion(
-  sequence: number,
-  incidents: readonly Incident[],
-  units: readonly MapLocation[],
-): IncomingQuestion | null {
-  if (!incidents.length) return null;
-  const incident = incidents[(sequence - 1) % incidents.length];
-  const kind = (sequence - 1) % 3;
-  const base = {
-    id: `question-${crypto.randomUUID()}`,
-    incidentId: incident.id,
-    urgency: (['moderate', 'critical', 'high'] as const)[kind],
-  };
-  const coordination = {
-    type: 'set-status' as const,
-    status: 'En coordinación',
-    expectedStatus: incident.status,
-  };
-  if (kind === 1) {
-    return {
-      ...base,
-      input: 'text',
-      prompt: `¿Qué instrucciones debe transmitir el coordinador a los equipos de ${incident.id}?`,
-      textAction: coordination,
-      defaultAnswer: {
-        custom: true,
-        optionIds: [],
-        text: 'Mantener los recursos asignados y solicitar validación del coordinador.',
-      },
-    };
-  }
-  if (kind === 2) {
-    return {
-      ...base,
-      input: 'mixed',
-      prompt: `Se necesita confirmar cómo continuar la gestión de ${incident.id}.`,
-      options: [
-        { id: 'coordinate', label: 'Pasar a coordinación', action: coordination },
-        { id: 'maintain', label: 'Mantener la actuación actual', action: { type: 'none' } },
-      ],
-      textAction: { type: 'note' },
-      defaultAnswer: { custom: false, optionIds: ['coordinate'], text: '' },
-    };
-  }
-  const services = new Set(
-    units.filter((unit) => unit.incidentId === incident.id).map((unit) => unit.icon),
-  );
-  const available = units.find(
-    (unit) =>
-      unit.kind === 'unit' &&
-      unit.incidentId !== incident.id &&
-      unit.route?.status !== 'active' &&
-      services.has(unit.icon),
-  );
+export function createDemoQuestion(incident: Incident): IncomingQuestion {
   return {
-    ...base,
+    id: 'demo:power-decision',
+    incidentId: incident.id,
+    urgency: 'high',
     input: 'options',
-    prompt: available
-      ? `¿Reasignar ${available.id} desde ${available.incidentId ?? 'reserva'} como refuerzo para ${incident.id}?`
-      : `¿Solicitar coordinación adicional para ${incident.id}?`,
+    prompt:
+      'Intervención humana: el transformador principal ha fallado y la planta está sin luz. ¿Cómo recuperamos la producción?',
     options: [
       {
-        id: 'confirm',
-        label: available ? `Asignar ${available.id}` : 'Solicitar coordinación',
-        action: available
-          ? {
-              type: 'assign-resource',
-              resourceId: available.id,
-              expectedIncidentId: available.incidentId ?? null,
-            }
-          : coordination,
+        id: 'backup',
+        label: 'Opción A: activar transformador de respaldo → Producción parcial inmediata',
+        action: { type: 'power-plan', strategy: 'backup', expectedStatus: incident.status },
       },
-      { id: 'maintain', label: 'Mantener las asignaciones actuales', action: { type: 'none' } },
+      {
+        id: 'repair',
+        label:
+          'Opción B: reparar transformador principal → Más tiempo parado, pero mayor capacidad',
+        action: { type: 'power-plan', strategy: 'repair', expectedStatus: incident.status },
+      },
     ],
-    defaultAnswer: { custom: false, optionIds: ['maintain'], text: '' },
+    defaultAnswer: { custom: false, optionIds: ['backup'], text: '' },
   };
 }

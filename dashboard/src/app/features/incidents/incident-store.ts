@@ -2,7 +2,9 @@ import { inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Observable } from 'rxjs';
 import { MOCK_COMMUNICATIONS, MOCK_INCIDENTS, MOCK_UNITS } from '../../core/data/operations.mock';
-import { Incident, MapLocation } from '../../core/models/operations';
+import { Communication, Incident, MapLocation } from '../../core/models/operations';
+import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
+import { ResourceIntervention } from '../resources/resources.mock';
 import { IncidentDetails, IncidentEvent, MOCK_INCIDENT_DETAILS } from './incidents.mock';
 
 export interface IncidentUpdate {
@@ -20,60 +22,42 @@ export const INCIDENT_UPDATES = new InjectionToken<Observable<IncidentUpdate>>('
 
 @Injectable({ providedIn: 'root' })
 export class IncidentStore {
+  private readonly simulation = inject(DemoRouteSimulation);
   private readonly incidentState = signal<readonly Incident[]>(MOCK_INCIDENTS);
   private readonly detailState =
     signal<Readonly<Record<string, IncidentDetails>>>(MOCK_INCIDENT_DETAILS);
   private readonly unitState = signal<readonly MapLocation[]>(MOCK_UNITS);
-  private readonly eventState = signal<readonly IncidentEvent[]>([
-    ...MOCK_INCIDENTS.flatMap((incident) => {
-      const openedAt = MOCK_INCIDENT_DETAILS[incident.id]?.openedAt;
-      if (!openedAt) return [];
-      return [
-        {
-          id: `${incident.id}:reported`,
-          incidentId: incident.id,
-          occurredAt: openedAt,
-          title: 'Incidencia notificada',
-          summary: `Se ha creado ${incident.id}.`,
-          kind: 'created' as const,
-          description: `Aviso recibido en ${incident.area}.`,
-          source: 'Central 112',
-        },
-        {
-          id: `${incident.id}:identified`,
-          incidentId: incident.id,
-          occurredAt: new Date(Date.parse(openedAt) + 60000).toISOString(),
-          title: 'Incidencia identificada',
-          description: `${incident.title}. Se inicia la coordinación de recursos.`,
-          source: 'Coordinación',
-        },
-      ];
-    }),
-    ...MOCK_UNITS.filter((unit) => unit.kind === 'unit' && unit.incidentId).map((unit) => ({
-      id: `${unit.id}:assigned`,
-      incidentId: unit.incidentId!,
-      occurredAt: new Date(
-        Date.parse(
-          MOCK_INCIDENT_DETAILS[unit.incidentId!]?.openedAt ?? '2026-09-19T14:00:00+02:00',
-        ) + 90000,
-      ).toISOString(),
-      title: 'Recurso asignado',
-      description: `${unit.id} ha sido asignado a ${unit.incidentId}.`,
-      source: 'Coordinación',
-      kind: 'assignment' as const,
-    })),
-    ...MOCK_COMMUNICATIONS.map((communication) => ({
-      id: communication.id,
-      incidentId: communication.incidentId,
-      occurredAt: `2026-09-19T${communication.time}:00+02:00`,
-      title: `Comunicación ${communication.status.toLowerCase()}`,
-      description: communication.message,
-      source: `${communication.service} · ${communication.vehicle} · ${communication.agent}`,
-    })),
-  ]);
+  private readonly communicationState = signal<readonly Communication[]>(MOCK_COMMUNICATIONS);
+  private readonly historyState = signal<readonly ResourceIntervention[]>([]);
+  private readonly eventState = signal<readonly IncidentEvent[]>(
+    MOCK_INCIDENTS.flatMap((incident) => [
+      {
+        id: `${incident.id}:reported`,
+        incidentId: incident.id,
+        occurredAt: MOCK_INCIDENT_DETAILS[incident.id].openedAt,
+        title: 'Incidencia notificada',
+        kind: 'created' as const,
+        description: `${incident.title}. ${MOCK_INCIDENT_DETAILS[incident.id].affectedNote}`,
+        source: 'Central 112',
+      },
+      ...MOCK_UNITS.filter((unit) => unit.incidentId === incident.id).map((unit) => ({
+        id: `${unit.id}:assigned`,
+        incidentId: incident.id,
+        occurredAt: new Date(
+          Date.parse(MOCK_INCIDENT_DETAILS[incident.id].openedAt) + 90000,
+        ).toISOString(),
+        title: 'Recurso asignado',
+        kind: 'assignment' as const,
+        description: `${unit.id} está interviniendo en ${incident.id}.`,
+        source: 'Coordinación',
+      })),
+    ]),
+  );
   readonly incidents = this.incidentState.asReadonly();
   readonly details = this.detailState.asReadonly();
   readonly units = this.unitState.asReadonly();
+  readonly communications = this.communicationState.asReadonly();
+  readonly resourceHistory = this.historyState.asReadonly();
   readonly events = this.eventState.asReadonly();
   readonly updateError = signal(false);
 
@@ -84,6 +68,48 @@ export class IncidentStore {
         next: (update) => this.applyUpdate(update),
         error: () => this.updateError.set(true),
       });
+    this.simulation.arrivals$.pipe(takeUntilDestroyed()).subscribe((event) => {
+      this.appendEvent(event);
+      for (const source of this.units()) {
+        if (source.incidentId !== event.incidentId || source.kind !== 'unit') continue;
+        const unit = this.simulation.project(source);
+        if (unit.route?.status === 'completed')
+          this.updateCommunication(
+            unit.id,
+            `${unit.id} en destino: ${unit.route.destinationLabel}.`,
+            'En ejecución',
+          );
+      }
+      const incident = this.incidents().find((item) => item.id === event.incidentId);
+      const assigned = this.units().filter(
+        (unit) => unit.kind === 'unit' && unit.incidentId === event.incidentId,
+      );
+      if (
+        incident &&
+        ['Recursos en camino', 'Bomberos reasignados en camino'].includes(incident.status) &&
+        assigned.length &&
+        assigned.every((unit) => this.simulation.project(unit).route?.status === 'completed')
+      )
+        this.applyUpdate({
+          incidentId: incident.id,
+          incident: { status: incident.id === 'INC-003' ? 'En extinción' : 'En atención' },
+        });
+    });
+  }
+
+  createIncident(incident: Incident, details: IncidentDetails): void {
+    if (this.incidents().some((item) => item.id === incident.id)) return;
+    this.incidentState.update((incidents) => [...incidents, incident]);
+    this.detailState.update((state) => ({ ...state, [incident.id]: details }));
+    this.appendEvent({
+      id: `${incident.id}:reported`,
+      incidentId: incident.id,
+      occurredAt: details.openedAt,
+      title: 'Incidencia notificada',
+      kind: 'created',
+      description: `${incident.title}. ${details.affectedNote}`,
+      source: 'Central 112',
+    });
   }
 
   appendEvent(event: IncidentEvent): void {
@@ -101,22 +127,77 @@ export class IncidentStore {
     this.eventState.update((events) => [...events, event]);
   }
 
-  reassignUnit(unit: MapLocation, incidentId: string): void {
-    if (unit.kind !== 'unit' || !this.incidents().some((incident) => incident.id === incidentId))
-      return;
-    this.unitState.update((units) =>
-      units.map((existing) =>
-        existing.id === unit.id
+  updateCommunication(resourceId: string, message: string, status: Communication['status']): void {
+    const unit = this.units().find((item) => item.id === resourceId);
+    if (!unit) return;
+    this.communicationState.update((items) =>
+      items.map((item) =>
+        item.vehicle === resourceId
           ? {
-              ...existing,
-              incidentId,
-              coordinates: unit.coordinates,
-              address: unit.address,
-              route: undefined,
+              ...item,
+              incidentId: unit.incidentId ?? 'Sin asignar',
+              message,
+              status,
+              time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
             }
-          : existing,
+          : item,
       ),
     );
+  }
+
+  reassignUnit(unit: MapLocation, incidentId: string, onSite = false): void {
+    const incident = this.incidents().find((item) => item.id === incidentId);
+    const existing = this.units().find((item) => item.id === unit.id && item.kind === 'unit');
+    if (!incident || !existing || existing.incidentId === incidentId) return;
+    const occurredAt = new Date().toISOString();
+    const assigned: MapLocation = {
+      ...existing,
+      incidentId,
+      coordinates: unit.coordinates,
+      address: onSite ? incident.address : `En ruta hacia ${incident.title}`,
+      route: {
+        status: onSite ? 'completed' : 'active',
+        destination: incident.coordinates,
+        destinationLabel: incident.title,
+      },
+    };
+    this.unitState.update((units) => units.map((item) => (item.id === unit.id ? assigned : item)));
+    if (existing.incidentId) {
+      const summary = `${unit.id} se retira de ${existing.incidentId} y se reasigna a ${incidentId} por prioridad operativa.`;
+      this.historyState.update((history) => [
+        ...history,
+        {
+          resourceIds: [unit.id],
+          incidentId: existing.incidentId!,
+          completedAt: occurredAt,
+          summary,
+        },
+      ]);
+      this.appendEvent({
+        id: `${incidentId}:transfer:${unit.id}`,
+        incidentId: existing.incidentId,
+        occurredAt,
+        title: 'Recurso reasignado',
+        kind: 'assignment',
+        description: summary,
+        source: 'Coordinación',
+      });
+    }
+    this.appendEvent({
+      id: `${incidentId}:assigned:${unit.id}`,
+      incidentId,
+      occurredAt,
+      title: 'Recurso asignado',
+      kind: 'assignment',
+      description: `${unit.id} asignado a ${incidentId}${existing.incidentId ? ` desde ${existing.incidentId}` : ' desde reserva'}. ${onSite ? 'Equipo en destino.' : 'Recurso en camino.'}`,
+      source: 'Coordinación',
+    });
+    this.updateCommunication(
+      unit.id,
+      `${unit.id} ${onSite ? 'en destino' : 'en camino'} para ${incidentId} · ${incident.title}.`,
+      onSite ? 'En ejecución' : 'Aceptada',
+    );
+    this.simulation.start(this.units());
   }
 
   applyUpdate(update: IncidentUpdate): void {
@@ -136,10 +217,15 @@ export class IncidentStore {
       }));
     }
     if (update.units) {
+      const incoming = update.units.filter(
+        (unit) => unit.kind === 'unit' && unit.incidentId === id,
+      );
+      const ids = new Set(incoming.map((unit) => unit.id));
       this.unitState.update((units) => [
-        ...units.filter((unit) => unit.incidentId !== id),
-        ...update.units!.filter((unit) => unit.kind === 'unit' && unit.incidentId === id),
+        ...units.filter((unit) => unit.incidentId !== id && !ids.has(unit.id)),
+        ...incoming,
       ]);
+      this.simulation.start(this.units());
     }
     const event = update.event;
     if (event && event.incidentId === id && Number.isFinite(Date.parse(event.occurredAt))) {

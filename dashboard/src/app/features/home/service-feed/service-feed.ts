@@ -36,12 +36,14 @@ export class ServiceFeed {
   }
 
   protected resourceStatus(item: Communication): string {
-    const route = this.resource(item.vehicle)?.route;
-    return route?.status === 'active'
+    const unit = this.resource(item.vehicle);
+    return unit?.route?.status === 'active'
       ? 'En camino'
-      : route?.status === 'completed'
-        ? 'En destino'
-        : item.status;
+      : unit?.incidentId
+        ? unit.route?.status === 'completed'
+          ? 'En destino'
+          : 'Asignado'
+        : 'Disponible';
   }
 
   protected toggleService(service: string): void {

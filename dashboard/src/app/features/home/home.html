@@ -51,7 +51,7 @@
     aria-controls="operation-log"
     [attr.aria-label]="'Registro operativo. ' + log.pending().length + ' preguntas pendientes'"
     [attr.tabindex]="log.open() && logOverlay() ? -1 : 0"
-    title="Abrir o cerrar registro · Ctrl + I genera una pregunta"
+    title="Abrir o cerrar registro · M avanza el escenario"
     (click)="toggleLog()"
   >
     <app-icon name="log" /><span class="toggle-label">Registro</span>

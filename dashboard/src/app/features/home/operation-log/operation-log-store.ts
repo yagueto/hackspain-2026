@@ -1,7 +1,8 @@
 import { computed, DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Observable, Subject } from 'rxjs';
-import { MOCK_COMMUNICATIONS } from '../../../core/data/operations.mock';
+import { DEMO_INCIDENTS } from '../../../core/data/operations.mock';
+import { DEMO_INCIDENT_DETAILS } from '../../incidents/incidents.mock';
 import {
   HumanQuestion,
   IncomingQuestion,
@@ -101,25 +102,11 @@ export class OperationLogStore {
         next: (update) => this.receive(update),
         error: () => this.incomingError.set(true),
       });
-    this.simulation.arrivals$
-      .pipe(takeUntilDestroyed())
-      .subscribe((event) => this.incidents.appendEvent(event));
   }
 
   start(): void {
     if (this.started) return;
     this.started = true;
-    for (const communication of MOCK_COMMUNICATIONS.slice(0, 2)) {
-      this.incidents.appendEvent({
-        id: `call:${communication.id}`,
-        incidentId: communication.incidentId,
-        occurredAt: new Date().toISOString(),
-        kind: 'call',
-        title: 'Llamada en curso',
-        description: `${communication.agent} tiene una llamada en curso para ${communication.incidentId}.`,
-        source: communication.vehicle,
-      });
-    }
     const tick = () => this.expireDue();
     const timer = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
@@ -224,13 +211,60 @@ export class OperationLogStore {
     return true;
   }
 
-  generateDemoQuestion(): void {
-    const question = createDemoQuestion(
-      ++this.demoSequence,
-      this.incidents.incidents(),
-      this.incidents.units().map((unit) => this.simulation.project(unit)),
-    );
-    if (question) this.receiveQuestion(question);
+  advanceDemo(): void {
+    const incident = DEMO_INCIDENTS[this.demoSequence];
+    if (!incident) return;
+    this.demoSequence++;
+    this.incidents.createIncident(incident, {
+      ...DEMO_INCIDENT_DETAILS[incident.id],
+      openedAt: new Date().toISOString(),
+    });
+    const dispatch = (id: string, onSite = false) => {
+      const unit = this.incidents.units().find((item) => item.id === id);
+      if (unit) this.incidents.reassignUnit(this.simulation.project(unit), incident.id, onSite);
+    };
+    if (this.demoSequence === 1) {
+      dispatch('B-03');
+      dispatch('A-01');
+      this.notification.set('Primer incendio: B-03 y A-01 asignados y en camino.');
+    } else if (this.demoSequence === 2) {
+      dispatch('T-01', true);
+      this.incidents.updateCommunication(
+        'T-01',
+        'Transformador principal averiado. Producción detenida; pendiente de intervención humana.',
+        'Recibida',
+      );
+      this.receiveQuestion(createDemoQuestion(incident));
+      this.openForIncident(incident.id);
+    } else {
+      this.incidents.appendEvent({
+        id: 'demo:fire-capacity',
+        incidentId: incident.id,
+        occurredAt: new Date().toISOString(),
+        kind: 'action',
+        title: 'Sin bomberos disponibles',
+        description:
+          'Las tres unidades están ocupadas: B-03 en INC-001, B-07 en la excarcelación de INC-004 y B-09 en el rescate de INC-008. Se reasigna B-03 al segundo incendio por riesgo inmediato para las viviendas.',
+        source: 'Coordinación',
+      });
+      this.incidents.applyUpdate({
+        incidentId: 'INC-001',
+        incident: { status: 'Pendiente de relevo de bomberos' },
+        details: {
+          affectedNote:
+            'Se mantiene A-01 para atender a los evacuados. B-03 se desvía a INC-003 por mayor riesgo; se solicita relevo de extinción. El incendio sigue abierto.',
+        },
+      });
+      dispatch('B-03');
+      this.notification.set(
+        'Segundo incendio: B-03 reasignado desde INC-001 a INC-003. A-01 permanece en la primera incidencia.',
+      );
+    }
+    if (!this.pending().length) {
+      this.incidentFilter.set(incident.id);
+      this.focusedQuestionId.set(null);
+    }
+    this.open.set(true);
   }
 
   openForIncident(incidentId: string): void {
@@ -337,7 +371,7 @@ export class OperationLogStore {
           .filter((option) => normalized.optionIds.includes(option.id))
           .map((option) => option.action ?? { type: 'none' as const });
     const targets = actions.flatMap((action) =>
-      action.type === 'set-status'
+      action.type === 'set-status' || action.type === 'power-plan'
         ? ['status']
         : action.type === 'assign-resource'
           ? [action.resourceId]
@@ -350,9 +384,7 @@ export class OperationLogStore {
     const answerLabel = this.answerLabel(question, normalized);
     const outcome = invalid
       ? `No aplicada: ${invalid}`
-      : actions
-          .map((action) => this.applyAction(action, question.incidentId, question.id))
-          .join(' ');
+      : actions.map((action) => this.applyAction(action, question.incidentId)).join(' ');
     const resolution: QuestionResolution = {
       questionId: question.id,
       incidentId: question.incidentId,
@@ -400,6 +432,10 @@ export class OperationLogStore {
     if (action == null) return true;
     if (typeof action !== 'object') return false;
     if (action.type === 'none' || action.type === 'note') return true;
+    if (action.type === 'power-plan')
+      return (
+        ['backup', 'repair'].includes(action.strategy) && typeof action.expectedStatus === 'string'
+      );
     if (action.type === 'set-status')
       return (
         typeof action.status === 'string' &&
@@ -417,8 +453,19 @@ export class OperationLogStore {
   private actionProblem(action: QuestionAction, incidentId: string): string | null {
     const incident = this.incidents.incidents().find((item) => item.id === incidentId);
     if (!incident) return 'la incidencia ya no está disponible.';
-    if (action.type === 'set-status' && incident.status !== action.expectedStatus)
+    if (
+      (action.type === 'set-status' || action.type === 'power-plan') &&
+      incident.status !== action.expectedStatus
+    )
       return 'el estado de la incidencia ya ha cambiado.';
+    if (
+      action.type === 'power-plan' &&
+      (incidentId !== 'INC-002' ||
+        !this.incidents
+          .units()
+          .some((unit) => unit.id === 'T-01' && unit.incidentId === incidentId))
+    )
+      return 'el equipo de mantenimiento ya no está asignado a esta avería.';
     if (action.type === 'assign-resource') {
       const source = this.incidents
         .units()
@@ -431,7 +478,23 @@ export class OperationLogStore {
     return null;
   }
 
-  private applyAction(action: QuestionAction, incidentId: string, questionId: string): string {
+  private applyAction(action: QuestionAction, incidentId: string): string {
+    if (action.type === 'power-plan') {
+      const backup = action.strategy === 'backup';
+      const status = backup
+        ? 'Producción parcial · 40 %'
+        : 'Reparación principal · producción parada';
+      const outcome = backup
+        ? 'T-01 activa el transformador de respaldo: producción parcial inmediata al 40 %. El transformador principal sigue pendiente de reparación.'
+        : 'T-01 inicia la reparación del transformador principal: producción parada durante unos 90 minutos; capacidad prevista del 100 % al finalizar.';
+      this.incidents.applyUpdate({
+        incidentId,
+        incident: { status },
+        details: { affectedNote: outcome },
+      });
+      this.incidents.updateCommunication('T-01', outcome, 'En ejecución');
+      return outcome;
+    }
     if (action.type === 'set-status') {
       this.incidents.applyUpdate({ incidentId, incident: { status: action.status } });
       return `${incidentId} pasa a «${action.status}».`;
@@ -441,16 +504,6 @@ export class OperationLogStore {
         this.incidents.units().find((item) => item.id === action.resourceId)!,
       );
       this.incidents.reassignUnit(unit, incidentId);
-      if (unit.incidentId && unit.incidentId !== incidentId)
-        this.incidents.appendEvent({
-          id: `${questionId}:transfer:${unit.id}`,
-          incidentId: unit.incidentId,
-          occurredAt: new Date().toISOString(),
-          kind: 'assignment',
-          title: 'Recurso reasignado',
-          description: `${unit.id} ha sido reasignado a ${incidentId}.`,
-          source: 'Coordinación',
-        });
       return `${unit.id} ha sido asignado a ${incidentId}${action.expectedIncidentId ? ` desde ${action.expectedIncidentId}` : ''}.`;
     }
     return action.type === 'note'

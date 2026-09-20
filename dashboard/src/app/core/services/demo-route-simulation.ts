@@ -25,13 +25,29 @@ export class DemoRouteSimulation {
   readonly arrivals$ = this.arrivalEvents.asObservable();
 
   start(locations: readonly MapLocation[]): void {
-    if (this.started) return;
-    this.started = true;
-    for (const location of locations) {
-      if (location.kind !== 'unit' || location.route?.status !== 'active') continue;
+    const active = new Map(
+      locations
+        .filter((location) => location.kind === 'unit' && location.route?.status === 'active')
+        .map((location) => [location.id, location]),
+    );
+    for (const [id, source] of this.sources) {
+      const next = active.get(id);
+      if (next && this.key(next) === this.key(source)) continue;
+      this.sources.delete(id);
+      this.journeys.delete(id);
+      this.frames.update((frames) => {
+        const nextFrames = new Map(frames);
+        nextFrames.delete(id);
+        return nextFrames;
+      });
+    }
+    for (const location of active.values()) {
+      if (this.sources.has(location.id)) continue;
       this.sources.set(location.id, location);
       void this.load(location);
     }
+    if (this.started) return;
+    this.started = true;
     const timer = setInterval(() => this.advance(), 200);
     this.destroyRef.onDestroy(() => {
       clearInterval(timer);
@@ -71,6 +87,8 @@ export class DemoRouteSimulation {
     const route = location.route;
     return JSON.stringify([
       location.kind,
+      location.incidentId,
+      route?.destinationLabel,
       location.coordinates,
       route?.status,
       route?.destination,
@@ -92,7 +110,7 @@ export class DemoRouteSimulation {
         location.route!,
         this.controller.signal,
       );
-      if (this.controller.signal.aborted) return;
+      if (this.controller.signal.aborted || this.sources.get(location.id) !== location) return;
       if (route) {
         this.journeys.set(location.id, { plan: prepareRoute(route), startedAt: performance.now() });
         this.frames.update((frames) =>
@@ -108,7 +126,7 @@ export class DemoRouteSimulation {
         );
       }
     } catch {
-      if (!this.controller.signal.aborted) {
+      if (!this.controller.signal.aborted && this.sources.get(location.id) === location) {
         this.frames.update((frames) =>
           new Map(frames).set(location.id, { ...frame, navigation: { status: 'error' } }),
         );
@@ -131,6 +149,7 @@ export class DemoRouteSimulation {
       if (progress.completed) {
         this.journeys.delete(id);
         const unit = this.sources.get(id);
+        this.frames.set(new Map(frames));
         if (unit?.incidentId)
           this.arrivalEvents.next({
             id: `arrival:${id}`,
