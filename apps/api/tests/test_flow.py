@@ -1,6 +1,12 @@
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import HEADERS
+
+
+@pytest.fixture(autouse=True)
+async def immediate_orders(client: AsyncClient) -> None:
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"hold_seconds": 0})
 
 
 async def test_healthz(client: AsyncClient) -> None:
@@ -33,9 +39,10 @@ async def test_tick_dispatches_fire_engines_and_calls(client: AsyncClient) -> No
     tasks = (await client.get("/api/v1/tasks")).json()
     kinds = {t["kind"] for t in tasks}
     assert "dispatch_resource" in kinds
-    # Poyales está a 40 min con 600 personas: la evacuación requiere aprobación humana
+    # Poyales está a 40 min con 600 personas: la evacuación usa los medios libres sin aprobación
     evac = [t for t in tasks if t["kind"] == "evacuate_zone"]
-    assert evac and evac[0]["status"] == "awaiting_approval"
+    assert evac and evac[0]["status"] == "dispatched"
+    assert evac[0]["autonomous"] and not evac[0]["requires_approval"]
 
     actions = (await client.get("/api/v1/actions")).json()
     calls = [a for a in actions if a["kind"] == "call"]
@@ -98,6 +105,7 @@ async def test_noise_event_is_discarded(client: AsyncClient) -> None:
 
 
 async def test_approve_evacuation(client: AsyncClient) -> None:
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"autonomous": False})
     await client.post("/api/v1/control/tick", headers=HEADERS)
     evac = next(
         t for t in (await client.get("/api/v1/tasks")).json() if t["kind"] == "evacuate_zone"

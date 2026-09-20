@@ -6,12 +6,14 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Incident, MapLocation } from '../../core/models/operations';
+import { Incident, MapLocation, PRIORITY_LEVEL } from '../../core/models/operations';
 import { IncidentActivity } from './incident-activity';
 import { Icon } from '../../shared/icon/icon';
 import { OperationalMap } from '../home/operational-map/operational-map';
@@ -26,11 +28,14 @@ const normalize = (value: string) =>
 @Component({
   selector: 'app-incidents',
   imports: [DatePipe, Icon, OperationalMap, IncidentActivity, RouterLink],
+  host: { '[class.embedded]': 'embedded()' },
   templateUrl: './incidents.html',
   styleUrl: './incidents.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Incidents {
+  readonly embedded = input(false);
+  readonly unitLocated = output<string>();
   protected readonly store = inject(IncidentStore);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
@@ -42,6 +47,7 @@ export class Incidents {
     P3: 'Baja',
   };
   protected readonly priorities = ['P0', 'P1', 'P2', 'P3'] as const;
+  protected readonly priorityLevels = PRIORITY_LEVEL;
   private readonly selectedId = signal<string | null>(null);
   private readonly unitId = signal<string | null>(null);
   private readonly detailMap = viewChild<ElementRef<HTMLElement>>('detailMap');
@@ -86,9 +92,7 @@ export class Incidents {
     this.store
       .events()
       .filter((event) => event.incidentId === this.selectedIncident()?.id)
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      ),
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)),
   );
   protected readonly locations = computed<readonly MapLocation[]>(() => {
     const incident = this.selectedIncident();
@@ -149,7 +153,14 @@ export class Incidents {
   protected selectUnit(id: string): void {
     if (!this.services().some((unit) => unit.id === id)) return;
     this.unitId.set(id);
+    this.unitLocated.emit(id);
     this.detailMap()?.nativeElement.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+  }
+
+  protected returnHome(event: MouseEvent): void {
+    if (!this.router || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void this.router.navigate(['/']);
   }
 
   protected category(incident: Incident): string {

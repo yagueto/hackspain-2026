@@ -49,7 +49,9 @@ export class OperationLogStore {
   });
   readonly now = this.operations.now;
   readonly open = signal(false);
-  readonly view = signal<'activity' | 'missions' | 'communications' | 'system'>('activity');
+  readonly view = signal<'activity' | 'missions' | 'communications' | 'learning' | 'system'>(
+    'activity',
+  );
   readonly incidentFilter = signal<string | null>(null);
   readonly focusedQuestionId = signal<string | null>(null);
   readonly focusRequest = signal(0);
@@ -69,7 +71,8 @@ export class OperationLogStore {
   readonly pendingCount = computed(() => this.pending().length + this.pendingTasks().length);
   readonly visiblePending = computed(() =>
     this.pending().filter(
-      (question) => !this.incidentFilter() || question.incidentId === this.incidentFilter(),
+      (question) =>
+        !this.incidentFilter() || this.questionIncidents(question).includes(this.incidentFilter()!),
     ),
   );
   readonly history = computed(() => {
@@ -88,12 +91,14 @@ export class OperationLogStore {
   readonly attention = computed<ReadonlyMap<string, IncidentAttention>>(() => {
     const result = new Map<string, IncidentAttention>();
     const entries = [
-      ...this.pending().map((question) => ({
-        incidentId: question.incidentId,
-        questionId: question.id,
-        urgency: question.urgency,
-        sequence: Date.parse(question.receivedAt),
-      })),
+      ...this.pending().flatMap((question) =>
+        this.questionIncidents(question).map((incidentId) => ({
+          incidentId,
+          questionId: question.id,
+          urgency: question.urgency,
+          sequence: Date.parse(question.receivedAt),
+        })),
+      ),
       ...this.pendingTasks().map((task) => ({
         incidentId: taskIncidentId(task, this.operations.snapshot()?.incident.id),
         questionId: `task:${task.id}`,
@@ -158,6 +163,22 @@ export class OperationLogStore {
         pending.length ? `${pending.length} preguntas de coordinación pendientes.` : '',
       );
     });
+  }
+
+  questionIncidents(question: HumanQuestion): string[] {
+    const state = this.operations.snapshot();
+    return [
+      ...new Set([
+        question.incidentId,
+        ...(state?.tasks ?? [])
+          .filter((task) => question.allocationTaskIds?.includes(task.id))
+          .map((task) => taskIncidentId(task, state?.incident.id)),
+      ]),
+    ];
+  }
+
+  allocationQuestion(taskId: string): HumanQuestion | undefined {
+    return this.pending().find((question) => question.allocationTaskIds?.includes(taskId));
   }
 
   start(): void {

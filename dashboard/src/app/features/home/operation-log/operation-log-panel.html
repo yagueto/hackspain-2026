@@ -31,7 +31,7 @@
       </button>
     }
   </nav>
-  @if (log.view() !== 'system') {
+  @if (log.view() !== 'system' && log.view() !== 'learning') {
     <label class="incident-filter"
       ><span class="sr-only">Filtrar registro por incidencia</span>
       <select
@@ -66,7 +66,7 @@
   @if (log.view() === 'activity') {
     @if (log.pendingTasks().length) {
       <button type="button" class="other-pending" (click)="log.view.set('missions')">
-        {{ log.pendingTasks().length }} decisiones críticas pendientes · Ver misiones
+        {{ log.pendingTasks().length }} decisiones en modo manual pendientes · Ver misiones
       </button>
     }
     @if (log.incidentFilter() && log.pending().length > log.visiblePending().length) {
@@ -241,7 +241,12 @@
             @if (task.outcome) {
               <p>{{ task.outcome }}</p>
             }
-            @if (holdRemaining(task); as seconds) {
+            @if (log.allocationQuestion(task.id); as question) {
+              <p class="stream-error">Conflicto de recursos pendiente de decisión humana.</p>
+              <button type="button" (click)="log.openForIncident(question.incidentId)">
+                Elegir incidente
+              </button>
+            } @else if (holdRemaining(task); as seconds) {
               <p>
                 {{
                   operations.paused()
@@ -268,7 +273,7 @@
                   (click)="approve(task, true)"
                   [disabled]="busy() || !operations.operatorKey() || !canSend()"
                 >
-                  Confirmar orden crítica</button
+                  Confirmar orden manual</button
                 ><button
                   type="button"
                   (click)="approve(task, false)"
@@ -386,6 +391,52 @@
           <p class="empty-state">No hay órdenes ni comunicaciones registradas.</p>
         }
       }
+      @if (log.view() === 'learning') {
+        <section class="control-card" aria-label="Lo aprendido de ejecuciones anteriores">
+          <h3>Fiabilidad de contactos</h3>
+          <p>
+            Solo la mueven las llamadas: pondera a quién se avisa primero. Un aviso de texto
+            entregado no prueba que la persona responda.
+          </p>
+          @for (contact of learnedContacts(); track contact.id) {
+            <p class="learned-contact">
+              <span>{{ contact.name }}{{ contact.role ? ' · ' + contact.role : '' }}</span>
+              <strong>{{ contact.score * 100 | number: '1.0-0' }}%</strong>
+            </p>
+          } @empty {
+            <p class="empty-state">Aún no hay llamadas de las que aprender.</p>
+          }
+        </section>
+        <section class="control-card" aria-label="Órdenes cerradas en ejecuciones anteriores">
+          <h3>Órdenes cerradas anteriores</h3>
+          <p>
+            {{
+              operations.meta()?.llm_enabled
+                ? 'Este histórico entra en la revisión del agente antes de decidir.'
+                : 'Sin revisor configurado: el agente planifica con heurística local.'
+            }}
+          </p>
+          @for (lesson of pastOutcomes(); track $index) {
+            <p>
+              {{ lesson.summary || 'Orden sin resumen' }}
+              @if (lesson.outcome) {
+                <span class="status-label">{{
+                  outcomeLabels[lesson.outcome] || lesson.outcome
+                }}</span>
+              }
+            </p>
+          } @empty {
+            <p class="empty-state">
+              No hay órdenes cerradas registradas. Con persistencia en memoria el histórico no
+              sobrevive a un reinicio.
+            </p>
+          }
+          @if (operations.lessonsError()) {
+            <p class="stream-error" role="alert">{{ operations.lessonsError() }}</p>
+          }
+          <button type="button" (click)="operations.loadLessons()">Actualizar histórico</button>
+        </section>
+      }
       @if (log.view() === 'system') {
         <section class="control-card">
           <h3>Estado del sistema</h3>
@@ -423,8 +474,8 @@
             <h3>Política del agente</h3>
             <p>Estado: {{ agent.mode === 'paused' ? 'Parada activa' : 'En ejecución' }}</p>
             <label class="live-confirmation"
-              ><input #autonomous type="checkbox" [checked]="agent.autonomous" />Decisiones no
-              críticas autónomas</label
+              ><input #autonomous type="checkbox" [checked]="agent.autonomous" />Asignación autónoma
+              de los servicios disponibles</label
             >
             <label
               >Retención (segundos)<input
@@ -449,8 +500,9 @@
                 [value]="agent.tick_seconds ?? 10"
             /></label>
             <p>
-              Requieren confirmación: {{ agent.approval_required_severities?.join(', ') }} ·
-              {{ agent.approval_required_for?.join(', ') }}
+              El agente coordina varios servicios según el aviso, también en casos vitales. Si los
+              medios no alcanzan para dos incidentes, el operador elige el destino; el conflicto no
+              se resuelve por vencimiento.
             </p>
             <button
               type="button"

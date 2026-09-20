@@ -7,6 +7,7 @@ import { HumanQuestion } from '../models/operation-log';
 import { IncidentStore } from '../../features/incidents/incident-store';
 import { OperationLogStore } from '../../features/home/operation-log/operation-log-store';
 import { OperationLogPanel } from '../../features/home/operation-log/operation-log-panel';
+import { UrgentQuestionCard } from '../../features/home/operation-log/urgent-question-card';
 import { WorldSnapshot } from '../models/world';
 import { Operations, STREAM_FACTORY, toOperations } from './operations';
 
@@ -329,7 +330,7 @@ describe('World snapshot mapping', () => {
     task.status = 'dispatched';
     expect(toOperations(state).incidents[0].status).toBe('Enviada automáticamente');
     task.status = 'awaiting_approval';
-    expect(toOperations(state).incidents[0].status).toBe('CRÍTICO · confirmar');
+    expect(toOperations(state).incidents[0].status).toBe('Modo manual · confirmar');
     // Lo que el agente no puede resolver solo se marca para destacarlo, no solo describirlo.
     expect(toOperations(state).incidents[0].alert).toBe('critical');
     state.tasks = [{ ...task, status: 'proposed', blocked_reason: 'Ubicación no resoluble' }];
@@ -550,6 +551,81 @@ describe('Backend-backed incident and coordination stores', () => {
     expect(store.incidents()[0].description).toContain('Aviso corregido');
   });
 
+  it('keeps a resource conflict actionable without a deadline and highlights both incidents', () => {
+    const state = snapshot();
+    state.incoming_calls.push({ ...state.incoming_calls[0], run_id: 'call-2' });
+    state.tasks = ['call-1', 'call-2'].map((id) => ({
+      id: `task:${id}`,
+      incoming_call_id: id,
+      title: 'Ambulancia',
+      zone_id: null,
+      status: 'proposed',
+      resource_ids: [],
+      autonomous: true,
+      requires_approval: false,
+    }));
+    const conflict: HumanQuestion = {
+      ...question('allocation', 1, 'critical'),
+      input: 'options',
+      expiresAt: null,
+      allocationResourceId: 'res-1',
+      allocationTaskIds: state.tasks.map((task) => task.id),
+      options: [
+        { id: 'first', label: 'Atender el primer incidente' },
+        { id: 'second', label: 'Atender el segundo incidente' },
+      ],
+    };
+    state.coordination_questions = [conflict];
+    const log = setup(state);
+    expect(operations.snapshot()?.coordination_questions?.[0].expiresAt).toBeNull();
+    expect(log.pendingCount()).toBe(1);
+    expect(log.attention().get('call:call-1')?.urgency).toBe('critical');
+    expect(log.attention().get('call:call-2')?.urgency).toBe('critical');
+    log.openForIncident('call:call-2');
+    expect(log.visiblePending()).toEqual([conflict]);
+    expect(operations.incidents().every((incident) => incident.alert === 'critical')).toBe(true);
+    expect(operations.incidents()[0].status).toContain('elegir destino');
+    expect(
+      toOperations({
+        ...state,
+        coordination_questions: [{ ...conflict, allocationResourceId: null }],
+      }).incidents[0].status,
+    ).toContain('sin medios compatibles');
+    operations.operatorKey.set('operator-test');
+    operations.now.set(Date.parse('2027-01-01T00:00:00Z'));
+    log.updateDraft(conflict, { custom: false, text: '', optionIds: ['second'] });
+    const fixture = TestBed.createComponent(UrgentQuestionCard);
+    fixture.componentRef.setInput('question', conflict);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('sin caducidad');
+    expect(element.textContent).not.toContain('Al vencer el plazo');
+    expect(element.querySelector('time')).toBeNull();
+    expect(element.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
+    expect(log.pendingCount()).toBe(1);
+    http.expectNone((request) => request.method === 'POST');
+    fixture.destroy();
+  });
+
+  it('does not require approval because an autonomous report is vital or requests escalation', () => {
+    const state = snapshot();
+    state.incoming_calls[0].severity = 'vital';
+    state.tasks = ['fire_engine', 'ambulance', 'police_unit'].map((type) => ({
+      id: type,
+      title: type,
+      incoming_call_id: 'call-1',
+      zone_id: null,
+      status: 'dispatching',
+      resource_ids: [type],
+      autonomous: true,
+      requires_approval: false,
+    }));
+    const log = setup(state);
+    expect(log.pendingCount()).toBe(0);
+    expect(operations.incidents()[0].alert).toBeUndefined();
+    expect(operations.incidents()[0].description).not.toContain('Requiere revisión');
+  });
+
   it('keeps questions FIFO and uses highest urgency for incident attention without browser-side timeouts', () => {
     vi.useFakeTimers();
     const state = snapshot();
@@ -700,5 +776,42 @@ describe('Backend-backed incident and coordination stores', () => {
     await fixture.whenStable();
     expect(element.textContent).toContain('Parada activa');
     expect(element.textContent).toContain('Salidas simuladas');
+  });
+
+  it('shows what the agent learned in earlier runs without dumping raw results', async () => {
+    const state = snapshot();
+    state.contacts = [{ id: 'con_1', name: 'Jefe de dotación', role: 'firefighter' }];
+    const log = setup(state);
+    const fixture = TestBed.createComponent(OperationLogPanel);
+    log.view.set('learning');
+    await fixture.whenStable();
+    http.expectOne('/api/v1/history/lessons').flush({
+      contact_reliability: { con_1: 0.75, con_missing: 0.2 },
+      recent: [
+        {
+          summary: 'Llamada al jefe de dotación',
+          result: { webhook: { outcome: 'accepted' }, request: { secret: 'no-mostrar' } },
+        },
+      ],
+    });
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('Jefe de dotación');
+    expect(element.textContent).toContain('75%');
+    expect(element.textContent).toContain('Aceptada');
+    expect(element.textContent).not.toContain('no-mostrar');
+    expect(operations.lessons()?.recent).toEqual([
+      { summary: 'Llamada al jefe de dotación', outcome: 'accepted' },
+    ]);
+  });
+
+  it('keeps the previous history and reports an unreadable response', async () => {
+    const log = setup();
+    const fixture = TestBed.createComponent(OperationLogPanel);
+    log.view.set('learning');
+    await fixture.whenStable();
+    http.expectOne('/api/v1/history/lessons').flush({ recent: 'no es una lista' });
+    expect(operations.lessons()).toBeNull();
+    expect(operations.lessonsError()).toContain('no se reconoce');
   });
 });

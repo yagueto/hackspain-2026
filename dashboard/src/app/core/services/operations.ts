@@ -84,6 +84,12 @@ export interface Meta {
   escalate_after_seconds?: number;
 }
 
+/** Lo aprendido en ejecuciones anteriores: fiabilidad por contacto y cierres de órdenes. */
+export interface Lessons {
+  reliability: Record<string, number>;
+  recent: { summary: string; outcome: string }[];
+}
+
 export function coordinates(
   value: { lat?: number | null; lng?: number | null } | null | undefined,
 ): Coordinates | undefined {
@@ -169,6 +175,11 @@ export function toOperations(
       (task) => !['done', 'cancelled', 'failed', 'rejected'].includes(task.status),
     );
     const current = active[0] || tasks[0];
+    const conflict = (state.coordination_questions ?? []).find(
+      (question) =>
+        question.status === 'pending' &&
+        question.allocationTaskIds?.some((id) => active.some((task) => task.id === id)),
+    );
     return {
       id: `call:${call.run_id}`,
       title: `Aviso: ${call.emergency_type}`,
@@ -176,27 +187,32 @@ export function toOperations(
       address: address(call.location),
       priority: priority(call.severity),
       // El agente no puede seguir solo: hay que destacarlo, no solo describirlo.
-      alert: active.some((task) => task.status === 'awaiting_approval')
-        ? ('critical' as const)
-        : active.some((task) => task.blocked_reason)
-          ? ('blocked' as const)
-          : undefined,
-      status: active.some((task) => task.status === 'awaiting_approval')
-        ? 'CRÍTICO · confirmar'
-        : active.some((task) => task.blocked_reason)
-          ? 'Bloqueada: ubicación no resoluble'
-          : !point
-            ? 'Ubicación pendiente'
-            : active.some((task) => task.status === 'dispatching')
-              ? 'Automático · orden preparada'
-              : active.some((task) => task.status === 'dispatched')
-                ? 'Enviada automáticamente'
-                : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
-                  active.some((task) => task.status === 'proposed')
-                  ? 'Automático · sin unidad disponible'
-                  : current
-                    ? TASK_LABELS[current.status] || current.status
-                    : 'Recibida',
+      alert:
+        conflict || active.some((task) => task.status === 'awaiting_approval')
+          ? ('critical' as const)
+          : active.some((task) => task.blocked_reason)
+            ? ('blocked' as const)
+            : undefined,
+      status: conflict
+        ? conflict.allocationResourceId
+          ? 'CRÍTICO · elegir destino del recurso'
+          : 'CRÍTICO · sin medios compatibles'
+        : active.some((task) => task.status === 'awaiting_approval')
+          ? 'Modo manual · confirmar'
+          : active.some((task) => task.blocked_reason)
+            ? 'Bloqueada: ubicación no resoluble'
+            : !point
+              ? 'Ubicación pendiente'
+              : active.some((task) => task.status === 'dispatching')
+                ? 'Automático · orden preparada'
+                : active.some((task) => task.status === 'dispatched')
+                  ? 'Enviada automáticamente'
+                  : // Decidida pero sin unidad libre: el agente reintenta, no se ha perdido.
+                    active.some((task) => task.status === 'proposed')
+                    ? 'Automático · sin unidad disponible'
+                    : current
+                      ? TASK_LABELS[current.status] || current.status
+                      : 'Recibida',
       coordinates: point,
       icon: emergencyIcons[call.emergency_type] ?? 'pin',
       locationStatus,
@@ -205,7 +221,11 @@ export function toOperations(
         call.notes,
         call.victims.count != null ? `Personas afectadas: ${call.victims.count}` : '',
         call.active_hazards ? `Riesgos: ${call.active_hazards}` : '',
-        call.escalation_required ? 'Requiere revisión de un operador.' : '',
+        conflict
+          ? conflict.allocationResourceId
+            ? 'Medios insuficientes: el operador debe elegir qué incidente atender.'
+            : 'Sin unidad reasignable: se necesita un refuerzo o un parte de disponibilidad.'
+          : '',
         call.location.accuracy_m ? `Precisión declarada: ${call.location.accuracy_m} m.` : '',
       ]
         .filter(Boolean)
@@ -359,6 +379,30 @@ const validAnswer = (value: unknown) =>
   text(value['text']) &&
   typeof value['custom'] === 'boolean';
 
+/**
+ * Del resultado de una orden solo se extrae el desenlace, nunca el objeto completo:
+ * el histórico puede arrastrar la petición enviada al proveedor.
+ */
+function toLessons(value: unknown): Lessons | null {
+  if (!record(value) || !Array.isArray(value['recent'])) return null;
+  const scores = record(value['contact_reliability']) ? value['contact_reliability'] : {};
+  const reliability: Record<string, number> = {};
+  for (const [id, score] of Object.entries(scores))
+    if (typeof score === 'number' && Number.isFinite(score)) reliability[id] = score;
+  const recent = value['recent']
+    .filter(record)
+    .map((item) => {
+      const result = record(item['result']) ? item['result'] : {};
+      const webhook = record(result['webhook']) ? result['webhook'] : {};
+      return {
+        summary: text(item['summary']) ? item['summary'] : '',
+        outcome: text(webhook['outcome']) ? webhook['outcome'] : '',
+      };
+    })
+    .filter((item) => item.summary || item.outcome);
+  return { reliability, recent };
+}
+
 function validSnapshot(value: unknown): value is WorldSnapshot {
   if (!record(value)) return false;
   const state = value;
@@ -456,7 +500,11 @@ function validSnapshot(value: unknown): value is WorldSnapshot {
           text(item['prompt']) &&
           Number.isInteger(item['sequence']) &&
           timestamp(item['receivedAt']) &&
-          timestamp(item['expiresAt']) &&
+          (timestamp(item['expiresAt']) ||
+            (item['expiresAt'] === null &&
+              strings(item['allocationTaskIds']) &&
+              item['allocationTaskIds'].length > 0)) &&
+          optional(item['allocationTaskIds'], strings) &&
           ['pending', 'resolved'].includes(String(item['status'])) &&
           ['critical', 'high', 'moderate'].includes(String(item['urgency'])) &&
           ['text', 'options', 'mixed'].includes(String(item['input'])) &&
@@ -495,6 +543,9 @@ export class Operations {
   /** Clave del operador: solo en memoria, nunca en almacenamiento del navegador. */
   readonly operatorKey = signal('');
   readonly meta = signal<Meta | null>(null);
+  /** Histórico entre ejecuciones. Se pide bajo demanda: no entra en el camino del SSE. */
+  readonly lessons = signal<Lessons | null>(null);
+  readonly lessonsError = signal('');
   /** Reloj compartido: alimenta las cuentas atrás sin un temporizador por tarjeta. */
   readonly now = signal(Date.now());
   readonly paused = computed(() => this.snapshot()?.agent?.mode === 'paused');
@@ -522,6 +573,7 @@ export class Operations {
   private polling?: ReturnType<typeof setInterval>;
   private request?: Subscription;
   private metaRequest?: Subscription;
+  private lessonsRequest?: Subscription;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.stop());
@@ -604,6 +656,23 @@ export class Operations {
         this.error.set('No se puede conectar con la API. Se conserva el último estado recibido.');
         this.connection.set('offline');
         this.poll();
+      },
+    });
+  }
+
+  /** Lectura del histórico entre ejecuciones. Sin sondeo: solo cuando alguien lo mira. */
+  loadLessons(): void {
+    if (this.lessonsRequest && !this.lessonsRequest.closed) return;
+    this.lessonsRequest = this.http.get(`${this.base}/history/lessons`).subscribe({
+      next: (value) => {
+        const lessons = toLessons(value);
+        this.lessons.set(lessons);
+        this.lessonsError.set(
+          lessons ? '' : 'El histórico llegó en un formato que no se reconoce.',
+        );
+      },
+      error: () => {
+        this.lessonsError.set('No se puede leer el histórico de ejecuciones anteriores.');
       },
     });
   }
@@ -731,6 +800,7 @@ export class Operations {
     this.stream = null;
     this.request?.unsubscribe();
     this.metaRequest?.unsubscribe();
+    this.lessonsRequest?.unsubscribe();
     clearInterval(this.polling);
     clearInterval(this.clock);
     this.polling = this.clock = undefined;

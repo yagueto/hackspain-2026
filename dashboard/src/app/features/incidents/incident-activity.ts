@@ -1,28 +1,21 @@
-import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
-import { IconName, Incident, MapLocation } from '../../core/models/operations';
-import { Icon } from '../../shared/icon/icon';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { Communication, Incident, MapLocation } from '../../core/models/operations';
+import { Operations } from '../../core/services/operations';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { IncidentDetails, IncidentEvent } from './incidents.mock';
-
-const SERVICE_NAMES: Partial<Record<IconName, string>> = {
-  'fire-truck': 'Bomberos',
-  helicopter: 'Apoyo aéreo',
-  bus: 'Transporte',
-  medical: 'Sanitarios',
-  shield: 'Policía',
-  tools: 'Guardia Civil',
-  truck: 'Logística',
-};
+import { OperationTimeline } from '../home/operation-log/operation-timeline';
+import { ServiceFeed } from '../home/service-feed/service-feed';
+import { Icon } from '../../shared/icon/icon';
 
 @Component({
   selector: 'app-incident-activity',
-  imports: [DatePipe, Icon],
+  imports: [OperationTimeline, ServiceFeed, Icon],
   templateUrl: './incident-activity.html',
   styleUrl: './incident-activity.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IncidentActivity {
+  private readonly operations = inject(Operations);
   private readonly simulation = inject(DemoRouteSimulation);
   readonly incident = input.required<Incident>();
   readonly details = input<IncidentDetails>();
@@ -31,18 +24,14 @@ export class IncidentActivity {
   readonly selectedUnitId = input<string | null>(null);
   readonly updateError = input(false);
   readonly unitSelected = output<string>();
-
-  protected serviceName(unit: MapLocation): string {
-    return unit.service || SERVICE_NAMES[unit.icon] || 'Recurso de apoyo';
-  }
-
-  protected serviceStatus(unit: MapLocation): string {
-    unit = this.simulation.project(unit);
-    if (unit.resourceStatus) return unit.resourceStatus;
-    return unit.route?.status === 'active'
-      ? 'En camino'
-      : unit.route?.status === 'completed'
-        ? 'En destino'
-        : 'Asignado';
-  }
+  protected readonly projectedServices = computed(() =>
+    this.services().map((unit) => this.simulation.project(unit)),
+  );
+  /** Las comunicaciones vienen del backend, una por recurso; aquí solo se filtran las asignadas. */
+  protected readonly communications = computed<readonly Communication[]>(() => {
+    const assigned = new Set(this.services().map((unit) => unit.id));
+    return this.operations
+      .communications()
+      .filter((communication) => assigned.has(communication.vehicle));
+  });
 }

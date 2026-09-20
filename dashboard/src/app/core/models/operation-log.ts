@@ -18,7 +18,8 @@ export interface OperationLogEvent {
 export type QuestionAction =
   | { type: 'none' | 'note' }
   | { type: 'set-status'; status: string; expectedStatus: string }
-  | { type: 'assign-resource'; resourceId: string; expectedIncidentId: string | null };
+  | { type: 'assign-resource'; resourceId: string; expectedIncidentId: string | null }
+  | { type: 'allocate-resource'; resourceId: string; taskId: string };
 
 export interface QuestionOption {
   id: string;
@@ -36,13 +37,14 @@ export interface IncomingQuestion {
   id: string;
   incidentId: string;
   prompt: string;
+  context?: string;
   urgency: QuestionUrgency;
   input: QuestionInput;
   options?: readonly QuestionOption[];
   multiple?: boolean;
   textAction?: QuestionAction;
   defaultAnswer: QuestionAnswer;
-  expiresAt?: string;
+  expiresAt?: string | null;
   timeoutSeconds?: number;
 }
 
@@ -52,7 +54,7 @@ export interface QuestionResolution {
   idempotencyKey: string;
   answer: QuestionAnswer;
   answerLabel: string;
-  source: 'human' | 'timeout';
+  source: 'human' | 'timeout' | 'system';
   answeredAt: string;
   outcome: string;
   applied: boolean;
@@ -60,7 +62,9 @@ export interface QuestionResolution {
 
 export interface HumanQuestion extends IncomingQuestion {
   receivedAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
+  allocationResourceId?: string | null;
+  allocationTaskIds?: string[];
   sequence: number;
   status: 'pending' | 'resolved';
   resolution?: QuestionResolution;

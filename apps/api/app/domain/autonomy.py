@@ -1,8 +1,8 @@
 """Frontera entre lo autónomo y lo que requiere una persona.
 
-El agente decide y despacha solo. Solo somete a confirmación humana las decisiones
-críticas: las evacuaciones masivas y los avisos con vidas en peligro inmediato. El
-resto sale tras una ventana corta en la que el operador puede anularlo.
+El agente decide y despacha los servicios disponibles sin aprobación por gravedad.
+Los conflictos de recursos se resuelven mediante preguntas de coordinación. Las
+órdenes autónomas salen tras una ventana en la que el operador puede anularlas.
 """
 
 from __future__ import annotations
@@ -18,11 +18,7 @@ def needs_confirmation(agent: AgentConfig, kind: TaskKind, severity: str | None)
     Con la autonomía desactivada todo pasa por una persona, que es el comportamiento
     conservador; es lo que debe ocurrir si alguien apaga el interruptor.
     """
-    return (
-        not agent.autonomous
-        or kind in agent.approval_required_for
-        or (severity is not None and severity in agent.approval_required_severities)
-    )
+    return not agent.autonomous
 
 
 def hold_until(agent: AgentConfig, confirmed_by_human: bool) -> datetime | None:

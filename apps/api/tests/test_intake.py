@@ -18,7 +18,7 @@ def report(**updates: object) -> dict[str, object]:
         "run_id": "incoming-test-1",
         "timestamp": now().isoformat(),
         "emergency_type": "incendio",
-        "severity": "grave",
+        "severity": "moderada",
         "escalation_required": "true",
         "location": {
             "raw_text": "Calle Mayor 14, Ávila",
@@ -29,7 +29,7 @@ def report(**updates: object) -> dict[str, object]:
             "lng": "-4.7003",
             "confirmed": "true",
         },
-        "victims": {"count": "2", "conscious": "true", "breathing": "null"},
+        "victims": {"count": "0", "conscious": "true", "breathing": "null"},
         "caller": {"name": "Persona de prueba", "phone": "", "is_victim": "false"},
         "notes": "Humo en el edificio",
         **updates,
@@ -144,7 +144,7 @@ async def test_grave_intake_dispatches_without_operator_approval(
     client: httpx.AsyncClient,
 ) -> None:
     """Un aviso no crítico se decide, reserva y envía solo. Nadie pulsa nada."""
-    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="grave"))
     state = (await client.get("/api/v1/state")).json()
     task = state["tasks"][0]
     assert task["incoming_call_id"] == "incoming-test-1"
@@ -226,8 +226,9 @@ async def test_a_stalled_mission_does_not_rewrite_the_world_on_every_cycle(
     assert rt.state.version == settled
 
 
-async def test_vital_report_waits_for_human_confirmation(client: httpx.AsyncClient) -> None:
+async def test_manual_mode_waits_for_human_confirmation(client: httpx.AsyncClient) -> None:
     headers = {"X-API-Key": "test"}
+    await client.patch("/api/v1/control/agent", headers=headers, json={"autonomous": False})
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
     state = (await client.get("/api/v1/state")).json()
     task = state["tasks"][0]
@@ -297,6 +298,9 @@ async def test_panic_button_stops_held_orders(client: httpx.AsyncClient) -> None
 async def test_unconfirmed_critical_escalates_by_telegram_exactly_once(
     client: httpx.AsyncClient,
 ) -> None:
+    await client.patch(
+        "/api/v1/control/agent", headers={"X-API-Key": "test"}, json={"autonomous": False}
+    )
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
     rt = runtime_of(client)
     await rt.orchestrator.escalate_stale_approvals()
@@ -321,6 +325,7 @@ async def test_evacuation_approval_does_not_require_location_confirmation(
 ) -> None:
     """Una evacuación es crítica, pero no tiene aviso ciudadano cuya ubicación revisar."""
     headers = {"X-API-Key": "test"}
+    await client.patch("/api/v1/control/agent", headers=headers, json={"autonomous": False})
     response = await client.post(
         "/api/v1/control/tasks",
         headers=headers,
@@ -633,10 +638,13 @@ async def test_corrected_emergency_cancels_the_mission_and_escalates_to_confirma
     tasks = (await client.get("/api/v1/tasks")).json()
     assert tasks[0]["status"] == "cancelled"
     assert (await client.get("/api/v1/actions")).json()[0]["status"] == "skipped"
+    await client.patch(
+        "/api/v1/control/agent", headers={"X-API-Key": "test"}, json={"autonomous": False}
+    )
     # Se corrige a vital: ya no se decide solo, pasa a requerir confirmación.
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
     tasks = (await client.get("/api/v1/tasks")).json()
-    assert len(tasks) == 1
+    assert len(tasks) == 3
     assert tasks[0]["id"] == original["id"]
     assert tasks[0]["status"] == "awaiting_approval"
     assert tasks[0]["autonomous"] is False

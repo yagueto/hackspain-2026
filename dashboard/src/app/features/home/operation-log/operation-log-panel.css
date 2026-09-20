@@ -245,6 +245,10 @@ button:disabled {
   flex-wrap: wrap;
   gap: 6px;
 }
+.learned-contact {
+  display: flex;
+  justify-content: space-between;
+}
 .operator-tools {
   flex-shrink: 0;
   margin: 8px 0 12px;

@@ -133,17 +133,18 @@ describe('Incidents workspace', () => {
     await fixture.whenStable();
     expect(element.querySelectorAll('.map-marker.kind-incident')).toHaveLength(1);
     expect(element.querySelectorAll('.map-marker.kind-unit')).toHaveLength(4);
-    expect(element.querySelectorAll('.service-card')).toHaveLength(4);
-    element.querySelector<HTMLButtonElement>('.service-card')!.click();
+    const services = () => element.querySelectorAll('app-incident-activity .resource-select');
+    expect(services()).toHaveLength(4);
+    element.querySelector<HTMLButtonElement>('app-incident-activity .locate-button')!.click();
     await fixture.whenStable();
-    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
       'B-03',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('B-03');
     fixture.componentInstance.selectIncident('INC-003');
     await fixture.whenStable();
     expect(fixture.componentInstance.selectedUnitId()).toBeNull();
-    expect(element.querySelectorAll('.service-card')).toHaveLength(1);
+    expect(services()).toHaveLength(1);
     expect(element.querySelectorAll('.map-marker.kind-unit')).toHaveLength(1);
   });
 

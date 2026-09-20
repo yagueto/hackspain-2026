@@ -289,6 +289,7 @@ async def test_restart_api_on_postgres_without_happyrobot_key(pg: PostgresStore)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app), base_url="http://test"
         ) as client:
+            await client.patch("/api/v1/control/agent", headers=headers, json={"hold_seconds": 0})
             assert (await client.post("/api/v1/control/tick", headers=headers)).status_code == 200
             action = (await client.get("/api/v1/actions")).json()[0]
             response = await client.post(
@@ -450,6 +451,63 @@ async def test_coordination_survives_sql_restore_and_concurrent_answers(pg: Post
         replay = await right.orchestrator.answer_question(question.id, answers[1])
         assert replay == saved
         assert len((await pg.load(initial.incident.id)).coordination_questions) == 1
+    finally:
+        await left.hr.aclose()
+        await right.hr.aclose()
+        await left.geocoder.close()
+        await right.geocoder.close()
+
+
+async def test_resource_conflict_sql_restore_and_competing_operator_choices(
+    pg: PostgresStore,
+) -> None:
+    from app.domain.intake import prepare_intake_tasks
+    from app.domain.models import CoordinationAnswer, IncomingCall
+    from tests.test_intake import report
+
+    initial = snapshot()
+    await pg.create(initial)
+    settings = Settings(agent_autostart=False, geocoding_enabled=False)
+    left = build_runtime(settings, store=pg)
+    right = build_runtime(settings, store=pg)
+    try:
+        left.state.restore(initial)
+        async with left.orchestrator.edit() as state:
+            state.resources["res_amb2"].status = ResourceStatus.out_of_service
+            for run_id in ("first", "second"):
+                incoming = IncomingCall.model_validate(
+                    report(run_id=run_id, emergency_type="sanitaria", victims={}, severity="vital")
+                )
+                state.incoming_calls[run_id] = incoming
+                prepare_intake_tasks(state, incoming)
+        await left.orchestrator.reconcile_intake()
+        question = next(
+            q for q in left.state.coordination_questions.values() if q.status == "pending"
+        )
+        stored = await pg.load(initial.incident.id)
+        right.state.restore(stored)
+        assert right.state.coordination_questions[question.id] == question
+        assert question.expires_at is None
+        answers = [CoordinationAnswer(option_ids=[tid]) for tid in question.allocation_task_ids]
+        results = await asyncio.gather(
+            left.orchestrator.answer_question(question.id, answers[0]),
+            right.orchestrator.answer_question(question.id, answers[1]),
+            return_exceptions=True,
+        )
+        assert all(
+            not isinstance(result, Exception) or isinstance(result, VersionConflict)
+            for result in results
+        )
+        stored = await pg.load(initial.incident.id)
+        saved = next(q for q in stored.coordination_questions if q.id == question.id)
+        assert saved.resolution.applied
+        assert saved.resolution.answer in answers
+        chosen = saved.resolution.answer.option_ids[0]
+        assert next(r for r in stored.resources if r.id == "res_amb1").assigned_task_id == chosen
+        assert sum(bool(t.resource_ids) for t in stored.tasks) == 1
+        assert len(stored.recent_actions) == 1
+        await right.orchestrator.answer_question(question.id, answers[0])
+        assert len((await pg.load(initial.incident.id)).recent_actions) == 1
     finally:
         await left.hr.aclose()
         await right.hr.aclose()

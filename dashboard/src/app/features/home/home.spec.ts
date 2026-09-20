@@ -52,6 +52,17 @@ describe('Home resource selection', () => {
     return fixture;
   }
 
+  // Los controles de operador viven en la columna de detalle, que la URL abre con `?incidencia=`.
+  // Aquí se abre directamente porque el componente se monta sin router de navegación.
+  async function openDetail(
+    fixture: Awaited<ReturnType<typeof setup>>,
+    incidentId: string,
+  ): Promise<void> {
+    fixture.componentInstance.selectIncident(incidentId);
+    fixture.componentInstance.detail.set('incident');
+    await fixture.whenStable();
+  }
+
   it('keeps the map host flexible before any incoming report exists', async () => {
     const incidents = TestBed.inject(Operations).incidents as WritableSignal<Incident[]>;
     incidents.set([]);
@@ -90,9 +101,9 @@ describe('Home resource selection', () => {
     ]);
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLButtonElement>('.incident-select')!.click();
-    await fixture.whenStable();
-    expect(element.querySelector('.incident-detail')?.textContent).toContain(
+    // El aviso sin coordenadas sigue en la lista, pero no se sitúa ni se geocodifica aquí: la
+    // dirección del informante no sale del navegador.
+    expect(element.querySelector('.incident-row')?.textContent).toContain(
       'Dirección privada de prueba',
     );
     expect(element.querySelectorAll('.map-marker.kind-incident')).toHaveLength(0);
@@ -106,7 +117,6 @@ describe('Home resource selection', () => {
     );
     await fixture.whenStable();
     expect(element.querySelectorAll('.map-marker.kind-incident')).toHaveLength(1);
-    expect(element.querySelector('.incident-detail')?.textContent).toContain('40.65, -4.7');
     expect(TestBed.inject(Geocoding).geocode).not.toHaveBeenCalled();
     data.set([]);
     await fixture.whenStable();
@@ -162,8 +172,7 @@ describe('Home resource selection', () => {
       },
     ]);
     const fixture = await setup();
-    fixture.componentInstance.selectIncident('call:review-1');
-    await fixture.whenStable();
+    await openDetail(fixture, 'call:review-1');
     const button = fixture.nativeElement.querySelector(
       '.proposal-actions button',
     ) as HTMLButtonElement;
@@ -258,8 +267,7 @@ describe('Home resource selection', () => {
       },
     ]);
     const fixture = await setup();
-    fixture.componentInstance.selectIncident('call:stuck-1');
-    await fixture.whenStable();
+    await openDetail(fixture, 'call:stuck-1');
     const element = fixture.nativeElement as HTMLElement;
     // Sin clave los controles están inertes: hay que decir por qué, no solo desactivarlos.
     expect(element.querySelector('.needs-key')?.textContent).toContain('barra superior');
@@ -333,8 +341,7 @@ describe('Home resource selection', () => {
       },
     ]);
     const fixture = await setup();
-    fixture.componentInstance.selectIncident('call:auto-1');
-    await fixture.whenStable();
+    await openDetail(fixture, 'call:auto-1');
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.badge.auto')?.textContent).toContain('Decisión automática');
     expect(element.querySelector('.reason')?.textContent).toContain('automáticamente');
@@ -357,23 +364,24 @@ describe('Home resource selection', () => {
   it('focuses the resource from the feed, including another resource in the same incident', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    const panTo = vi.spyOn(L.Map.prototype, 'panTo');
+    const flyTo = vi.spyOn(L.Map.prototype, 'flyTo');
     for (const [row, unitId] of [
       [0, 'B-03'],
       [2, 'H-01'],
     ] as const) {
       element.querySelectorAll<HTMLButtonElement>('.resource-select')[row].click();
       await fixture.whenStable();
-      expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+      expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
         unitId,
       );
       expect(element.querySelector('.map-popup strong')?.textContent).toBe(unitId);
       expect(element.querySelectorAll('.incident-select[aria-pressed="true"]').length).toBe(0);
       expect(element.querySelectorAll('.resource-select[aria-pressed="true"]').length).toBe(1);
       expect(element.querySelectorAll('.communication.related').length).toBe(1);
-      expect(panTo).toHaveBeenCalledWith(
+      expect(flyTo).toHaveBeenCalledWith(
         expect.objectContaining(MOCK_UNITS.find((unit) => unit.id === unitId)!.coordinates),
-        { animate: false },
+        expect.any(Number),
+        expect.objectContaining({ duration: 0.65 }),
       );
     }
   });
@@ -381,9 +389,9 @@ describe('Home resource selection', () => {
   it('selects a map resource without selecting its incident', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLElement>('.operation-marker[title^="BUS-04 ·"]')!.click();
+    element.querySelector<HTMLElement>('.operation-marker[aria-label="BUS-04"]')!.click();
     await fixture.whenStable();
-    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
       'BUS-04',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('BUS-04');
@@ -401,7 +409,7 @@ describe('Home resource selection', () => {
     expect(element.querySelectorAll('.map-marker.kind-unit').length).toBe(0);
     element.querySelector<HTMLButtonElement>('.resource-select')!.click();
     await fixture.whenStable();
-    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
       'B-03',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('B-03');
@@ -413,9 +421,9 @@ describe('Home resource selection', () => {
   it('supports resources without a communication in the feed', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLElement>('.operation-marker[title^="B-07 ·"]')!.click();
+    element.querySelector<HTMLElement>('.operation-marker[aria-label="B-07"]')!.click();
     await fixture.whenStable();
-    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
       'B-07',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('B-07');
@@ -430,7 +438,7 @@ describe('Home resource selection', () => {
     await fixture.whenStable();
     element.querySelector<HTMLButtonElement>('[aria-label="Mostrar INC-002 en el mapa"]')!.click();
     await fixture.whenStable();
-    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toBe(
+    expect(element.querySelector('.map-marker.is-selected .marker-label')?.textContent).toContain(
       'INC-002',
     );
     expect(element.querySelector('.map-popup strong')?.textContent).toBe('INC-002');

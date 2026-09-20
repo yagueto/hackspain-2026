@@ -106,6 +106,28 @@ def reachable(state: WorldState, task: Task, resource: Resource) -> bool:
     return not roads or any(r.open for r in roads)
 
 
+def compatible_resource(state: WorldState, task: Task, resource: Resource) -> bool:
+    contact = state.contact_for_resource(resource.id)
+    return bool(
+        resource.type in task.resource_types
+        and contact
+        and (not task.contact_roles or contact.role in task.contact_roles)
+        and (not task.assignee_contact_id or task.assignee_contact_id == contact.id)
+        and reachable(state, task, resource)
+        and (
+            resource.type not in (ResourceType.ambulance, ResourceType.evacuation_bus)
+            or resource.capacity > 0
+        )
+    )
+
+
+def allocation_pending(state: WorldState, task: Task) -> bool:
+    return any(
+        question.status == "pending" and task.id in question.allocation_task_ids
+        for question in state.coordination_questions.values()
+    )
+
+
 class Executor:
     def __init__(
         self,
@@ -124,15 +146,10 @@ class Executor:
         candidates = [
             r
             for r in self.state.available_resources(prop.wants_resource_types)
-            if self.state.contact_for_resource(r.id)
-            and reachable(self.state, prop.task, r)
-            and (
-                not prop.task.assignee_contact_id
-                or self.state.contacts[prop.task.assignee_contact_id].resource_id == r.id
-            )
-            and (
-                r.type not in (ResourceType.ambulance, ResourceType.evacuation_bus)
-                or r.capacity > 0
+            if compatible_resource(self.state, prop.task, r)
+            and not any(
+                q.status == "pending" and q.allocation_resource_id == r.id
+                for q in self.state.coordination_questions.values()
             )
         ]
         if prop.task.preferred_resource_id:
@@ -164,7 +181,11 @@ class Executor:
 
         Permite no abrir una transacción por una misión que va a quedarse esperando igual.
         """
-        if location_pending(self.state, task) or invalid_task(self.state, task):
+        if (
+            allocation_pending(self.state, task)
+            or location_pending(self.state, task)
+            or invalid_task(self.state, task)
+        ):
             return False
         proposal = Proposal(task, task.resource_types, task.contact_roles)
         if task.resource_types:
@@ -180,7 +201,14 @@ class Executor:
             "task_title": task.title,
             "instructions": task.description
             + (
-                f"\nDestino aprobado: {task.target_location.label}; "
+                "\nCoordinación solicita reasignar desde la misión "
+                f"{task.reassigned_from_task_id}. Confirma si puedes interrumpirla "
+                "y atender el nuevo destino; no se presume aceptación."
+                if task.reassigned_from_task_id
+                else ""
+            )
+            + (
+                f"\nDestino de la misión: {task.target_location.label}; "
                 f"latitud {task.target_location.lat}, longitud {task.target_location.lng}."
                 if task.target_location
                 else ""
@@ -211,9 +239,7 @@ class Executor:
         self.state.tasks[task.id] = task
         if task.status not in (TaskStatus.proposed, TaskStatus.awaiting_approval):
             return task
-        if (
-            task.requires_approval or task.kind in self.state.agent.approval_required_for
-        ) and not task.approved_at:
+        if (task.requires_approval or not self.state.agent.autonomous) and not task.approved_at:
             task.status = TaskStatus.awaiting_approval
             return task
         if location_pending(self.state, task):
@@ -226,6 +252,8 @@ class Executor:
             task.status, task.outcome = TaskStatus.cancelled, reason
             return task
         task.blocked_reason = ""
+        if allocation_pending(self.state, task):
+            return task
         resource = self._pick_resource(prop, reliability) if prop.wants_resource_types else None
         contact = self.state.contacts.get(task.assignee_contact_id or "")
         if resource:
@@ -264,11 +292,11 @@ class Executor:
     async def call(self, task: Task, contact: Contact) -> Action:
         if task.status in (TaskStatus.done, TaskStatus.cancelled, TaskStatus.rejected):
             raise ValueError("tarea cerrada")
+        if allocation_pending(self.state, task):
+            raise ValueError("el operador debe resolver el conflicto de recursos")
         if task.resource_types and not task.resource_ids:
             raise ValueError("se requiere una reserva antes de contactar para esta tarea")
-        if (
-            task.requires_approval or task.kind in self.state.agent.approval_required_for
-        ) and not task.approved_at:
+        if (task.requires_approval or not self.state.agent.autonomous) and not task.approved_at:
             raise ValueError("la tarea necesita aprobación antes de contactar")
         if invalid_task(self.state, task):
             raise ValueError("la tarea ya no es viable")
@@ -310,6 +338,8 @@ class Executor:
                     source=EventSource.system,
                     kind=EventKind.note,
                     title=f"Decisión automática: {task.title} → {contact.name}",
+                    processed=True,
+                    relevant=True,
                     payload={
                         "task_id": task.id,
                         "action_id": action.id,
@@ -388,7 +418,7 @@ class Executor:
                             },
                         )
                     )
-        if not sent:
+        if not sent and not task.reassigned_from_task_id:
             for rid in task.resource_ids:
                 resource = self.state.resources[rid]
                 if resource.assigned_task_id == task.id:

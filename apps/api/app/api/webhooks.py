@@ -4,6 +4,7 @@ import hmac
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import JsonValue
 
+from app.agent.executor import allocation_pending
 from app.domain.models import (
     ActionKind,
     CallOutcome,
@@ -73,7 +74,10 @@ async def incoming_call_webhook(
         "run_id": body.run_id,
         "location_confirmed": body.location.confirmed and body.location.lat is not None,
         "requires_operator": any(
-            t.status == TaskStatus.awaiting_approval or t.blocked_reason for t in tasks
+            t.status == TaskStatus.awaiting_approval
+            or t.blocked_reason
+            or allocation_pending(rt.state, t)
+            for t in tasks
         ),
     }
 

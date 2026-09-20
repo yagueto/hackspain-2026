@@ -9,13 +9,14 @@ import {
   output,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Incident } from '../../../core/models/operations';
-import { IncidentAttention } from '../../../core/models/operation-log';
+import { Incident, PRIORITY_LEVEL } from '../../../core/models/operations';
+import { IncidentAttention, URGENCY_RANK } from '../../../core/models/operation-log';
 import { Icon } from '../../../shared/icon/icon';
+import { AnimateList } from '../../../shared/animate-list';
 
 @Component({
   selector: 'app-incident-list',
-  imports: [Icon, RouterLink],
+  imports: [Icon, RouterLink, AnimateList],
   templateUrl: './incident-list.html',
   styleUrl: './incident-list.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,7 +29,18 @@ export class IncidentList {
   readonly responseRequested = output<string>();
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly sortedIncidents = computed(() =>
-    [...this.incidents()].sort((a, b) => this.priorityRank(a) - this.priorityRank(b)),
+    [...this.incidents()].sort((a, b) => {
+      const left = this.attention().get(a.id);
+      const right = this.attention().get(b.id);
+      if (left && right) {
+        return (
+          URGENCY_RANK[left.urgency] - URGENCY_RANK[right.urgency] ||
+          left.firstSequence - right.firstSequence
+        );
+      }
+      if (left || right) return left ? -1 : 1;
+      return this.priorityRank(a) - this.priorityRank(b);
+    }),
   );
 
   constructor() {
@@ -43,10 +55,10 @@ export class IncidentList {
   }
 
   protected priority(incident: Incident): string {
-    return incident.priority?.slice(1) ?? '—';
+    return incident.priority ? String(PRIORITY_LEVEL[incident.priority]) : '—';
   }
 
   private priorityRank(incident: Incident): number {
-    return incident.priority ? Number(incident.priority.slice(1)) : Number.POSITIVE_INFINITY;
+    return incident.priority ? PRIORITY_LEVEL[incident.priority] : Number.POSITIVE_INFINITY;
   }
 }

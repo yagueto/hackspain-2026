@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from app.domain.autonomy import hold_until, needs_confirmation
 from app.domain.models import (
@@ -29,21 +30,56 @@ def report_location(report: IncomingCall) -> Location | None:
     return None
 
 
+def service_requirements(report: IncomingCall) -> dict[ResourceType, str]:
+    if report.severity == "no_emergencia":
+        return {}
+    wanted: dict[ResourceType, str] = {}
+    kind, victims = report.emergency_type, report.victims
+    severe = report.severity in ("grave", "vital")
+    if kind in ("incendio", "rescate") or victims.trapped:
+        wanted[ResourceType.fire_engine] = (
+            "Rescate de personas atrapadas." if victims.trapped else "Extinción y rescate."
+        )
+    if (
+        kind == "sanitaria"
+        or (victims.count or 0) > 0
+        or victims.breathing is False
+        or victims.conscious is False
+        or victims.trapped
+        or (severe and kind in ("incendio", "rescate", "trafico"))
+    ):
+        wanted[ResourceType.ambulance] = (
+            "Atención a víctimas y soporte sanitario del rescate."
+            if victims.count or victims.trapped
+            else "Asistencia sanitaria por el riesgo y la gravedad comunicados."
+        )
+    if kind in ("seguridad", "trafico") or (kind == "incendio" and severe):
+        wanted[ResourceType.police_unit] = "Seguridad del perímetro, accesos y tráfico."
+    hazards = " ".join(
+        clause
+        for clause in re.split(r"[.;,\n]|\bpero\b", (report.active_hazards or "").lower())
+        if not re.search(
+            r"^\s*(sin|ning[uú]n\w*|no\s+(hay|existe\w*|se\s+(observa\w*|detecta\w*)))\b",
+            clause,
+        )
+    )
+    if re.search(r"\b(fuego|incendio\w*|explosi\w*|derrumbe\w*|gas)\b", hazards):
+        wanted[ResourceType.fire_engine] = "Control del riesgo activo comunicado."
+    if re.search(r"\b(armas?|violencia|agresi\w*|tr[aá]fico)\b", hazards):
+        wanted[ResourceType.police_unit] = "Protección ante el riesgo activo comunicado."
+    if re.search(r"\bhumo\b", hazards) and severe:
+        wanted[ResourceType.ambulance] = "Soporte sanitario por exposición a humo."
+    return wanted
+
+
 def prepare_intake_tasks(state: WorldState, report: IncomingCall) -> bool:
-    requirements = {
-        "incendio": (ResourceType.fire_engine, ContactRole.firefighter, TaskKind.dispatch_resource),
-        "sanitaria": (ResourceType.ambulance, ContactRole.ambulance, TaskKind.medical_triage),
-        "seguridad": (ResourceType.police_unit, ContactRole.police, TaskKind.dispatch_resource),
-        "trafico": (ResourceType.police_unit, ContactRole.police, TaskKind.dispatch_resource),
-        "rescate": (ResourceType.fire_engine, ContactRole.firefighter, TaskKind.dispatch_resource),
+    reasons = service_requirements(report)
+    services = {
+        ResourceType.fire_engine: (ContactRole.firefighter, TaskKind.dispatch_resource),
+        ResourceType.ambulance: (ContactRole.ambulance, TaskKind.medical_triage),
+        ResourceType.police_unit: (ContactRole.police, TaskKind.dispatch_resource),
     }
-    wanted = []
-    if report.severity != "no_emergencia" and report.emergency_type in requirements:
-        wanted.append(requirements[report.emergency_type])
-        if report.emergency_type != "sanitaria" and (
-            report.victims.breathing is False or report.victims.conscious is False
-        ):
-            wanted.append(requirements["sanitaria"])
+    wanted = [(resource_type, *services[resource_type]) for resource_type in reasons]
     target = report_location(report)
     digest = hashlib.sha256(report.run_id.encode()).hexdigest()[:16]
     wanted_ids = {f"intake_{digest}_{resource_type}" for resource_type, _, _ in wanted}
@@ -102,16 +138,20 @@ def prepare_intake_tasks(state: WorldState, report: IncomingCall) -> bool:
             title=f"{'Confirmar' if confirm else 'Automático'}: {service} "
             f"para aviso de {report.emergency_type}",
             description=(
-                f"{report.notes or ''}\n"
+                f"{report.notes or ''}\n{reasons[resource_type]}\n"
+                f"Víctimas: {report.victims.model_dump_json(exclude_none=True)}\n"
+                f"Riesgos activos: {report.active_hazards or 'sin confirmar'}\n"
                 f"Ubicación declarada: {report.location.raw_text or 'desconocida'}"
             ),
             priority={"vital": 100, "grave": 85, "moderada": 60, "leve": 35}[report.severity],
             priority_reason=(
-                f"Aviso {report.severity}: vidas en peligro inmediato, "
-                "requiere confirmación humana antes de movilizar."
-                if confirm
-                else f"Aviso {report.severity} de tipo {report.emergency_type}: "
-                f"{service.lower()} asignado automáticamente por el agente."
+                f"{reasons[resource_type]} "
+                + (
+                    "Autonomía desactivada: requiere confirmación humana."
+                    if confirm
+                    else f"Aviso {report.severity}: {service.lower()} seleccionado "
+                    "automáticamente; se comprueba disponibilidad antes de asignar."
+                )
             ),
             status=TaskStatus.awaiting_approval if confirm else TaskStatus.proposed,
             requires_approval=confirm,

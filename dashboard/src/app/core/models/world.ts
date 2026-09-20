@@ -232,6 +232,16 @@ export const TASK_LABELS: Record<string, string> = {
   failed: 'Fallida',
 };
 
+export const OUTCOME_LABELS: Record<string, string> = {
+  accepted: 'Aceptada',
+  rejected: 'Rechazada',
+  no_answer: 'Sin respuesta',
+  voicemail: 'Buzón de voz',
+  busy: 'Ocupado',
+  failed: 'Fallida',
+  info: 'Solo información',
+};
+
 export const ACTION_LABELS: Record<string, string> = {
   pending: 'Pendiente de envío',
   sending: 'Enviando',

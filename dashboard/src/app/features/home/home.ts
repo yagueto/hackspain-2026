@@ -10,21 +10,32 @@ import {
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MapLocation } from '../../core/models/operations';
 import { GeocodedPlace, OperationalTask } from '../../core/models/world';
 import { Operations } from '../../core/services/operations';
+import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { IncidentList } from './incident-list/incident-list';
 import { OperationalMap } from './operational-map/operational-map';
 import { ServiceFeed } from './service-feed/service-feed';
 import { SplitPane } from '../../shared/split-pane/split-pane';
 import { IncidentStore } from '../incidents/incident-store';
+import { Incidents } from '../incidents/incidents';
+import { Resources } from '../resources/resources';
 import { OperationLogStore } from './operation-log/operation-log-store';
 import { OperationLogPanel } from './operation-log/operation-log-panel';
 
 @Component({
   selector: 'app-home',
-  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, OperationLogPanel, RouterLink],
+  imports: [
+    OperationalMap,
+    IncidentList,
+    ServiceFeed,
+    SplitPane,
+    Incidents,
+    Resources,
+    OperationLogPanel,
+  ],
   host: { '(window:keydown)': 'handleKeyboard($event)' },
   templateUrl: './home.html',
   styleUrl: './home.css',
@@ -33,10 +44,14 @@ import { OperationLogPanel } from './operation-log/operation-log-panel';
 export class Home {
   readonly operations = inject(Operations);
   private readonly store = inject(IncidentStore);
+  private readonly simulation = inject(DemoRouteSimulation);
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router, { optional: true });
   protected readonly log = inject(OperationLogStore);
   protected readonly logOverlay = signal(false);
+  /** Vista de detalle incrustada en la columna de operaciones, abierta por la URL. */
+  readonly detail = signal<'incident' | 'resource' | null>(null);
   readonly incidents = this.store.incidents;
   readonly communications = this.operations.communications;
   readonly units = this.store.units;
@@ -50,6 +65,10 @@ export class Home {
   readonly visibleUnitIds = signal<readonly string[] | null>(null);
   readonly selectedIncident = computed(() =>
     this.incidents().find((incident) => incident.id === this.selectedIncidentId()),
+  );
+  /** Posición interpolada sobre la muestra del backend, solo para las listas de recursos. */
+  readonly projectedUnits = computed(() =>
+    this.units().map((unit) => this.simulation.project(unit)),
   );
   readonly operatorKey = this.operations.operatorKey;
   readonly operatorMessage = signal('');
@@ -149,22 +168,29 @@ export class Home {
     this.operations.start();
     this.log.start();
     this.route?.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
-      const id = params.get('incidencia');
-      if (id) this.selectedIncidentId.set(id);
+      const incidentId = params.get('incidencia');
+      const unitId = params.get('recurso');
+      // La selección de la URL se respeta aunque aún no haya llegado el primer snapshot; el
+      // efecto de abajo la descarta si resulta no existir.
+      this.detail.set(incidentId ? 'incident' : unitId ? 'resource' : null);
+      this.selectedIncidentId.set(incidentId);
+      this.selectedUnitId.set(incidentId ? null : unitId);
       if (params.get('registro') === 'misiones') {
-        this.log.incidentFilter.set(id);
+        this.log.incidentFilter.set(incidentId);
         this.log.view.set('missions');
         this.log.open.set(true);
       }
     });
     effect(() => {
-      if (
-        (this.operations.snapshot() || this.operations.connection() === 'live') &&
-        !this.incidents().some((incident) => incident.id === this.selectedIncidentId())
-      )
+      if (!this.operations.snapshot() && this.operations.connection() !== 'live') return;
+      if (!this.incidents().some((incident) => incident.id === this.selectedIncidentId())) {
         this.selectedIncidentId.set(null);
-      if (!this.units().some((unit) => unit.id === this.selectedUnitId()))
+        if (this.detail() === 'incident') this.detail.set(null);
+      }
+      if (!this.units().some((unit) => unit.id === this.selectedUnitId())) {
         this.selectedUnitId.set(null);
+        if (this.detail() === 'resource') this.detail.set(null);
+      }
     });
     let lastCoordinates = '';
     effect(() => {
@@ -219,6 +245,18 @@ export class Home {
     queueMicrotask(() => document.getElementById('log-toggle')?.focus({ preventScroll: true }));
   }
 
+  protected openIncident(id: string): void {
+    void this.router?.navigate(['/'], { queryParams: { incidencia: id } });
+  }
+
+  protected closeDetail(): void {
+    void this.router?.navigate(['/']);
+  }
+
+  protected locateUnit(id: string): void {
+    this.selectedUnitId.set(id);
+  }
+
   protected handleKeyboard(event: KeyboardEvent): void {
     if (event.isComposing) return;
     if (
@@ -238,11 +276,25 @@ export class Home {
 
   selectIncident(id: string): void {
     if (!this.incidents().some((incident) => incident.id === id)) return;
+    if (this.detail()) {
+      this.openIncident(id);
+      return;
+    }
     this.selectedUnitId.set(null);
     this.selectedIncidentId.update((selected) => (selected === id ? null : id));
     this.reviewedLocation.set(null);
     this.operatorMessage.set('');
     this.locationOpen.set(this.needsLocationHelp());
+  }
+
+  selectUnit(id: string): void {
+    if (!this.units().some((unit) => unit.kind === 'unit' && unit.id === id)) return;
+    if (this.detail()) {
+      void this.router?.navigate(['/'], { queryParams: { recurso: id } });
+      return;
+    }
+    this.selectedIncidentId.set(null);
+    this.selectedUnitId.update((selected) => (selected === id ? null : id));
   }
 
   async searchLocation(): Promise<void> {
@@ -317,13 +369,6 @@ export class Home {
       );
     } finally {
       this.operatorBusy.set(false);
-    }
-  }
-
-  selectUnit(id: string): void {
-    if (this.units().some((unit) => unit.kind === 'unit' && unit.id === id)) {
-      this.selectedIncidentId.set(null);
-      this.selectedUnitId.update((selected) => (selected === id ? null : id));
     }
   }
 }

@@ -608,9 +608,9 @@ class Sim:
             except httpx.HTTPError as exc:
                 self.log(f"!! no se pudo resetear: {exc}")
                 return
-        loops = [
-            asyncio.create_task(self.world_loop()),
-        ]
+        loops = []
+        if self.cfg.events:
+            loops.append(asyncio.create_task(self.world_loop()))
         if self.cfg.calls:
             loops.append(asyncio.create_task(self.calls_loop()))
         if self.cfg.approve:
@@ -638,6 +638,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--duration", type=float, default=720.0, help="segundos; 0 = sin fin")
     p.add_argument("--reset", dest="reset", action="store_true", default=True)
     p.add_argument("--no-reset", dest="reset", action="store_false")
+    # En una demo guionizada los hechos los dispara el presentador: con --no-events el
+    # simulador solo resuelve las llamadas, que es lo que pone a las unidades en marcha.
+    p.add_argument("--events", dest="events", action="store_true", default=True)
+    p.add_argument("--no-events", dest="events", action="store_false")
     p.add_argument("--calls", dest="calls", action="store_true", default=True)
     p.add_argument("--no-calls", dest="calls", action="store_false")
     p.add_argument("--approve", dest="approve", action="store_true", default=True)

@@ -58,6 +58,7 @@ async def test_initialize_catalog_and_disable_production_reset() -> None:
 
 
 async def test_manual_evacuation_cannot_bypass_approval(client: AsyncClient) -> None:
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"autonomous": False})
     response = await client.post(
         "/api/v1/control/tasks",
         headers=HEADERS,
@@ -84,6 +85,7 @@ async def test_manual_evacuation_cannot_bypass_approval(client: AsyncClient) -> 
 
 
 async def test_webhook_replay_and_conflicting_correlation(client: AsyncClient) -> None:
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"hold_seconds": 0})
     await client.post("/api/v1/control/tick", headers=HEADERS)
     actions = (await client.get("/api/v1/actions")).json()
     action = next(a for a in actions if a["kind"] == "call")
@@ -105,6 +107,7 @@ async def test_reconcile_known_run_does_not_imply_unit_available() -> None:
     app = create_app(Settings(agent_autostart=False, api_key=HEADERS["X-API-Key"]))
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+            await client.patch("/api/v1/control/agent", headers=HEADERS, json={"hold_seconds": 0})
             await client.post("/api/v1/control/tick", headers=HEADERS)
             task = next(t for t in app.state.rt.state.tasks.values() if t.resource_ids)
             action = app.state.rt.state.actions[task.action_ids[0]]
@@ -262,6 +265,7 @@ async def test_question_cannot_auto_dispatch_or_apply_a_stale_task_change(
 ) -> None:
     from tests.conftest import runtime_of
 
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"autonomous": False})
     task_response = await client.post(
         "/api/v1/control/tasks",
         headers=HEADERS,
@@ -436,6 +440,7 @@ async def test_coordinator_resource_choice_preserves_critical_approval(client: A
 
     rt = runtime_of(client)
     await rt.orchestrator.stop()
+    await client.patch("/api/v1/control/agent", headers=HEADERS, json={"autonomous": False})
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report(severity="vital"))
     task = next(task for task in rt.state.tasks.values() if task.incoming_call_id)
     resource = next(

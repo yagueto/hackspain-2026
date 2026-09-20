@@ -39,7 +39,7 @@
   overflow: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 20px 20px 20px 0;
+  padding: 10px 20px 10px 0;
 }
 .log-backdrop {
   position: fixed;
@@ -62,54 +62,45 @@
   grid-template-columns: minmax(0, 44fr) minmax(0, 56fr);
   height: 100%;
   gap: 20px;
-  padding: 20px;
-}
-.map-column {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-}
-app-operational-map {
-  flex: 1;
-  height: 100%;
-  min-width: 0;
-}
-.incident-detail {
-  position: absolute;
-  bottom: 64px;
-  left: 12px;
-  right: 52px;
-  z-index: 500;
-  padding: 12px;
-  max-height: 65%;
-  overflow: auto;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 2px 12px #0002;
-  font-size: 12px;
-}
-.incident-detail p {
-  margin: 4px 0 0;
-}
-.incident-detail a {
-  color: var(--text);
+  padding: 10px 20px 0;
 }
 .operations-column {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.overview-widgets {
   display: grid;
   grid-template-rows: minmax(160px, 1fr) minmax(200px, 1.85fr);
   gap: 12px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
 }
+.overview-widgets[hidden] {
+  display: none;
+}
+.operations-column.detail-open {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+/* Controles de operador reintegrados: aprobación, revisión de ubicación y anulación durante el
+   hold. Viven junto al detalle de la incidencia, que es donde se decide. */
 .operator-controls {
   display: grid;
   gap: 10px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding: 12px;
+  overflow: auto;
+  max-height: 45%;
+  font-size: 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.operator-controls p {
+  margin: 0;
 }
 .operator-controls label {
   display: grid;
@@ -129,7 +120,7 @@ app-operational-map {
   align-items: flex-start;
   gap: 6px;
 }
-.incident-detail button {
+.operator-controls button {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--tag);
@@ -137,7 +128,7 @@ app-operational-map {
   color: var(--text);
   cursor: pointer;
 }
-.incident-detail button:disabled {
+.operator-controls button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -229,7 +220,7 @@ app-operational-map {
   .dashboard-grid {
     grid-template-columns: minmax(0, 35fr) minmax(0, 65fr);
     gap: 12px;
-    padding: 12px;
+    padding: 6px 12px 0;
   }
 }
 @media (max-width: 800px) {
@@ -244,14 +235,21 @@ app-operational-map {
   .dashboard-grid {
     grid-template-columns: 1fr;
     height: auto;
-    padding: 12px;
+    padding: 6px 12px 0;
     gap: 12px;
   }
   app-operational-map {
     height: min(60dvh, 580px);
     min-height: 340px;
   }
-  .operations-column {
+  .overview-widgets {
     grid-template-rows: 350px 510px;
+  }
+  .operations-column.detail-open {
+    height: auto;
+    max-height: none;
+  }
+  .operator-controls {
+    max-height: none;
   }
 }

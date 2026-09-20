@@ -233,6 +233,20 @@ describe('Resource routes on the map', () => {
     expect(fixture.nativeElement.querySelector('.route-eta')?.textContent).not.toContain('2 h');
   });
 
+  it('removes an open error popup when retry restores the marker ETA', async () => {
+    calculate.mockRejectedValueOnce(new Error('offline'));
+    const fixture = await setup();
+    fixture.componentRef.setInput('selectedUnitId', activeUnit.id);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.map-popup')?.textContent).toContain('No se ha podido calcular');
+    element.querySelector<HTMLButtonElement>('.map-popup button')!.click();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(element.querySelector('.route-eta')).not.toBeNull());
+    expect(element.querySelector('.leaflet-popup')).toBeNull();
+    expect(element.querySelector('.marker-label')?.textContent).toContain('≈ 6 min');
+  });
+
   it('places the label on the route rather than at the bounding-box center', () => {
     const position = routeMidpoint([
       { lat: 0, lng: 0 },

@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -18,6 +18,7 @@ import {
   AgentSettings,
   OperationalAction,
   OperationalTask,
+  OUTCOME_LABELS,
   TASK_LABELS,
 } from '../../../core/models/world';
 import { operatorError, taskIncidentId } from '../../../core/services/operations';
@@ -27,7 +28,7 @@ import { UrgentQuestionCard } from './urgent-question-card';
 
 @Component({
   selector: 'app-operation-log-panel',
-  imports: [DatePipe, Icon, UrgentQuestionCard, RouterLink],
+  imports: [DatePipe, DecimalPipe, Icon, UrgentQuestionCard, RouterLink],
   templateUrl: './operation-log-panel.html',
   styleUrl: './operation-log-panel.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -41,10 +42,12 @@ export class OperationLogPanel {
   protected readonly operations = this.log.operations;
   protected readonly taskLabels = TASK_LABELS;
   protected readonly actionLabels = ACTION_LABELS;
+  protected readonly outcomeLabels = OUTCOME_LABELS;
   protected readonly tabs = [
     { id: 'activity', label: 'Actividad' },
     { id: 'missions', label: 'Misiones' },
     { id: 'communications', label: 'Comunicaciones' },
+    { id: 'learning', label: 'Aprendizaje' },
     { id: 'system', label: 'Sistema' },
   ] as const;
   protected readonly taskKinds = [
@@ -85,6 +88,19 @@ export class OperationLogPanel {
   protected readonly workflows = computed(() =>
     Object.entries(this.operations.meta()?.workflows ?? {}),
   );
+  /** Fiabilidad aprendida de llamadas anteriores, de la persona que más responde a la que menos. */
+  protected readonly learnedContacts = computed(() => {
+    const scores = this.operations.lessons()?.reliability;
+    if (!scores) return [];
+    const contacts = this.operations.snapshot()?.contacts ?? [];
+    return Object.entries(scores)
+      .map(([id, score]) => {
+        const contact = contacts.find((item) => item.id === id);
+        return { id, name: contact?.name || id, role: contact?.role || '', score };
+      })
+      .sort((a, b) => b.score - a.score);
+  });
+  protected readonly pastOutcomes = computed(() => this.operations.lessons()?.recent ?? []);
   protected readonly busy = signal(false);
   protected readonly feedback = signal('');
   protected readonly liveConfirmed = signal(false);
@@ -102,6 +118,9 @@ export class OperationLogPanel {
   private previousCount = 0;
 
   constructor() {
+    effect(() => {
+      if (this.log.view() === 'learning') this.operations.loadLessons();
+    });
     effect(() => {
       const entries = this.log.history();
       const filter = this.log.incidentFilter();

@@ -10,6 +10,7 @@
 
 :root {
   color-scheme: light;
+  --page-inset: 24px;
   --background: #fafafa;
   --panel: #fff;
   --border: #e3e3e3;
@@ -32,6 +33,15 @@
   --blue: var(--text);
   --danger: #a23e4b;
   --danger-surface: #fcf0f1;
+  --attention-background: #fff0f0;
+  --attention-highlight: #ffdada;
+  --attention-border: #ac2836;
+  --attention-option-border: #e6a5ab;
+  --attention-text: #1d1313;
+  --attention-text-highlight: #861c29;
+  --attention-row-text: var(--attention-text-highlight);
+  --attention-overlay: rgb(172 40 54 / 5%);
+  --attention-overlay-highlight: rgb(172 40 54 / 18%);
   font-family:
     'Inter',
     system-ui,
@@ -64,11 +74,15 @@
   --marker-selected-icon: #000;
   --danger: #f0a4af;
   --danger-surface: #29181b;
+  --attention-row-text: #f0a4af;
 }
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) transparent;
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: 350ms;
+  transition-timing-function: ease-in-out;
 }
 *::-webkit-scrollbar {
   width: 4px;
@@ -81,13 +95,22 @@
 html,
 body {
   margin: 0;
-  min-width: 360px;
   min-height: 100%;
   background: var(--background);
   color: var(--text);
 }
 body {
   -webkit-font-smoothing: antialiased;
+}
+@media (max-width: 1000px) {
+  :root {
+    --page-inset: 16px;
+  }
+}
+@media (max-width: 700px) {
+  :root {
+    --page-inset: 12px;
+  }
 }
 button,
 input,
@@ -121,6 +144,10 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 7px;
 }
+[appAnimateList] {
+  position: relative;
+  overflow-anchor: none;
+}
 .panel-heading,
 .heading-title {
   display: flex;
@@ -132,6 +159,17 @@ h2 {
 }
 .heading-title {
   gap: 9px;
+}
+.back-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  text-decoration: none;
 }
 .count-badge {
   padding: 3px 6px;
@@ -205,6 +243,44 @@ h2 {
   background: none;
   border: 0;
 }
+.incident-range {
+  --glow-radius: 6px;
+  animation: incident-range-glow 2.8s ease-in-out infinite;
+}
+.incident-range.is-selected {
+  --glow-radius: 9px;
+}
+.incident-range-wave {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: incident-range-wave 2.8s ease-out infinite;
+  filter: drop-shadow(0 0 5px var(--muted));
+}
+@keyframes incident-range-wave {
+  0% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes incident-range-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    filter: drop-shadow(0 0 1px var(--muted));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 var(--glow-radius) var(--muted));
+  }
+}
 .map-marker {
   position: relative;
   width: 34px;
@@ -226,21 +302,71 @@ h2 {
   width: 21px;
   height: 21px;
 }
-.marker-label {
+.marker-labels {
   position: absolute;
-  top: 36px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 180px;
+  top: 0;
+  left: 100%;
+  padding-left: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.marker-label {
+  display: none;
+  width: max-content;
+  max-width: min(260px, 55vw);
+  white-space: nowrap;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.marker-labels[hidden] {
+  display: none;
+}
+.marker-label strong {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 2px 4px;
-  background: var(--panel);
+}
+.marker-label-summary {
+  display: block;
   color: var(--muted);
-  border-radius: 3px;
-  font-size: 11px;
-  line-height: 1.3;
+}
+.marker-label-summary[hidden],
+.marker-label-details {
+  display: none;
+}
+.marker-label-details > span {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.marker-label.is-persistent,
+.marker-labels:is(.is-hovered, :hover, :focus-within) .marker-label,
+.operation-marker:focus-visible .marker-label {
+  display: block;
+}
+.marker-labels:is(.is-hovered, :hover, :focus-within) .marker-label-details:not([hidden]),
+.operation-marker:focus-visible .marker-label-details:not([hidden]) {
+  display: block;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.marker-labels.is-measuring .marker-label-details:not([hidden]) {
+  display: none;
+}
+.marker-label:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .map-marker.kind-incident,
 .map-marker.kind-incident .marker-symbol {
@@ -251,21 +377,14 @@ h2 {
   width: 27px;
   height: 27px;
 }
-.map-marker.kind-incident .marker-label {
-  left: 51px;
-  top: 13px;
-  transform: none;
-  font-size: 12px;
-}
 .map-marker:is(.is-related, .is-selected) .marker-symbol {
   background: var(--marker-selected);
   color: var(--marker-selected-icon);
   border-color: var(--marker-selected);
 }
-.map-marker:is(.is-related, .is-selected) .marker-label {
+.marker-label.is-persistent {
   background: var(--selected);
   color: var(--text);
-  font-weight: 700;
 }
 .map-marker.kind-place .marker-symbol {
   width: 30px;
@@ -308,23 +427,6 @@ h2 {
   border-radius: 50%;
   background: var(--en-route);
 }
-.leaflet-tooltip.route-eta {
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: none;
-  font-family: inherit;
-}
-.route-eta strong,
-.route-eta span {
-  display: block;
-}
-.route-eta span {
-  color: var(--muted);
-  font-size: 11px;
-}
 .map-popup button {
   color: var(--text);
   background: var(--tag);
@@ -332,6 +434,21 @@ h2 {
   border-radius: 4px;
   padding: 3px 6px;
   cursor: pointer;
+}
+@keyframes attention-pulse {
+  0%,
+  100% {
+    background-color: var(--attention-overlay);
+    color: var(--text);
+  }
+  50% {
+    background-color: var(--attention-overlay-highlight);
+    color: var(--attention-row-text);
+  }
+}
+.incident-row.awaiting-human,
+.incident-row.awaiting-human * {
+  transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

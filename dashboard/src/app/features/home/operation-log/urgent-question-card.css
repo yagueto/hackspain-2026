@@ -3,46 +3,29 @@
 }
 .question-card {
   position: relative;
-  padding: 12px;
-  border: 1px solid var(--border);
+  padding: 16px;
+  border: 1px solid var(--attention-border);
   border-radius: 8px;
-  background: var(--panel);
-}
-:host(.related) .question-card {
-  background: var(--selected);
-  font-weight: 700;
-}
-:host(.related) h3 {
-  font-weight: 700;
+  background: var(--attention-background);
+  color: var(--attention-text-highlight);
+  color-scheme: light;
 }
 header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-}
-.question-incident {
-  font-weight: 650;
-  color: var(--muted);
-}
-.urgency {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--danger-surface);
-  color: var(--danger);
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .countdown {
   margin-left: auto;
+  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   font-size: 16px;
   font-weight: 650;
-  color: var(--muted);
-}
-.last-seconds {
-  color: var(--danger);
+  color: inherit;
 }
 h3 {
-  margin: 10px 0;
+  margin: 0;
   font-size: 14px;
   font-weight: 550;
   line-height: 1.45;
@@ -60,10 +43,10 @@ fieldset {
   align-items: flex-start;
   gap: 8px;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--attention-option-border);
   border-radius: 5px;
-  background: var(--tag);
-  color: var(--muted);
+  background: transparent;
+  color: inherit;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
@@ -73,18 +56,18 @@ fieldset {
   overflow-wrap: anywhere;
 }
 .answer-option.chosen {
-  border-color: var(--border);
-  background: var(--selected);
+  border-color: var(--attention-border);
+  background: var(--attention-highlight);
 }
 input {
   margin: 2px 0 0;
-  accent-color: var(--muted);
+  accent-color: var(--attention-border);
 }
 .custom-answer {
   display: grid;
   gap: 6px;
   margin-top: 8px;
-  color: var(--muted);
+  color: inherit;
   font-size: 12px;
 }
 textarea {
@@ -93,47 +76,43 @@ textarea {
   max-height: 160px;
   width: 100%;
   padding: 8px;
-  background: var(--tag);
-  border: 1px solid var(--border);
+  background: var(--attention-background);
+  border: 1px solid var(--attention-option-border);
   border-radius: 5px;
-  color: var(--muted);
+  color: inherit;
   font: inherit;
   line-height: 1.5;
 }
 textarea:focus-visible {
-  outline: 2px solid var(--border);
+  outline: 2px solid var(--attention-border);
   outline-offset: 2px;
 }
-.default-answer {
-  margin: 10px 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.default-answer > span {
-  color: var(--muted);
+textarea::placeholder {
+  color: inherit;
+  opacity: 1;
 }
 .submit-answer {
   width: 100%;
   padding: 8px;
-  border: 1px solid var(--border);
+  margin-top: 12px;
+  border: 1px solid var(--attention-border);
   border-radius: 5px;
-  color: var(--panel);
-  background: var(--text);
+  color: inherit;
+  background: var(--attention-highlight);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 .submit-answer:hover:not(:disabled) {
-  background: var(--muted);
+  background: var(--attention-option-border);
 }
 .submit-answer:disabled {
-  opacity: 0.4;
+  background: var(--attention-background);
+  border-color: var(--attention-option-border);
   cursor: not-allowed;
 }
 .answer-error {
   margin-bottom: 8px;
-  color: var(--danger);
+  color: inherit;
   font-size: 12px;
 }

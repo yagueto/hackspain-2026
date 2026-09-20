@@ -298,6 +298,7 @@ class Task(BaseModel):
     hold_until: datetime | None = None  # margen para anular antes de enviar
     blocked_reason: str = ""  # por qué no puede despacharse todavía
     escalated_at: datetime | None = None
+    reassigned_from_task_id: str | None = None
 
 
 class Decision(BaseModel):
@@ -329,15 +330,15 @@ class Incident(BaseModel):
 class AgentConfig(BaseModel):
     """Frontera entre lo que el agente decide solo y lo que somete a un humano.
 
-    Todo es autónomo salvo lo crítico: las evacuaciones masivas y los avisos cuya
-    severidad figura en `approval_required_severities`. Lo autónomo se retiene
-    `hold_seconds` antes de enviarse para que el operador pueda anularlo.
+    Los servicios disponibles se asignan sin permiso, también en avisos vitales.
+    Las listas de aprobación se conservan por compatibilidad, no condicionan el despacho.
+    Solo los conflictos de medios exigen elección humana; se mantiene `hold_seconds`.
     """
 
     mode: AgentMode = AgentMode.running
     autonomous: bool = True
-    approval_required_for: list[TaskKind] = Field(default_factory=lambda: [TaskKind.evacuate_zone])
-    approval_required_severities: list[str] = Field(default_factory=lambda: ["vital"])
+    approval_required_for: list[TaskKind] = Field(default_factory=list)
+    approval_required_severities: list[str] = Field(default_factory=list)
     tick_seconds: float = 10.0
     hold_seconds: float = Field(default=10.0, ge=0)
     escalate_after_seconds: float = Field(default=30.0, ge=0)
@@ -448,23 +449,26 @@ class CoordinationFields(BaseModel):
 
 
 class CoordinationAction(CoordinationFields):
-    type: Literal["none", "note", "set-status", "assign-resource"] = "none"
+    type: Literal["none", "note", "set-status", "assign-resource", "allocate-resource"] = "none"
     task_id: str | None = None
     status: Literal["done", "cancelled"] | None = None
     expected_status: TaskStatus | None = None
     expected_updated_at: AwareDatetime | None = None
     resource_id: str | None = None
     expected_incident_id: str | None = None
+    expected_source_task_id: str | None = None
+    expected_source_updated_at: AwareDatetime | None = None
+    expected_resource_status: ResourceStatus | None = None
 
     @model_validator(mode="after")
     def require_target(self) -> CoordinationAction:
-        if self.type in ("set-status", "assign-resource") and (
+        if self.type in ("set-status", "assign-resource", "allocate-resource") and (
             not self.task_id or not self.expected_status or not self.expected_updated_at
         ):
             raise ValueError("la acción requiere tarea y versión esperada")
         if self.type == "set-status" and not self.status:
             raise ValueError("falta el estado de destino")
-        if self.type == "assign-resource" and not self.resource_id:
+        if self.type in ("assign-resource", "allocate-resource") and not self.resource_id:
             raise ValueError("falta el recurso")
         return self
 
@@ -541,7 +545,7 @@ class CoordinationResolution(CoordinationFields):
     idempotency_key: str
     answer: CoordinationAnswer
     answer_label: str
-    source: Literal["human", "timeout"]
+    source: Literal["human", "timeout", "system"]
     answered_at: AwareDatetime = Field(default_factory=now)
     outcome: str
     applied: bool
@@ -549,11 +553,14 @@ class CoordinationResolution(CoordinationFields):
 
 class CoordinationQuestion(CoordinationQuestionIn):
     received_at: AwareDatetime = Field(default_factory=now)
-    expires_at: AwareDatetime = Field(default_factory=now)
+    expires_at: AwareDatetime | None = Field(default_factory=now)
     sequence: int
     status: Literal["pending", "resolved"] = "pending"
     resolution: CoordinationResolution | None = None
     request_hash: str = ""
+    allocation_resource_id: str | None = None
+    allocation_task_ids: list[str] = Field(default_factory=list)
+    allocation_key: str = ""
 
 
 class WorldSnapshot(BaseModel):
