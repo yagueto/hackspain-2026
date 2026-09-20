@@ -14,9 +14,11 @@ export class AnimateList {
 
   constructor() {
     afterNextRender(() => {
-      const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      // `matchMedia` no existe en todos los entornos de render; sin él se asume que no hay
+      // preferencia declarada, nunca se lanza desde un hook de render.
+      const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
       this.remember();
-      const mutations = new MutationObserver(() => this.reflow(motion.matches));
+      const mutations = new MutationObserver(() => this.reflow(!!motion?.matches));
       mutations.observe(this.host, { childList: true });
       const resize =
         typeof ResizeObserver === 'undefined'
@@ -27,11 +29,11 @@ export class AnimateList {
         this.cancel();
         this.remember();
       };
-      motion.addEventListener?.('change', stop);
+      motion?.addEventListener?.('change', stop);
       this.destroyRef.onDestroy(() => {
         mutations.disconnect();
         resize?.disconnect();
-        motion.removeEventListener?.('change', stop);
+        motion?.removeEventListener?.('change', stop);
         this.cancel();
       });
     });

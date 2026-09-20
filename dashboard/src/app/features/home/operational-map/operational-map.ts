@@ -273,7 +273,7 @@ export class OperationalMap {
         )
           points.push(...state.route.path);
       }
-      this.map.flyToBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
+      this.map.fitBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
         padding: [48, 58],
         maxZoom: 15,
         animate: animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
@@ -432,7 +432,7 @@ export class OperationalMap {
       if (!focusId)
         this.fitFrame = requestAnimationFrame(() => {
           this.fitFrame = undefined;
-          if (!this.destroyRef.destroyed) untracked(() => this.fitLocations());
+          if (!this.destroyRef.destroyed) untracked(() => this.fitLocations(false));
         });
     } else if (
       selectionKey !== this.lastSelection &&

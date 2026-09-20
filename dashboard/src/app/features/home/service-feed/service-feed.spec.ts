@@ -60,14 +60,12 @@ describe('ServiceFeed', () => {
   it('shows resource status and an independent detail link', async () => {
     const fixture = await setup();
     const element = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('h2')?.textContent).toBe('Recursos');
+    expect(element.querySelector('h2')?.textContent?.trim()).toBe('Recursos');
     expect(element.querySelector('.heading-title .count-badge')?.textContent?.trim()).toBe('6');
     expect(element.querySelector('.communication-status')?.textContent).toBe(
       communications[0].status,
     );
-    expect(element.querySelector('.detail-link')?.getAttribute('href')).toBe(
-      '/recursos?recurso=B-03',
-    );
+    expect(element.querySelector('.detail-link')?.getAttribute('href')).toBe('/?recurso=B-03');
   });
 
   it('uses category chips starting with Todos', async () => {

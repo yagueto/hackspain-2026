@@ -139,7 +139,9 @@
                   <div class="countdown" role="status">
                     <span
                       >{{
-                        paused() ? 'Retenida por la parada · margen original' : 'Envío automático en'
+                        paused()
+                          ? 'Retenida por la parada · margen original'
+                          : 'Envío automático en'
                       }}
                       {{ remaining }} s</span
                     >
