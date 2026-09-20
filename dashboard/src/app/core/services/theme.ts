@@ -29,4 +29,8 @@ export class Theme {
       // The theme still applies when storage is unavailable.
     }
   }
+
+  toggle(): void {
+    this.set(this.current() === 'dark' ? 'light' : 'dark');
+  }
 }

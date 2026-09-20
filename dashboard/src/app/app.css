@@ -24,6 +24,46 @@ main {
 .skip-link:focus {
   top: 10px;
 }
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding: var(--page-inset) var(--page-inset) calc(var(--page-inset) / 2);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--page-inset) / 2);
+}
+.connection.unstable {
+  color: var(--danger);
+}
+.signal-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.8px;
+  height: 9px;
+}
+.signal-bars span {
+  width: 1.8px;
+  height: 3px;
+  border-radius: 0.6px;
+  background: currentColor;
+  opacity: 0.2;
+}
+.signal-bars span:nth-child(2) {
+  height: 6px;
+}
+.signal-bars span:nth-child(3) {
+  height: 9px;
+}
+.signal-bars .active {
+  opacity: 1;
+}
 @media (max-width: 800px) {
   :host {
     height: auto;

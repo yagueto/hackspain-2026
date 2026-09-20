@@ -5,7 +5,6 @@ import {
   MapLocation,
   RouteNavigation,
 } from '../../../core/models/operations';
-import { formatRouteDuration } from '../../../core/services/routing';
 
 export type ResourceRouteState = RouteNavigation;
 
@@ -32,7 +31,6 @@ export class ResourceRouteLayer {
     string,
     { outline: L.Polyline; line: L.Polyline; route?: CalculatedRoute; selected?: boolean }
   >();
-  private eta?: L.Tooltip;
   private destination?: L.Marker;
   private focusedJourney: string | null = null;
 
@@ -107,9 +105,7 @@ export class ResourceRouteLayer {
       }
     }
     if (!selectedRoute || !selectedLocation) {
-      if (this.eta) this.layer.removeLayer(this.eta);
       if (this.destination) this.layer.removeLayer(this.destination);
-      this.eta = undefined;
       this.destination = undefined;
       this.focusedJourney = null;
       return;
@@ -137,44 +133,21 @@ export class ResourceRouteLayer {
     this.destination
       .getElement()
       ?.setAttribute('title', selectedLocation.route?.destinationLabel ?? 'Destino');
-    const label = document.createElement('div');
-    label.className = 'route-eta-content';
-    label.title = 'Tiempo aproximado por carretera, sin tráfico en tiempo real';
-    const time = document.createElement('strong');
-    time.textContent = `≈ ${formatRouteDuration(selectedRoute.durationSeconds)}`;
-    const details = document.createElement('span');
-    const distance =
-      selectedRoute.distanceMeters >= 1000
-        ? `${(selectedRoute.distanceMeters / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} km`
-        : `${Math.round(selectedRoute.distanceMeters)} m`;
-    details.textContent = `${selectedLocation.label} · ${distance}`;
-    label.append(time, details);
-    const midpoint = routeMidpoint(selectedRoute.path);
-    if (!this.eta) {
-      this.eta = L.tooltip({
-        permanent: true,
-        direction: 'top',
-        offset: [0, -8],
-        className: 'route-eta',
-        opacity: 1,
-      })
-        .setLatLng(midpoint)
-        .setContent(label)
-        .addTo(this.layer);
-    } else {
-      this.eta.setLatLng(midpoint);
-      if ((this.eta.getContent() as HTMLElement).textContent !== label.textContent)
-        this.eta.setContent(label);
-    }
     const journey = JSON.stringify([
       selectedLocation.id,
       selectedLocation.route?.destination,
       selectedLocation.route?.via,
     ]);
     if (journey !== this.focusedJourney) {
-      this.map.fitBounds(
+      this.map.flyToBounds(
         L.latLngBounds(selectedRoute.path.map((point) => [point.lat, point.lng])),
-        { paddingTopLeft: [75, 100], paddingBottomRight: [75, 65], maxZoom: 15, animate: false },
+        {
+          paddingTopLeft: [75, 100],
+          paddingBottomRight: [75, 65],
+          maxZoom: 15,
+          animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+          duration: 0.65,
+        },
       );
       this.focusedJourney = journey;
     }

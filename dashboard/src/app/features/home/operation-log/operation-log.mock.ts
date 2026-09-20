@@ -12,6 +12,7 @@ export function createDemoQuestion(
   const base = {
     id: `question-${crypto.randomUUID()}`,
     incidentId: incident.id,
+    context: `${incident.title} en ${incident.area}. Estado actual: ${incident.status}.`,
     urgency: (['moderate', 'critical', 'high'] as const)[kind],
   };
   const coordination = {

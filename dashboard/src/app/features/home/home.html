@@ -12,268 +12,244 @@
 <p class="sr-only" role="alert" aria-atomic="true">{{ log.notification() }}</p>
 <div class="home-workspace" [class.log-open]="log.open()" [class.log-overlay]="logOverlay()">
   <div class="dashboard-grid">
-    <div class="map-column">
-      <app-operational-map
-        [addresses]="addresses()"
-        [locations]="locations()"
-        [selectedIncidentId]="selectedIncidentId()"
-        [selectedUnitId]="selectedUnitId()"
-        [visibleUnitIds]="visibleUnitIds()"
-        (unitSelected)="selectUnit($event)"
-        (incidentSelected)="selectIncident($event)"
-      />
-      @if (selectedIncident(); as incident) {
-        <section class="incident-detail" aria-label="Detalle de la incidencia">
-          <div class="proposal-head">
-            <strong>{{ incident.title }}</strong>
-            <a routerLink="/incidencias" [queryParams]="{ incidencia: incident.id }"
-              >Ver detalle e histórico</a
-            >
-            <button
-              type="button"
-              aria-label="Cerrar detalle"
-              (click)="selectedIncidentId.set(null)"
-            >
-              Cerrar
-            </button>
-          </div>
-          <p>{{ incident.address }}</p>
-          @if (incident.locationStatus) {
-            <p>{{ incident.locationStatus }}</p>
-          }
-          @if (incident.coordinates; as point) {
-            <p>{{ point.lat }}, {{ point.lng }}</p>
-          }
-          @if (incident.description) {
-            <p>{{ incident.description }}</p>
-          }
-          @if (selectedReport(); as report) {
-            <div class="operator-controls">
-              <p>Aviso recibido: {{ reportTime() }}</p>
-              @if (!operatorKey()) {
-                <p class="needs-key" role="note">
-                  Introduce la clave de operador en la barra superior para intervenir: corregir la
-                  ubicación, anular una decisión o confirmar una crítica.
-                </p>
-              }
-              <details
-                [open]="locationOpen()"
-                (toggle)="locationOpen.set($any($event.target).open)"
-              >
-                <summary>Corregir ubicación</summary>
-                @if (operations.meta()?.geocoding_enabled) {
-                  <button
-                    type="button"
-                    (click)="searchLocation()"
-                    [disabled]="operatorBusy() || !operatorKey()"
-                  >
-                    Reintentar búsqueda de coordenadas
-                  </button>
-                }
-                @if (report.resolution; as resolution) {
-                  @if (resolution.error) {
-                    <p role="status">{{ resolution.error }}</p>
-                  }
-                  @if (resolution.status === 'not_found') {
-                    <p>No se encontraron coincidencias. Confirma coordenadas manualmente.</p>
-                  }
-                  @if (resolution.status === 'ambiguous') {
-                    <p>La búsqueda es ambigua o poco precisa. Revisa cada resultado.</p>
-                  }
-                  @for (candidate of resolution.candidates; track $index) {
-                    <button
-                      class="location-candidate"
-                      type="button"
-                      [disabled]="operatorBusy() || !operatorKey()"
-                      (click)="chooseLocation(candidate)"
-                    >
-                      {{ candidate.label }} · {{ candidate.lat }}, {{ candidate.lng }} ·
-                      {{ candidate.kind }}
-                    </button>
-                  }
-                  @if (resolution.candidates.length) {
-                    <p>Fuente: OpenStreetMap / Nominatim. Coordenadas aproximadas, no GPS.</p>
-                  }
-                }
-                <div class="coordinate-fields">
-                  <label
-                    >Latitud<input
-                      inputmode="decimal"
-                      [value]="latitude()"
-                      (input)="latitude.set($any($event.target).value)"
-                  /></label>
-                  <label
-                    >Longitud<input
-                      inputmode="decimal"
-                      [value]="longitude()"
-                      (input)="longitude.set($any($event.target).value)"
-                  /></label>
-                </div>
+    <app-operational-map
+      [addresses]="addresses()"
+      [locations]="locations()"
+      [selectedIncidentId]="selectedIncidentId()"
+      [selectedUnitId]="selectedUnitId()"
+      [visibleUnitIds]="detail() ? null : visibleUnitIds()"
+      [focusedLocationId]="detail() ? (selectedUnitId() ?? selectedIncidentId()) : null"
+      (unitSelected)="selectUnit($event)"
+      (incidentSelected)="selectIncident($event)"
+    />
+    <app-split-pane />
+    <div class="operations-column" [class.detail-open]="detail()">
+      @if (detail() === 'incident') {
+        @if (selectedReport(); as report) {
+          <section class="operator-controls" aria-label="Respuesta al aviso ciudadano">
+            <div class="proposal-head">
+              <strong>Respuesta al aviso</strong>
+              <button type="button" (click)="closeDetail()">Cerrar detalle</button>
+            </div>
+            <p>Aviso recibido: {{ reportTime() }}</p>
+            @if (!operatorKey()) {
+              <p class="needs-key" role="note">
+                Introduce la clave de operador en la barra superior para intervenir: corregir la
+                ubicación, anular una decisión o confirmar una crítica.
+              </p>
+            }
+            <details [open]="locationOpen()" (toggle)="locationOpen.set($any($event.target).open)">
+              <summary>Corregir ubicación</summary>
+              @if (operations.meta()?.geocoding_enabled) {
                 <button
                   type="button"
-                  (click)="confirmCoordinates()"
+                  (click)="searchLocation()"
                   [disabled]="operatorBusy() || !operatorKey()"
                 >
-                  Confirmar coordenadas manuales
+                  Reintentar búsqueda de coordenadas
                 </button>
-                @if (hasLiveMission()) {
-                  <p class="replan-warning">
-                    Hay una misión en curso: corregir el destino anula su orden y el agente
-                    replanifica hacia el punto nuevo. La unidad ya avisada no se declara libre hasta
-                    que lo reporte.
+              }
+              @if (report.resolution; as resolution) {
+                @if (resolution.error) {
+                  <p role="status">{{ resolution.error }}</p>
+                }
+                @if (resolution.status === 'not_found') {
+                  <p>No se encontraron coincidencias. Confirma coordenadas manualmente.</p>
+                }
+                @if (resolution.status === 'ambiguous') {
+                  <p>La búsqueda es ambigua o poco precisa. Revisa cada resultado.</p>
+                }
+                @for (candidate of resolution.candidates; track $index) {
+                  <button
+                    class="location-candidate"
+                    type="button"
+                    [disabled]="operatorBusy() || !operatorKey()"
+                    (click)="chooseLocation(candidate)"
+                  >
+                    {{ candidate.label }} · {{ candidate.lat }}, {{ candidate.lng }} ·
+                    {{ candidate.kind }}
+                  </button>
+                }
+                @if (resolution.candidates.length) {
+                  <p>Fuente: OpenStreetMap / Nominatim. Coordenadas aproximadas, no GPS.</p>
+                }
+              }
+              <div class="coordinate-fields">
+                <label
+                  >Latitud<input
+                    inputmode="decimal"
+                    [value]="latitude()"
+                    (input)="latitude.set($any($event.target).value)"
+                /></label>
+                <label
+                  >Longitud<input
+                    inputmode="decimal"
+                    [value]="longitude()"
+                    (input)="longitude.set($any($event.target).value)"
+                /></label>
+              </div>
+              <button
+                type="button"
+                (click)="confirmCoordinates()"
+                [disabled]="operatorBusy() || !operatorKey()"
+              >
+                Confirmar coordenadas manuales
+              </button>
+              @if (hasLiveMission()) {
+                <p class="replan-warning">
+                  Hay una misión en curso: corregir el destino anula su orden y el agente
+                  replanifica hacia el punto nuevo. La unidad ya avisada no se declara libre hasta
+                  que lo reporte.
+                </p>
+              }
+            </details>
+            @for (task of reportTasks(); track task.id) {
+              <div
+                class="response-proposal"
+                [class.critical]="task.requires_approval"
+                [class.stuck]="!!task.blocked_reason"
+              >
+                <div class="proposal-head">
+                  <strong>{{ task.title }}</strong>
+                  @if (task.autonomous) {
+                    <span class="badge auto">Decisión automática</span>
+                  } @else if (task.requires_approval) {
+                    <span class="badge critical">Decisión crítica · requiere confirmación</span>
+                  }
+                </div>
+                @if (task.priority_reason) {
+                  <p class="reason">{{ task.priority_reason }}</p>
+                }
+                <p>{{ taskLabels[task.status] || task.status }}</p>
+                @if (approximateLocation(task)) {
+                  <p class="approximate">
+                    Ubicación aproximada de OpenStreetMap, no GPS del informante.
                   </p>
                 }
-              </details>
-              @for (task of reportTasks(); track task.id) {
-                <div
-                  class="response-proposal"
-                  [class.critical]="task.requires_approval"
-                  [class.stuck]="!!task.blocked_reason"
-                >
-                  <div class="proposal-head">
-                    <strong>{{ task.title }}</strong>
-                    @if (task.autonomous) {
-                      <span class="badge auto">Decisión automática</span>
-                    } @else if (task.requires_approval) {
-                      <span class="badge critical">Decisión crítica · requiere confirmación</span>
-                    }
-                  </div>
-                  @if (task.priority_reason) {
-                    <p class="reason">{{ task.priority_reason }}</p>
-                  }
-                  <p>{{ taskLabels[task.status] || task.status }}</p>
-                  @if (approximateLocation(task)) {
-                    <p class="approximate">
-                      Ubicación aproximada de OpenStreetMap, no GPS del informante.
-                    </p>
-                  }
-                  @if (task.blocked_reason) {
-                    <p class="blocked">
-                      <strong>Bloqueada:</strong> {{ task.blocked_reason }} Elige una ubicación en
-                      «Corregir ubicación» para que el agente pueda continuar.
-                    </p>
-                  }
-                  @if (task.outcome) {
-                    <p>{{ task.outcome }}</p>
-                  }
-                  @if (holdRemaining(task); as remaining) {
-                    <div class="countdown" role="status">
-                      <span
-                        >{{
-                          paused()
-                            ? 'Retenida por la parada · margen original'
-                            : 'Envío automático en'
-                        }}
-                        {{ remaining }} s</span
-                      >
-                      <button
-                        type="button"
-                        (click)="cancelTask(task)"
-                        [disabled]="operatorBusy() || !operatorKey()"
-                      >
-                        Anular
-                      </button>
-                    </div>
-                  } @else if (
-                    task.status === 'proposed' ||
-                    task.status === 'dispatching' ||
-                    task.status === 'dispatched' ||
-                    task.status === 'accepted' ||
-                    task.status === 'in_progress'
-                  ) {
+                @if (task.blocked_reason) {
+                  <p class="blocked">
+                    <strong>Bloqueada:</strong> {{ task.blocked_reason }} Elige una ubicación en
+                    «Corregir ubicación» para que el agente pueda continuar.
+                  </p>
+                }
+                @if (task.outcome) {
+                  <p>{{ task.outcome }}</p>
+                }
+                @if (holdRemaining(task); as remaining) {
+                  <div class="countdown" role="status">
+                    <span
+                      >{{
+                        paused() ? 'Retenida por la parada · margen original' : 'Envío automático en'
+                      }}
+                      {{ remaining }} s</span
+                    >
                     <button
                       type="button"
                       (click)="cancelTask(task)"
                       [disabled]="operatorBusy() || !operatorKey()"
                     >
-                      Cancelar misión
+                      Anular
                     </button>
-                  }
-                  @if (task.escalated_at) {
-                    <p class="escalated">
-                      Sin confirmar a tiempo: aviso al coordinador preparado por Telegram. Consulta
-                      su entrega en el registro.
-                    </p>
-                  }
-                  @if (task.status === 'awaiting_approval') {
-                    <label class="check-label"
-                      ><input
-                        type="checkbox"
-                        [checked]="locationReviewed()"
-                        (change)="
-                          reviewedLocation.set(
-                            $any($event.target).checked ? locationVersion() : null
-                          )
-                        "
-                      />He revisado el destino y su precisión.</label
-                    >
-                    <div class="proposal-actions">
-                      <button
-                        type="button"
-                        (click)="approveTask(task, true)"
-                        [disabled]="
-                          operatorBusy() ||
-                          !operatorKey() ||
-                          !operations.meta() ||
-                          !locationReviewed() ||
-                          !task.target_location
-                        "
-                      >
-                        Confirmar y preparar orden
-                      </button>
-                      <button
-                        type="button"
-                        (click)="approveTask(task, false)"
-                        [disabled]="operatorBusy() || !operatorKey()"
-                      >
-                        Rechazar
-                      </button>
-                    </div>
-                  }
-                </div>
-              } @empty {
-                <p>No hay propuesta automática de recursos para este aviso.</p>
-              }
-              @if (paused()) {
-                <p>Parada de emergencia activa: el agente no envía ninguna orden nueva.</p>
-                @if (hasQueuedOrders() && operations.meta()?.happyrobot_mode === 'simulated') {
+                  </div>
+                } @else if (
+                  task.status === 'proposed' ||
+                  task.status === 'dispatching' ||
+                  task.status === 'dispatched' ||
+                  task.status === 'accepted' ||
+                  task.status === 'in_progress'
+                ) {
                   <button
                     type="button"
-                    (click)="resumeSimulated()"
+                    (click)="cancelTask(task)"
                     [disabled]="operatorBusy() || !operatorKey()"
                   >
-                    Reanudar envíos simulados
+                    Cancelar misión
                   </button>
                 }
+                @if (task.escalated_at) {
+                  <p class="escalated">
+                    Sin confirmar a tiempo: aviso al coordinador preparado por Telegram. Consulta su
+                    entrega en el registro.
+                  </p>
+                }
+                @if (task.status === 'awaiting_approval') {
+                  <label class="check-label"
+                    ><input
+                      type="checkbox"
+                      [checked]="locationReviewed()"
+                      (change)="
+                        reviewedLocation.set($any($event.target).checked ? locationVersion() : null)
+                      "
+                    />He revisado el destino y su precisión.</label
+                  >
+                  <div class="proposal-actions">
+                    <button
+                      type="button"
+                      (click)="approveTask(task, true)"
+                      [disabled]="
+                        operatorBusy() ||
+                        !operatorKey() ||
+                        !operations.meta() ||
+                        !locationReviewed() ||
+                        !task.target_location
+                      "
+                    >
+                      Confirmar y preparar orden
+                    </button>
+                    <button
+                      type="button"
+                      (click)="approveTask(task, false)"
+                      [disabled]="operatorBusy() || !operatorKey()"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                }
+              </div>
+            } @empty {
+              <p>No hay propuesta automática de recursos para este aviso.</p>
+            }
+            @if (paused()) {
+              <p>Parada de emergencia activa: el agente no envía ninguna orden nueva.</p>
+              @if (hasQueuedOrders() && operations.meta()?.happyrobot_mode === 'simulated') {
+                <button
+                  type="button"
+                  (click)="resumeSimulated()"
+                  [disabled]="operatorBusy() || !operatorKey()"
+                >
+                  Reanudar envíos simulados
+                </button>
               }
-              @if (operations.meta()?.happyrobot_mode === 'simulated') {
-                <p>Las órdenes salientes son simuladas; no movilizan ayuda real.</p>
-              }
-              @if (operatorMessage()) {
-                <p role="status">{{ operatorMessage() }}</p>
-              }
-            </div>
-          }
-        </section>
+            }
+            @if (operations.meta()?.happyrobot_mode === 'simulated') {
+              <p>Las órdenes salientes son simuladas; no movilizan ayuda real.</p>
+            }
+            @if (operatorMessage()) {
+              <p role="status">{{ operatorMessage() }}</p>
+            }
+          </section>
+        }
+        <app-incidents [embedded]="true" (unitLocated)="locateUnit($event)" />
+      } @else if (detail() === 'resource') {
+        <app-resources [embedded]="true" />
       }
-    </div>
-    <app-split-pane />
-    <div class="operations-column">
-      <app-incident-list
-        [incidents]="log.prioritizedIncidents()"
-        [selectedId]="selectedIncidentId()"
-        [attention]="log.attention()"
-        (incidentSelected)="selectIncident($event)"
-        (responseRequested)="log.openForIncident($event)"
-      />
-      <app-service-feed
-        [communications]="communications()"
-        [resources]="units()"
-        [selectedIncidentId]="selectedIncidentId()"
-        [selectedUnitId]="selectedUnitId()"
-        (unitSelected)="selectUnit($event)"
-        (visibleUnitsChanged)="visibleUnitIds.set($event)"
-      />
+      <div class="overview-widgets" [hidden]="!!detail()">
+        <app-incident-list
+          [incidents]="log.prioritizedIncidents()"
+          [selectedId]="selectedIncidentId()"
+          [attention]="log.attention()"
+          (incidentSelected)="selectIncident($event)"
+          (responseRequested)="openIncident($event)"
+        />
+        <app-service-feed
+          [communications]="communications()"
+          [resources]="projectedUnits()"
+          [selectedIncidentId]="selectedIncidentId()"
+          [selectedUnitId]="selectedUnitId()"
+          (unitSelected)="selectUnit($event)"
+          (visibleUnitsChanged)="visibleUnitIds.set($event)"
+        />
+      </div>
     </div>
   </div>
   @if (log.open()) {

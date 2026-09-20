@@ -21,6 +21,7 @@ import { Theme } from '../../../core/services/theme';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
 import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
+import { MarkerLabels } from './marker-labels';
 
 @Component({
   selector: 'app-operational-map',
@@ -35,6 +36,7 @@ export class OperationalMap {
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
   readonly visibleUnitIds = input<readonly string[] | null>(null);
+  readonly focusedLocationId = input<string | null>(null);
   readonly incidentSelected = output<string>();
   readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
@@ -89,6 +91,7 @@ export class OperationalMap {
   private readonly markers = new Map<string, L.Marker>();
   private readonly markerAppearances = new Map<string, string>();
   private routeLayer?: ResourceRouteLayer;
+  private labels?: MarkerLabels;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
   private readonly retryVersion = signal(0);
@@ -100,6 +103,7 @@ export class OperationalMap {
   private fitFrame?: number;
   private lastLocationKey = '';
   private lastSelection: string | null = null;
+  private lastFocus: string | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -124,6 +128,8 @@ export class OperationalMap {
       this.haloLayer = L.layerGroup().addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
+      this.labels = new MarkerLabels(this.map, (location) => this.selectLocation(location));
+      this.map.on('zoom move resize', () => this.renderLabels());
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);
@@ -164,6 +170,7 @@ export class OperationalMap {
           L.circle([location.coordinates.lat, location.coordinates.lng], {
             radius: location.radiusMeters * scale,
             pane: 'incident-halos',
+            className: `incident-range${active ? ' is-selected' : ''}`,
             interactive: false,
             color,
             weight: active ? 1.5 : 1,
@@ -172,6 +179,16 @@ export class OperationalMap {
             fillOpacity: active ? 0.12 : 0.045,
           }).addTo(this.haloLayer);
         }
+        L.circle([location.coordinates.lat, location.coordinates.lng], {
+          radius: location.radiusMeters,
+          pane: 'incident-halos',
+          className: 'incident-range-wave',
+          interactive: false,
+          color,
+          weight: active ? 2 : 1.5,
+          opacity: 0.75,
+          fill: false,
+        }).addTo(this.haloLayer);
       }
     });
 
@@ -197,6 +214,7 @@ export class OperationalMap {
 
     effect(() => {
       if (this.selectedUnitId()) this.showUnits.set(true);
+      if (this.selectedIncidentId()) this.showIncidents.set(true);
     });
 
     effect(() => {
@@ -241,7 +259,7 @@ export class OperationalMap {
     });
   }
 
-  protected fitLocations(): void {
+  protected fitLocations(animate = true): void {
     const visible = this.visibleLocations();
     if (visible.length && this.map) {
       this.map.invalidateSize({ pan: false });
@@ -255,10 +273,11 @@ export class OperationalMap {
         )
           points.push(...state.route.path);
       }
-      this.map.fitBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
+      this.map.flyToBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
         padding: [48, 58],
         maxZoom: 15,
-        animate: false,
+        animate: animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
       });
     }
   }
@@ -352,7 +371,6 @@ export class OperationalMap {
       if (!marker) {
         marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
           icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
-          title: `${location.label} · ${location.address}`,
           alt: location.label,
           keyboard: true,
         }).addTo(this.markerLayer);
@@ -363,13 +381,15 @@ export class OperationalMap {
             location,
             untracked(() => this.routeStates().get(location.id)),
           ),
-          { maxWidth: 250 },
+          { maxWidth: 250, autoPan: false },
         );
         marker.on('click', () => {
-          if (location.kind === 'unit') this.unitSelected.emit(location.id);
-          else if (location.kind === 'incident' && location.incidentId)
-            this.incidentSelected.emit(location.incidentId);
+          this.selectLocation(location);
         });
+        marker.on('mouseover', () => this.labels?.hover(location.id, true));
+        marker.on('mouseout', () => this.labels?.hover(location.id, false));
+        marker.getElement()?.addEventListener('focus', () => this.labels?.hover(location.id, true));
+        marker.getElement()?.addEventListener('blur', () => this.labels?.hover(location.id, false));
         marker.on('popupopen', () => {
           const current = this.resolvedLocations().find((item) => item.id === location.id);
           if (current)
@@ -382,11 +402,21 @@ export class OperationalMap {
         }
         const point = L.latLng(location.coordinates.lat, location.coordinates.lng);
         if (!marker.getLatLng().equals(point)) marker.setLatLng(point);
-        marker.getElement()?.setAttribute('title', `${location.label} · ${location.address}`);
       }
+      const state = this.routeStates().get(location.id);
+      if (location.route?.status === 'active' && state?.status === 'ready') {
+        marker.closePopup();
+        marker.unbindPopup();
+      } else if (!marker.getPopup()) {
+        marker.bindPopup(this.popupContent(location, state), { maxWidth: 250, autoPan: false });
+        if (selected) marker.openPopup();
+      }
+      if (!selected) marker.closePopup();
+      marker.getElement()?.setAttribute('aria-label', location.label);
       marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
       if (selected) selectedMarker = marker;
     }
+    const focusId = this.focusedLocationId();
     const locationKey = locations.map((location) => location.id).join('|');
     const selectionKey = selectedUnitId
       ? `unit:${selectedUnitId}`
@@ -395,18 +425,59 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
-      this.fitFrame = requestAnimationFrame(() => {
-        this.fitFrame = undefined;
-        if (!this.destroyRef.destroyed) untracked(() => this.fitLocations());
-      });
-    } else if (selectionKey !== this.lastSelection && selectedMarker) {
+      // El ajuste inicial espera un fotograma: encuadrar mientras el lienzo aún es bajo elige un
+      // zoom que deja los marcadores fuera. Si hay un elemento enfocado, manda el enfoque.
       if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
       this.fitFrame = undefined;
-      this.map.panTo(selectedMarker.getLatLng(), { animate: false });
+      if (!focusId)
+        this.fitFrame = requestAnimationFrame(() => {
+          this.fitFrame = undefined;
+          if (!this.destroyRef.destroyed) untracked(() => this.fitLocations());
+        });
+    } else if (
+      selectionKey !== this.lastSelection &&
+      selectedMarker &&
+      focusId === this.lastFocus
+    ) {
+      if (this.fitFrame !== undefined) cancelAnimationFrame(this.fitFrame);
+      this.fitFrame = undefined;
+      this.map.flyTo(selectedMarker.getLatLng(), this.map.getZoom(), {
+        animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
+      });
       selectedMarker.openPopup();
     }
     this.lastSelection = selectionKey;
+    const focused = visible.find((location) => location.id === focusId);
+    if (focusId !== this.lastFocus) {
+      if (focused) {
+        this.map.flyTo([focused.coordinates.lat, focused.coordinates.lng], 15, {
+          animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+          duration: 0.65,
+        });
+        this.lastFocus = focusId;
+      } else if (!focusId && this.lastFocus) {
+        untracked(() => this.fitLocations());
+        this.lastFocus = null;
+      }
+    }
+    this.renderLabels();
+  }
+
+  private selectLocation(location: MapLocation): void {
+    if (location.kind === 'unit') this.unitSelected.emit(location.id);
+    else if (location.kind === 'incident' && location.incidentId)
+      this.incidentSelected.emit(location.incidentId);
+  }
+
+  private renderLabels(): void {
+    this.labels?.render(
+      this.visibleLocations(),
+      this.markers,
+      this.routeStates(),
+      this.selectedUnitId(),
+      this.selectedIncidentId(),
+    );
   }
 
   private async loadRoutes(locations: readonly MapLocation[], signal: AbortSignal): Promise<void> {
@@ -511,10 +582,7 @@ export class OperationalMap {
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
     symbol.append(createIconSvg(location.icon));
-    const label = document.createElement('span');
-    label.className = 'marker-label';
-    label.textContent = location.label;
-    element.append(symbol, label);
+    element.append(symbol);
     const size = location.kind === 'incident' ? 46 : 34;
     return L.divIcon({
       html: element,

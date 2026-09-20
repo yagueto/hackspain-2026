@@ -1,88 +1,37 @@
-<section class="timeline-section" aria-labelledby="timeline-heading">
-  <div class="panel-heading">
-    <div class="heading-title">
-      <app-icon name="radio" />
-      <h2 id="timeline-heading">Línea temporal</h2>
-      <span class="count-badge">{{ timeline().length }}</span>
-    </div>
-  </div>
-  <p class="sr-only" role="status">
-    {{ timeline().length }} eventos. Último evento: {{ timeline().at(-1)?.title }}.
-    {{ timeline().at(-1)?.description }}
-  </p>
-  @if (updateError()) {
-    <p class="update-error" role="alert">
-      Se ha interrumpido la recepción de eventos. Se mantiene la última información recibida.
-    </p>
-  }
-  <ol class="timeline" tabindex="0" aria-label="Eventos de la incidencia en orden cronológico">
-    @for (event of timeline(); track event.id) {
-      <li class="timeline-event">
-        <time [attr.datetime]="event.occurredAt" [attr.title]="event.occurredAt">{{
-          event.occurredAt | date: 'dd/MM · HH:mm' : '+0200'
-        }}</time>
-        <span class="timeline-dot" aria-hidden="true"></span>
-        <h3>{{ event.title }}</h3>
-        <p>{{ event.description }}</p>
-        <span class="event-source">{{ event.source }}</span>
-      </li>
-    } @empty {
-      <li class="empty-state">Todavía no hay eventos registrados.</li>
-    }
-  </ol>
-</section>
-<div class="incident-facts">
+<div class="detail-facts incident-facts">
   <section class="fact" aria-label="Ubicación">
     <app-icon name="pin" />
-    <div>
-      <p>{{ incident().address }}</p>
-      <span>{{ incident().area }}</span>
-    </div>
+    <p>{{ incident().address }}</p>
   </section>
   <section class="fact" aria-label="Personas implicadas">
-    <app-icon name="walk" />
-    <div>
-      <p class="affected-count">
-        {{ details()?.affected ?? 'Sin confirmar' }}
-        {{ details()?.affected == null ? '' : 'personas' }}
-      </p>
-      <span>{{ details()?.affectedNote }}</span>
-    </div>
+    <app-icon name="user" />
+    <p class="affected-count">
+      {{ details()?.affected ?? 'Sin confirmar' }}
+      {{ details()?.affected == null ? '' : details()?.affected === 1 ? 'persona' : 'personas' }}
+      <span>
+        ·
+        @if (details()?.assistanceNeeded != null) {
+          {{ details()?.assistanceNeeded }}
+          {{ details()?.assistanceNeeded === 1 ? 'necesita' : 'necesitan' }} asistencia
+        } @else {
+          Asistencia sin confirmar
+        }
+      </span>
+    </p>
+    @if (details()?.affectedNote) {
+      <p class="affected-note">{{ details()?.affectedNote }}</p>
+    }
   </section>
 </div>
-<section class="services-section" aria-labelledby="services-heading">
-  <div class="panel-heading">
-    <div class="heading-title">
-      <app-icon name="truck" />
-      <h2 id="services-heading">Servicios asociados</h2>
-      <span class="count-badge">{{ services().length }}</span>
-    </div>
-  </div>
-  <div class="services-list">
-    @for (unit of services(); track unit.id) {
-      <button
-        type="button"
-        class="service-card"
-        [class.selected]="selectedUnitId() === unit.id"
-        [attr.aria-pressed]="selectedUnitId() === unit.id"
-        [attr.aria-label]="'Localizar ' + unit.label + ' en el mapa'"
-        (click)="unitSelected.emit(unit.id)"
-      >
-        <span class="incident-icon"><app-icon [name]="unit.icon" /></span>
-        <span class="service-info"
-          ><strong
-            >{{ unit.label }} <span>· {{ serviceName(unit) }}</span></strong
-          ><span>{{ unit.address }}</span></span
-        >
-        <span class="service-action"
-          ><span class="badge" [class.en-route]="unit.route?.status === 'active'">{{
-            serviceStatus(unit)
-          }}</span
-          ><span class="locate-label"><app-icon name="locate" />Localizar</span></span
-        >
-      </button>
-    } @empty {
-      <p class="empty-state">No hay servicios asignados a esta incidencia.</p>
-    }
-  </div>
-</section>
+<app-service-feed
+  [associated]="true"
+  [communications]="communications()"
+  [resources]="projectedServices()"
+  [selectedUnitId]="selectedUnitId()"
+  (unitSelected)="unitSelected.emit($event)"
+/>
+<app-operation-timeline
+  [incidentId]="incident().id"
+  [events]="timeline()"
+  [updateError]="updateError()"
+/>

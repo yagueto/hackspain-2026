@@ -1,3 +1,19 @@
 <a class="skip-link" href="#main-content">Saltar al contenido</a>
 <app-header />
 <main id="main-content" tabindex="-1"><router-outlet /></main>
+<footer class="statusbar">
+  <span
+    class="connection"
+    [class.unstable]="!connection.stable()"
+    role="status"
+    aria-live="polite"
+    title="Conectividad del navegador y recepción de eventos."
+  >
+    {{ connection.stable() ? 'Stable connection' : 'Unstable connection' }}
+    <span class="signal-bars" aria-hidden="true">
+      @for (bar of [1, 2, 3]; track bar) {
+        <span [class.active]="bar <= connection.bars()"></span>
+      }
+    </span>
+  </span>
+</footer>

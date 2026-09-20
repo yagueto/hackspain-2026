@@ -179,6 +179,9 @@ export class IncidentStore {
                   : 'Tráfico',
             openedAt: report?.timestamp || state?.incident.started_at || '',
             affected: report?.victims.count ?? zone?.civilians_present ?? null,
+            // El backend solo cuenta heridos por zona. Un aviso ciudadano describe el estado de
+            // las víctimas con banderas, no con un recuento, así que no se inventa una cifra.
+            assistanceNeeded: report ? null : (zone?.injured ?? null),
             affectedNote: report
               ? [
                   report.victims.trapped ? 'Personas atrapadas' : '',
