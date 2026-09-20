@@ -169,13 +169,15 @@
         </dl>
         <div class="detail-facts resource-summary">
           <section class="fact" aria-label="Ubicación">
+            <app-icon name="pin" />
             <p>{{ unit.address }}</p>
           </section>
           <section class="fact" aria-label="Personal asignado">
-            <div>
-              <p>{{ profile()?.crew ?? 'Sin confirmar' }} {{ profile() ? 'efectivos' : '' }}</p>
-              <span>{{ communication()?.agent ?? 'Responsable sin confirmar' }}</span>
-            </div>
+            <app-icon name="user" />
+            <p>
+              {{ profile()?.crew ?? 'Sin confirmar' }} {{ profile() ? 'efectivos' : '' }}
+              <span> · {{ communication()?.agent ?? 'Responsable sin confirmar' }}</span>
+            </p>
           </section>
         </div>
         <section class="panel assignment-section" aria-labelledby="assignment-heading">

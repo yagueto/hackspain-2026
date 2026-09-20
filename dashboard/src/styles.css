@@ -10,6 +10,7 @@
 
 :root {
   color-scheme: light;
+  --page-inset: 24px;
   --background: #fafafa;
   --panel: #fff;
   --border: #e3e3e3;
@@ -37,6 +38,10 @@
   --attention-border: #ac2836;
   --attention-option-border: #e6a5ab;
   --attention-text: #1d1313;
+  --attention-text-highlight: #861c29;
+  --attention-row-text: var(--attention-text-highlight);
+  --attention-overlay: rgb(172 40 54 / 5%);
+  --attention-overlay-highlight: rgb(172 40 54 / 18%);
   font-family:
     'Inter',
     system-ui,
@@ -69,11 +74,15 @@
   --marker-selected-icon: #000;
   --danger: #f0a4af;
   --danger-surface: #29181b;
+  --attention-row-text: #f0a4af;
 }
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) transparent;
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: 350ms;
+  transition-timing-function: ease-in-out;
 }
 *::-webkit-scrollbar {
   width: 4px;
@@ -93,6 +102,16 @@ body {
 }
 body {
   -webkit-font-smoothing: antialiased;
+}
+@media (max-width: 1000px) {
+  :root {
+    --page-inset: 16px;
+  }
+}
+@media (max-width: 700px) {
+  :root {
+    --page-inset: 12px;
+  }
 }
 button,
 input,
@@ -225,6 +244,44 @@ h2 {
   background: none;
   border: 0;
 }
+.incident-range {
+  --glow-radius: 6px;
+  animation: incident-range-glow 2.8s ease-in-out infinite;
+}
+.incident-range.is-selected {
+  --glow-radius: 9px;
+}
+.incident-range-wave {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: incident-range-wave 2.8s ease-out infinite;
+  filter: drop-shadow(0 0 5px var(--muted));
+}
+@keyframes incident-range-wave {
+  0% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes incident-range-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    filter: drop-shadow(0 0 1px var(--muted));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 var(--glow-radius) var(--muted));
+  }
+}
 .map-marker {
   position: relative;
   width: 34px;
@@ -305,6 +362,9 @@ h2 {
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
+.marker-labels.is-measuring .marker-label-details:not([hidden]) {
+  display: none;
+}
 .marker-label:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 2px;
@@ -379,11 +439,17 @@ h2 {
 @keyframes attention-pulse {
   0%,
   100% {
-    background-color: var(--attention-background);
+    background-color: var(--attention-overlay);
+    color: var(--text);
   }
   50% {
-    background-color: var(--attention-highlight);
+    background-color: var(--attention-overlay-highlight);
+    color: var(--attention-row-text);
   }
+}
+.incident-row.awaiting-human,
+.incident-row.awaiting-human * {
+  transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -6,10 +6,11 @@ import { IncidentDetails, IncidentEvent } from './incidents.mock';
 import { OperationTimeline } from '../home/operation-log/operation-timeline';
 import { ServiceFeed } from '../home/service-feed/service-feed';
 import { MOCK_RESOURCE_PROFILES } from '../resources/resources.mock';
+import { Icon } from '../../shared/icon/icon';
 
 @Component({
   selector: 'app-incident-activity',
-  imports: [OperationTimeline, ServiceFeed],
+  imports: [OperationTimeline, ServiceFeed, Icon],
   templateUrl: './incident-activity.html',
   styleUrl: './incident-activity.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

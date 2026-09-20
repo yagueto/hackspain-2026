@@ -3,7 +3,7 @@
 }
 .detail-facts {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
   gap: 10px;
   margin: 16px 0;
 }
@@ -15,7 +15,13 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--tag);
+  background: transparent;
+}
+.fact app-icon {
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  color: var(--muted);
 }
 .fact p {
   font-size: 13px;
@@ -23,8 +29,6 @@
   overflow-wrap: anywhere;
 }
 .fact span {
-  display: block;
-  margin-top: 6px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;

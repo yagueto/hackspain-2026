@@ -42,6 +42,14 @@ interface LabelRow {
   destination: HTMLElement;
 }
 
+interface LabelSite {
+  point: L.Point;
+  radius: number;
+  width: number;
+  height: number;
+  groups: Set<HTMLElement>;
+}
+
 export class MarkerLabels {
   private readonly rows = new Map<string, LabelRow>();
   private readonly groups = new Map<string, HTMLElement>();
@@ -110,7 +118,7 @@ export class MarkerLabels {
         group.addEventListener('focusout', () => queueMicrotask(() => this.refreshHover()));
         this.groups.set(key, group);
       }
-      group.hidden = this.map.getZoom() < 12;
+      group.hidden = false;
       for (const location of locationsInGroup) {
         const persistent =
           location.kind !== 'unit' ||
@@ -206,6 +214,50 @@ export class MarkerLabels {
       this.groups.delete(key);
     }
     this.refreshHover();
+    this.hideOverlappingLabels(locations);
+  }
+
+  private hideOverlappingLabels(locations: readonly MapLocation[]): void {
+    for (const group of this.groups.values()) group.classList.add('is-measuring');
+    const sites = new Map<string, LabelSite>();
+    for (const location of locations) {
+      const row = this.rows.get(location.id);
+      const group = this.membership.get(location.id);
+      if (!row || !group || !row.element.classList.contains('is-persistent')) continue;
+      const bounds = row.element.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) continue;
+      const { lat, lng } = location.coordinates;
+      const key = `${lat}:${lng}`;
+      const radius = location.kind === 'incident' ? 23 : 17;
+      const site = sites.get(key) ?? {
+        point: this.map.latLngToLayerPoint([lat, lng]),
+        radius,
+        width: 0,
+        height: 0,
+        groups: new Set<HTMLElement>(),
+      };
+      site.radius = Math.max(site.radius, radius);
+      site.width = Math.max(site.width, bounds.width);
+      site.height += bounds.height + (site.height ? 3 : 0);
+      site.groups.add(group);
+      sites.set(key, site);
+    }
+    const footprints = [...sites.values()].map((site) => {
+      const start = site.point.add([site.radius + 5, -site.radius]);
+      return { bounds: L.bounds(start, start.add([site.width, site.height])), groups: site.groups };
+    });
+    const hidden = new Set<HTMLElement>();
+    for (const [index, footprint] of footprints.entries()) {
+      for (const other of footprints.slice(index + 1)) {
+        if (!footprint.bounds.overlaps(other.bounds)) continue;
+        for (const group of footprint.groups) hidden.add(group);
+        for (const group of other.groups) hidden.add(group);
+      }
+    }
+    for (const group of this.groups.values()) {
+      group.classList.remove('is-measuring');
+      group.hidden = hidden.has(group);
+    }
   }
 
   private text(element: HTMLElement, text: string): void {

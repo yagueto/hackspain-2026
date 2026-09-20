@@ -30,9 +30,14 @@ export class Header {
     minute: '2-digit',
     hour12: false,
   });
+  private readonly compactDateFormatter = new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+  });
   protected readonly now = signal(new Date());
   protected readonly date = computed(() => this.dateFormatter.format(this.now()));
   protected readonly time = computed(() => this.timeFormatter.format(this.now()));
+  protected readonly compactDate = computed(() => this.compactDateFormatter.format(this.now()));
 
   constructor() {
     afterNextRender(() => {

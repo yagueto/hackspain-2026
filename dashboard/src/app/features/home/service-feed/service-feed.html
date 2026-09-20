@@ -25,33 +25,38 @@
       </button>
     }
   </div>
-  @if (filtersOpen()) {
+  @if (!associated()) {
     <div
       id="resource-filters"
-      class="filters"
-      role="group"
-      aria-label="Filtrar recursos por categoría"
+      class="filters-collapse"
+      [class.is-open]="filtersOpen()"
+      [inert]="!filtersOpen()"
+      [attr.aria-hidden]="!filtersOpen()"
     >
-      <button
-        type="button"
-        class="category-chip"
-        [class.is-active]="!filterCount()"
-        [attr.aria-pressed]="!filterCount()"
-        (click)="selectedServices.set([])"
-      >
-        Todos
-      </button>
-      @for (service of services(); track service) {
-        <button
-          type="button"
-          class="category-chip"
-          [class.is-active]="selectedServices().includes(service)"
-          [attr.aria-pressed]="selectedServices().includes(service)"
-          (click)="toggleService(service)"
-        >
-          {{ service }}
-        </button>
-      }
+      <div class="filters-clip">
+        <div class="filters" role="group" aria-label="Filtrar recursos por categoría">
+          <button
+            type="button"
+            class="category-chip"
+            [class.is-active]="!filterCount()"
+            [attr.aria-pressed]="!filterCount()"
+            (click)="selectedServices.set([])"
+          >
+            Todos
+          </button>
+          @for (service of services(); track service) {
+            <button
+              type="button"
+              class="category-chip"
+              [class.is-active]="selectedServices().includes(service)"
+              [attr.aria-pressed]="selectedServices().includes(service)"
+              (click)="toggleService(service)"
+            >
+              {{ service }}
+            </button>
+          }
+        </div>
+      </div>
     </div>
   }
   <div

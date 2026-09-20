@@ -127,7 +127,7 @@ export class OperationalMap {
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
       this.labels = new MarkerLabels(this.map, (location) => this.selectLocation(location));
-      this.map.on('zoomend moveend resize', () => this.renderLabels());
+      this.map.on('zoom move resize', () => this.renderLabels());
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);
@@ -168,6 +168,7 @@ export class OperationalMap {
           L.circle([location.coordinates.lat, location.coordinates.lng], {
             radius: location.radiusMeters * scale,
             pane: 'incident-halos',
+            className: `incident-range${active ? ' is-selected' : ''}`,
             interactive: false,
             color,
             weight: active ? 1.5 : 1,
@@ -176,6 +177,16 @@ export class OperationalMap {
             fillOpacity: active ? 0.12 : 0.045,
           }).addTo(this.haloLayer);
         }
+        L.circle([location.coordinates.lat, location.coordinates.lng], {
+          radius: location.radiusMeters,
+          pane: 'incident-halos',
+          className: 'incident-range-wave',
+          interactive: false,
+          color,
+          weight: active ? 2 : 1.5,
+          opacity: 0.75,
+          fill: false,
+        }).addTo(this.haloLayer);
       }
     });
 
@@ -241,7 +252,7 @@ export class OperationalMap {
     });
   }
 
-  protected fitLocations(): void {
+  protected fitLocations(animate = true): void {
     const visible = this.visibleLocations();
     if (visible.length && this.map) {
       const points = visible.map((location) => location.coordinates);
@@ -254,10 +265,11 @@ export class OperationalMap {
         )
           points.push(...state.route.path);
       }
-      this.map.fitBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
+      this.map.flyToBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
         padding: [48, 58],
         maxZoom: 15,
-        animate: false,
+        animate: animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
       });
     }
   }
@@ -361,7 +373,7 @@ export class OperationalMap {
             location,
             untracked(() => this.routeStates().get(location.id)),
           ),
-          { maxWidth: 250 },
+          { maxWidth: 250, autoPan: false },
         );
         marker.on('click', () => {
           this.selectLocation(location);
@@ -388,9 +400,10 @@ export class OperationalMap {
         marker.closePopup();
         marker.unbindPopup();
       } else if (!marker.getPopup()) {
-        marker.bindPopup(this.popupContent(location, state), { maxWidth: 250 });
+        marker.bindPopup(this.popupContent(location, state), { maxWidth: 250, autoPan: false });
         if (selected) marker.openPopup();
       }
+      if (!selected) marker.closePopup();
       marker.getElement()?.setAttribute('aria-label', location.label);
       marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
       if (selected) selectedMarker = marker;
@@ -404,17 +417,25 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      if (!focusId) untracked(() => this.fitLocations());
-    } else if (selectionKey !== this.lastSelection && selectedMarker) {
-      this.map.panTo(selectedMarker.getLatLng(), { animate: false });
+      if (!focusId) untracked(() => this.fitLocations(false));
+    } else if (
+      selectionKey !== this.lastSelection &&
+      selectedMarker &&
+      focusId === this.lastFocus
+    ) {
+      this.map.flyTo(selectedMarker.getLatLng(), this.map.getZoom(), {
+        animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
+      });
       selectedMarker.openPopup();
     }
     this.lastSelection = selectionKey;
     const focused = visible.find((location) => location.id === focusId);
     if (focusId !== this.lastFocus) {
       if (focused) {
-        this.map.setView([focused.coordinates.lat, focused.coordinates.lng], 15, {
-          animate: false,
+        this.map.flyTo([focused.coordinates.lat, focused.coordinates.lng], 15, {
+          animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+          duration: 0.65,
         });
         this.lastFocus = focusId;
       } else if (!focusId && this.lastFocus) {

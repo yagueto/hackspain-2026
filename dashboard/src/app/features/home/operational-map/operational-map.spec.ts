@@ -120,4 +120,40 @@ describe('OperationalMap', () => {
     );
     expect(fixture.nativeElement.querySelector('.marker-label img')).toBeNull();
   });
+
+  it('closes a resource popup and removes its persistent label when selection is cleared', async () => {
+    const unit = { ...MOCK_UNITS[0], route: undefined };
+    const fixture = TestBed.createComponent(OperationalMap);
+    fixture.componentRef.setInput('locations', [unit]);
+    await fixture.whenStable();
+    fixture.componentRef.setInput('selectedUnitId', unit.id);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.leaflet-popup')).not.toBeNull();
+    expect(element.querySelector('.marker-label.is-persistent')).not.toBeNull();
+    fixture.componentRef.setInput('selectedUnitId', null);
+    await fixture.whenStable();
+    expect(element.querySelector('.leaflet-popup')).toBeNull();
+    expect(element.querySelector('.marker-label.is-persistent')).toBeNull();
+  });
+
+  it('closes an incident popup when selection is cleared', async () => {
+    const incident = {
+      ...MOCK_UNITS[0],
+      id: 'INC-1',
+      kind: 'incident' as const,
+      incidentId: 'INC-1',
+      route: undefined,
+    };
+    const fixture = TestBed.createComponent(OperationalMap);
+    fixture.componentRef.setInput('locations', [incident]);
+    await fixture.whenStable();
+    fixture.componentRef.setInput('selectedIncidentId', incident.id);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.leaflet-popup')).not.toBeNull();
+    fixture.componentRef.setInput('selectedIncidentId', null);
+    await fixture.whenStable();
+    expect(element.querySelector('.leaflet-popup')).toBeNull();
+  });
 });

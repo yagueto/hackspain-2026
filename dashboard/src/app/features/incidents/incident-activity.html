@@ -1,22 +1,23 @@
 <div class="detail-facts incident-facts">
   <section class="fact" aria-label="Ubicación">
+    <app-icon name="pin" />
     <p>{{ incident().address }}</p>
   </section>
   <section class="fact" aria-label="Personas implicadas">
-    <div>
-      <p class="affected-count">
-        {{ details()?.affected ?? 'Sin confirmar' }}
-        {{ details()?.affected == null ? '' : details()?.affected === 1 ? 'persona' : 'personas' }}
-      </p>
-      @if (details()?.assistanceNeeded != null) {
-        <span>
+    <app-icon name="user" />
+    <p class="affected-count">
+      {{ details()?.affected ?? 'Sin confirmar' }}
+      {{ details()?.affected == null ? '' : details()?.affected === 1 ? 'persona' : 'personas' }}
+      <span>
+        ·
+        @if (details()?.assistanceNeeded != null) {
           {{ details()?.assistanceNeeded }}
           {{ details()?.assistanceNeeded === 1 ? 'necesita' : 'necesitan' }} asistencia
-        </span>
-      } @else {
-        <span>Asistencia sin confirmar</span>
-      }
-    </div>
+        } @else {
+          Asistencia sin confirmar
+        }
+      </span>
+    </p>
   </section>
 </div>
 <app-service-feed

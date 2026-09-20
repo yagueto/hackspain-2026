@@ -152,4 +152,57 @@ describe('Marker labels', () => {
       group.querySelector('[data-location-id="R-1"]')?.classList.contains('is-persistent'),
     ).toBe(true);
   });
+
+  describe('collision-based visibility', () => {
+    beforeEach(() => {
+      const measure = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        if (this.classList.contains('marker-label')) return new DOMRect(0, 0, 120, 28);
+        return measure.call(this);
+      });
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('hides colliding names above zoom 12 and restores them when they separate', () => {
+      const locations = [location('INC-1', 'incident', 0), location('INC-2', 'incident', 260)];
+      map.setZoom(14);
+      render(locations);
+      expect(container.querySelectorAll('.marker-labels[hidden]')).toHaveLength(0);
+      map.setZoom(13);
+      render(locations);
+      expect(container.querySelectorAll('.marker-labels[hidden]')).toHaveLength(2);
+      map.setZoom(14);
+      render(locations);
+      expect(container.querySelectorAll('.marker-labels[hidden]')).toHaveLength(0);
+    });
+
+    it('keeps a coincident incident/resource stack visible without a fixed zoom cutoff', () => {
+      const incident = location('INC-1', 'incident', 0);
+      const unit = location('R-1', 'unit', 0);
+      map.setZoom(10);
+      render([unit, incident], unit.id);
+      const group = container.querySelector<HTMLElement>('.marker-labels')!;
+      expect(group.hidden).toBe(false);
+      expect(
+        [...group.children].map((element) => element.getAttribute('data-location-id')),
+      ).toEqual(['INC-1', 'R-1']);
+    });
+
+    it('keeps merged groups hidden at lower zooms and ignores unselected resource names', () => {
+      const incident = location('INC-1', 'incident', 0);
+      const unit = location('R-1', 'unit', 100);
+      render([incident, unit]);
+      expect(container.querySelectorAll('.marker-labels[hidden]')).toHaveLength(0);
+      render([incident, unit], unit.id);
+      expect(container.querySelectorAll('.marker-labels[hidden]')).toHaveLength(2);
+      map.setZoom(12);
+      render([incident, unit], unit.id);
+      labels.hover(unit.id, true);
+      const group = container.querySelector<HTMLElement>('.marker-labels')!;
+      expect(group.hidden).toBe(true);
+    });
+  });
 });

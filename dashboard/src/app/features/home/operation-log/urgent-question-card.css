@@ -7,7 +7,7 @@
   border: 1px solid var(--attention-border);
   border-radius: 8px;
   background: var(--attention-background);
-  color: var(--attention-text);
+  color: var(--attention-text-highlight);
   color-scheme: light;
 }
 header {
@@ -22,10 +22,7 @@ header {
   font-variant-numeric: tabular-nums;
   font-size: 16px;
   font-weight: 650;
-  color: var(--attention-text);
-}
-.last-seconds {
-  color: var(--attention-border);
+  color: inherit;
 }
 h3 {
   margin: 0;
@@ -49,7 +46,7 @@ fieldset {
   border: 1px solid var(--attention-option-border);
   border-radius: 5px;
   background: transparent;
-  color: var(--attention-text);
+  color: inherit;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
@@ -70,7 +67,7 @@ input {
   display: grid;
   gap: 6px;
   margin-top: 8px;
-  color: var(--attention-text);
+  color: inherit;
   font-size: 12px;
 }
 textarea {
@@ -82,7 +79,7 @@ textarea {
   background: var(--attention-background);
   border: 1px solid var(--attention-option-border);
   border-radius: 5px;
-  color: var(--attention-text);
+  color: inherit;
   font: inherit;
   line-height: 1.5;
 }
@@ -90,13 +87,17 @@ textarea:focus-visible {
   outline: 2px solid var(--attention-border);
   outline-offset: 2px;
 }
+textarea::placeholder {
+  color: inherit;
+  opacity: 1;
+}
 .submit-answer {
   width: 100%;
   padding: 8px;
   margin-top: 12px;
   border: 1px solid var(--attention-border);
   border-radius: 5px;
-  color: var(--attention-text);
+  color: inherit;
   background: var(--attention-highlight);
   font-size: 12px;
   font-weight: 600;
@@ -106,11 +107,12 @@ textarea:focus-visible {
   background: var(--attention-option-border);
 }
 .submit-answer:disabled {
-  opacity: 0.4;
+  background: var(--attention-background);
+  border-color: var(--attention-option-border);
   cursor: not-allowed;
 }
 .answer-error {
   margin-bottom: 8px;
-  color: var(--attention-border);
+  color: inherit;
   font-size: 12px;
 }

@@ -1,31 +1,28 @@
 <header class="topbar">
   <span class="brand">CrisisOS</span>
   <div class="header-meta">
-    <time class="date" [attr.datetime]="now().toISOString()"
-      >{{ date() }} <span class="clock">{{ time() }}</span></time
+    <button
+      class="theme-toggle"
+      type="button"
+      aria-label="Modo oscuro"
+      [attr.aria-pressed]="theme.current() === 'dark'"
+      [title]="theme.current() === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'"
+      (click)="theme.toggle()"
     >
-    <details class="profile" #profile (keydown.escape)="profile.open = false">
-      <summary aria-label="Menú de Ander. Cambiar tema">
-        <span class="profile-name">Ander</span>
-        <span class="avatar" aria-hidden="true">A</span>
-      </summary>
-      <div class="profile-menu" aria-label="Apariencia">
-        <span class="menu-label">Apariencia</span>
-        <button
-          type="button"
-          [attr.aria-pressed]="theme.current() === 'light'"
-          (click)="theme.set('light')"
-        >
-          <app-icon name="sun" /> Tema claro
-        </button>
-        <button
-          type="button"
-          [attr.aria-pressed]="theme.current() === 'dark'"
-          (click)="theme.set('dark')"
-        >
-          <app-icon name="moon" /> Tema oscuro
-        </button>
-      </div>
-    </details>
+      <app-icon name="moon" />
+    </button>
+    <time
+      class="date"
+      [attr.datetime]="now().toISOString()"
+      [attr.aria-label]="date() + ' ' + time()"
+    >
+      <span class="full-date">{{ date() }}</span>
+      <span class="compact-date">{{ compactDate() }}</span>
+      <span class="clock">{{ time() }}</span>
+    </time>
+    <div class="profile">
+      <span class="profile-name">Ander</span>
+      <span class="avatar" aria-hidden="true">A</span>
+    </div>
   </div>
 </header>

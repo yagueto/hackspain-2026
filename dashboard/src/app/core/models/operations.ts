@@ -19,6 +19,7 @@ export type IconName =
   | 'back'
   | 'close'
   | 'pin'
+  | 'user'
   | 'radio'
   | 'log'
   | 'disabled'

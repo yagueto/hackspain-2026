@@ -139,9 +139,15 @@ export class ResourceRouteLayer {
       selectedLocation.route?.via,
     ]);
     if (journey !== this.focusedJourney) {
-      this.map.fitBounds(
+      this.map.flyToBounds(
         L.latLngBounds(selectedRoute.path.map((point) => [point.lat, point.lng])),
-        { paddingTopLeft: [75, 100], paddingBottomRight: [75, 65], maxZoom: 15, animate: false },
+        {
+          paddingTopLeft: [75, 100],
+          paddingBottomRight: [75, 65],
+          maxZoom: 15,
+          animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+          duration: 0.65,
+        },
       );
       this.focusedJourney = journey;
     }
