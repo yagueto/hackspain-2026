@@ -116,6 +116,13 @@
                 >
                   Confirmar coordenadas manuales
                 </button>
+                @if (hasLiveMission()) {
+                  <p class="replan-warning">
+                    Hay una misión en curso: corregir el destino anula su orden y el agente
+                    replanifica hacia el punto nuevo. La unidad ya avisada no se declara libre hasta
+                    que lo reporte.
+                  </p>
+                }
               </details>
               @for (task of reportTasks(); track task.id) {
                 <div

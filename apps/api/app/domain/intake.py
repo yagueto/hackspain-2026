@@ -79,10 +79,12 @@ def prepare_intake_tasks(state: WorldState, report: IncomingCall) -> bool:
             TaskStatus.awaiting_approval,
             TaskStatus.proposed,
         ):
-            # Se puede reabrir mientras ninguna orden haya llegado a salir: una decisión
-            # automática siempre deja orden preparada, pero anulada no movilizó a nadie.
-            can_reopen = previous.status == TaskStatus.cancelled and all(
-                state.actions[aid].status == ActionStatus.skipped
+            # Una misión cancelada se puede replanificar mientras no quede ninguna orden
+            # nuestra a medio camino. Si su llamada ya salió, la cancelación pide anular ese
+            # run y el aviso necesita una misión nueva al destino corregido: la unidad vieja
+            # no se declara libre por eso, hará falta un parte de campo.
+            can_reopen = previous.status == TaskStatus.cancelled and not any(
+                state.actions[aid].status in (ActionStatus.pending, ActionStatus.sending)
                 for aid in previous.action_ids
                 if aid in state.actions
             )

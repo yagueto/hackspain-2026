@@ -426,7 +426,8 @@ async def test_address_without_gps_is_geocoded_and_dispatched_as_approximate() -
             await rt.orchestrator.locate_pending_reports()
             assert (await client.get("/api/v1/state")).json()["version"] == state["version"]
             assert len(requests) == 1
-            # Con una misión en curso, el destino no se cambia por detrás.
+            # Corregir el destino con la misión en curso la replanifica, no la bloquea.
+            stale = (await client.get("/api/v1/tasks")).json()[0]["id"]
             corrected = await client.post(
                 "/api/v1/control/incoming-calls/incoming-test-1/location",
                 headers={"X-API-Key": "test"},
@@ -435,7 +436,11 @@ async def test_address_without_gps_is_geocoded_and_dispatched_as_approximate() -
                     "location": {"lat": 40.2, "lng": -4.3, "label": "Revisado", "kind": "manual"},
                 },
             )
-            assert corrected.status_code == 409
+            assert corrected.status_code == 200
+            assert corrected.json()["resolution"]["selected"]["lat"] == 40.2
+            task = next(t for t in (await client.get("/api/v1/tasks")).json() if t["id"] == stale)
+            assert task["target_location"]["lat"] == 40.2
+            assert task["status"] != "cancelled"  # replanificada hacia el destino bueno
 
 
 async def test_unresolvable_location_blocks_dispatch_without_cancelling() -> None:
@@ -532,6 +537,49 @@ async def test_geocoder_result_cannot_overwrite_a_newer_report() -> None:
             state = (await client.get("/api/v1/state")).json()
             assert state["incoming_calls"][0]["resolution"]["selected"] is None
             assert state["tasks"][0]["target_location"]["lat"] == 40.6564
+
+
+async def test_correcting_the_destination_replans_a_mission_already_on_its_way(
+    client: httpx.AsyncClient,
+) -> None:
+    """El operador corrige el destino sin tener que cancelar antes: la corrección manda."""
+    headers = {"X-API-Key": "test"}
+    payload = report()
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=payload)
+    rt = runtime_of(client)
+    original = (await client.get("/api/v1/tasks")).json()[0]
+    assert original["status"] == "dispatching"
+    # La orden sale de verdad: ya no es una simple propuesta en el outbox.
+    async with rt.orchestrator.edit() as s:
+        s.actions[original["action_ids"][0]].hold_until = None
+    await rt.orchestrator.dispatch_pending()
+    sent = (await client.get("/api/v1/actions")).json()[0]
+    assert sent["status"] == "dispatched"
+
+    response = await client.post(
+        "/api/v1/control/incoming-calls/incoming-test-1/location",
+        headers=headers,
+        json={
+            "expected_timestamp": payload["timestamp"],
+            "location": {"lat": 41.1, "lng": -4.2, "label": "Portal correcto", "kind": "building"},
+        },
+    )
+    assert response.status_code == 200
+    state = (await client.get("/api/v1/state")).json()
+    # Se pide anular el run de la llamada que ya salió, sin liberar la unidad por decreto.
+    assert any(
+        a["kind"] == "internal" and a["request"].get("cancel_run_id") == sent["happyrobot_run_id"]
+        for a in state["recent_actions"]
+    )
+    # La misión se replanifica hacia el destino corregido, con la orden vieja descartada.
+    live = [
+        t
+        for t in state["tasks"]
+        if t["incoming_call_id"] == "incoming-test-1" and t["status"] != "cancelled"
+    ]
+    assert len(live) == 1
+    assert live[0]["target_location"]["lat"] == 41.1
+    assert sent["id"] not in live[0]["action_ids"]
 
 
 async def test_autonomous_mission_is_cancelled_when_the_report_location_changes(

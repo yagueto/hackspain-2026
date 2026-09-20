@@ -153,15 +153,6 @@ async def confirm_report_location(
             raise HTTPException(
                 422, "el centro de una población no localiza el incidente; concreta la dirección"
             )
-        if any(
-            task.incoming_call_id == run_id
-            and (task.approved_at or task.action_ids)
-            and task.status not in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.failed)
-            for task in state.tasks.values()
-        ):
-            raise HTTPException(
-                409, "hay una misión en curso; cancélala antes de cambiar su destino"
-            )
         report.resolution = report.resolution.model_copy(
             update={
                 "status": "confirmed",
@@ -170,13 +161,28 @@ async def confirm_report_location(
                 "error": "",
             }
         )
+        # Corregir el destino es lo que invalida la misión, no al contrario: obligar a
+        # cancelar antes dejaría al agente replanificando hacia la ubicación equivocada
+        # mientras el operador teclea la buena.
+        executor = rt.executor.bind(state)
+        stale = [
+            task
+            for task in state.tasks.values()
+            if task.incoming_call_id == run_id
+            and task.action_ids
+            and task.status
+            not in (TaskStatus.cancelled, TaskStatus.done, TaskStatus.failed, TaskStatus.rejected)
+        ]
+        for task in stale:
+            await executor.cancel_task(task, "destino corregido por el operador; se replanifica")
+        # Después de cancelar, el agente vuelve a proponer contra el destino bueno.
         prepare_intake_tasks(state, report)
         state.add_event(
             Event(
                 source=EventSource.operator,
                 kind=EventKind.note,
                 title="Ubicación de aviso confirmada por operador",
-                payload={"run_id": run_id},
+                payload={"run_id": run_id, "misiones_replanificadas": [t.id for t in stale]},
             )
         )
     return rt.state.incoming_calls[run_id]

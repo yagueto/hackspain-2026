@@ -91,6 +91,14 @@ export class Home {
       status === 'unavailable'
     );
   });
+  /** Alguna misión del aviso ya tiene orden emitida, así que corregir el destino la replanifica. */
+  readonly hasLiveMission = computed(() =>
+    this.reportTasks().some(
+      (task) =>
+        !!task.action_ids?.length &&
+        !['cancelled', 'done', 'failed', 'rejected'].includes(task.status),
+    ),
+  );
   readonly paused = this.operations.paused;
   readonly hasQueuedOrders = computed(() =>
     this.reportTasks().some((task) => task.status === 'dispatching'),

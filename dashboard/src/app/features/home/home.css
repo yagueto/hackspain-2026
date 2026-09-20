@@ -203,6 +203,9 @@ app-operational-map {
 .response-proposal .approximate {
   color: var(--muted);
 }
+.operator-controls .replan-warning {
+  color: var(--muted);
+}
 .operator-controls .needs-key {
   padding: 6px 8px;
   color: var(--danger);
