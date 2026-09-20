@@ -4,6 +4,39 @@ import { EMPTY, Observable } from 'rxjs';
 import { MOCK_COMMUNICATIONS, MOCK_INCIDENTS, MOCK_UNITS } from '../../core/data/operations.mock';
 import { Incident, MapLocation } from '../../core/models/operations';
 import { IncidentDetails, IncidentEvent, MOCK_INCIDENT_DETAILS } from './incidents.mock';
+import { MOCK_RESOURCE_PROFILES } from '../resources/resources.mock';
+
+function assignmentEvents(
+  unit: MapLocation,
+  occurredAt: string,
+  actionId: string,
+): IncidentEvent[] {
+  if (!unit.incidentId) return [];
+  const profile = MOCK_RESOURCE_PROFILES[unit.icon];
+  const contact = MOCK_COMMUNICATIONS.find((item) => item.vehicle === unit.id)?.agent;
+  const events: IncidentEvent[] = [
+    {
+      id: `${actionId}:vehicle`,
+      incidentId: unit.incidentId,
+      occurredAt,
+      kind: 'assignment',
+      title: `Vehículo asignado · ${unit.label}`,
+      description: `${profile?.service ?? 'Apoyo'} movilizado para ${unit.incidentId}.`,
+      source: 'Agente de coordinación',
+    },
+  ];
+  if (profile)
+    events.push({
+      id: `${actionId}:people`,
+      incidentId: unit.incidentId,
+      occurredAt,
+      kind: 'assignment',
+      title: `${profile.crew} personas asignadas · ${unit.label}`,
+      description: `Equipo de ${profile.service}${contact ? ` · Responsable: ${contact}` : ''}.`,
+      source: 'Agente de coordinación',
+    });
+  return events;
+}
 
 export interface IncidentUpdate {
   incidentId: string;
@@ -33,40 +66,39 @@ export class IncidentStore {
           id: `${incident.id}:reported`,
           incidentId: incident.id,
           occurredAt: openedAt,
-          title: 'Incidencia notificada',
-          summary: `Se ha creado ${incident.id}.`,
-          kind: 'created' as const,
-          description: `Aviso recibido en ${incident.area}.`,
+          title: 'Llamada recibida · Central 112',
+          kind: 'call' as const,
+          description: `${incident.title}. ${incident.address}.`,
           source: 'Central 112',
-        },
-        {
-          id: `${incident.id}:identified`,
-          incidentId: incident.id,
-          occurredAt: new Date(Date.parse(openedAt) + 60000).toISOString(),
-          title: 'Incidencia identificada',
-          description: `${incident.title}. Se inicia la coordinación de recursos.`,
-          source: 'Coordinación',
         },
       ];
     }),
-    ...MOCK_UNITS.filter((unit) => unit.kind === 'unit' && unit.incidentId).map((unit) => ({
-      id: `${unit.id}:assigned`,
-      incidentId: unit.incidentId!,
-      occurredAt: new Date(
+    ...MOCK_UNITS.filter((unit) => unit.kind === 'unit' && unit.incidentId).flatMap((unit) => {
+      const assignedAt = new Date(
         Date.parse(
           MOCK_INCIDENT_DETAILS[unit.incidentId!]?.openedAt ?? '2026-09-19T14:00:00+02:00',
         ) + 90000,
-      ).toISOString(),
-      title: 'Recurso asignado',
-      description: `${unit.id} ha sido asignado a ${unit.incidentId}.`,
-      source: 'Coordinación',
-      kind: 'assignment' as const,
-    })),
+      ).toISOString();
+      const communication = MOCK_COMMUNICATIONS.find((item) => item.vehicle === unit.id);
+      return [
+        {
+          id: `${unit.id}:dispatch-call`,
+          incidentId: unit.incidentId!,
+          occurredAt: new Date(Date.parse(assignedAt) - 30000).toISOString(),
+          kind: 'call' as const,
+          title: `Llamada realizada · ${unit.label}`,
+          description: `El agente solicita la intervención de ${communication?.agent ?? unit.label} en ${unit.incidentId}.`,
+          source: 'Agente de coordinación',
+        },
+        ...assignmentEvents(unit, assignedAt, `${unit.id}:assigned`),
+      ];
+    }),
     ...MOCK_COMMUNICATIONS.map((communication) => ({
       id: communication.id,
       incidentId: communication.incidentId,
       occurredAt: `2026-09-19T${communication.time}:00+02:00`,
-      title: `Comunicación ${communication.status.toLowerCase()}`,
+      title: `Llamada recibida · ${communication.vehicle}`,
+      kind: 'call' as const,
       description: communication.message,
       source: `${communication.service} · ${communication.vehicle} · ${communication.agent}`,
     })),
@@ -101,7 +133,7 @@ export class IncidentStore {
     this.eventState.update((events) => [...events, event]);
   }
 
-  reassignUnit(unit: MapLocation, incidentId: string): void {
+  reassignUnit(unit: MapLocation, incidentId: string, actionId: string): void {
     if (unit.kind !== 'unit' || !this.incidents().some((incident) => incident.id === incidentId))
       return;
     this.unitState.update((units) =>
@@ -117,6 +149,12 @@ export class IncidentStore {
           : existing,
       ),
     );
+    for (const event of assignmentEvents(
+      { ...unit, incidentId },
+      new Date().toISOString(),
+      `${actionId}:${unit.id}`,
+    ))
+      this.appendEvent(event);
   }
 
   applyUpdate(update: IncidentUpdate): void {

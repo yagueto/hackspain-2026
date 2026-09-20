@@ -36,6 +36,7 @@ export interface IncomingQuestion {
   id: string;
   incidentId: string;
   prompt: string;
+  context?: string;
   urgency: QuestionUrgency;
   input: QuestionInput;
   options?: readonly QuestionOption[];

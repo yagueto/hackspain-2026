@@ -1,12 +1,10 @@
 import { computed, DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Observable, Subject } from 'rxjs';
-import { MOCK_COMMUNICATIONS } from '../../../core/data/operations.mock';
 import {
   HumanQuestion,
   IncomingQuestion,
   IncidentAttention,
-  OperationLogEvent,
   OperationLogUpdate,
   QuestionAction,
   QuestionAnswer,
@@ -34,11 +32,6 @@ export class OperationLogStore {
   readonly answers$ = this.responseEvents.asObservable();
   readonly questions = this.questionState.asReadonly();
   readonly now = signal(Date.now());
-  readonly open = signal(false);
-  readonly incidentFilter = signal<string | null>(null);
-  readonly focusedQuestionId = signal<string | null>(null);
-  readonly focusRequest = signal(0);
-  readonly notification = signal('');
   readonly incomingError = signal(false);
   readonly drafts = signal<Readonly<Record<string, QuestionAnswer>>>({});
   readonly errors = signal<Readonly<Record<string, string>>>({});
@@ -49,23 +42,12 @@ export class OperationLogStore {
   readonly pending = computed(() =>
     this.questions().filter((question) => question.status === 'pending'),
   );
-  readonly visiblePending = computed(() =>
-    this.pending().filter(
-      (question) => !this.incidentFilter() || question.incidentId === this.incidentFilter(),
-    ),
-  );
-  readonly history = computed(() => {
-    const pending = new Set(this.pending().map((question) => question.id));
-    return this.incidents
-      .events()
-      .filter(
-        (event) =>
-          (!this.incidentFilter() || event.incidentId === this.incidentFilter()) &&
-          !(event.kind === 'question' && event.questionId && pending.has(event.questionId)),
-      )
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      );
+  readonly notification = computed(() => {
+    const pending = this.pending();
+    const latest = pending.at(-1);
+    if (!latest) return '';
+    const label = pending.length === 1 ? 'pregunta pendiente' : 'preguntas pendientes';
+    return `${latest.incidentId} necesita respuesta. ${pending.length} ${label}.`;
   });
   readonly attention = computed<ReadonlyMap<string, IncidentAttention>>(() => {
     const result = new Map<string, IncidentAttention>();
@@ -109,17 +91,6 @@ export class OperationLogStore {
   start(): void {
     if (this.started) return;
     this.started = true;
-    for (const communication of MOCK_COMMUNICATIONS.slice(0, 2)) {
-      this.incidents.appendEvent({
-        id: `call:${communication.id}`,
-        incidentId: communication.incidentId,
-        occurredAt: new Date().toISOString(),
-        kind: 'call',
-        title: 'Llamada en curso',
-        description: `${communication.agent} tiene una llamada en curso para ${communication.incidentId}.`,
-        source: communication.vehicle,
-      });
-    }
     const tick = () => this.expireDue();
     const timer = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
@@ -146,6 +117,8 @@ export class OperationLogStore {
       typeof incoming.prompt !== 'string' ||
       !incoming.prompt.trim() ||
       incoming.prompt.length > 2000 ||
+      (incoming.context !== undefined &&
+        (typeof incoming.context !== 'string' || incoming.context.length > 1000)) ||
       this.questions().some((item) => item.id === incoming.id)
     )
       return false;
@@ -217,10 +190,6 @@ export class OperationLogStore {
       source: 'Agente de coordinación',
     });
     this.expireDue();
-    if (this.questions().find((item) => item.id === question.id)?.status === 'pending')
-      this.notification.set(
-        `${question.incidentId} necesita respuesta. ${this.pending().length} preguntas pendientes.`,
-      );
     return true;
   }
 
@@ -231,18 +200,6 @@ export class OperationLogStore {
       this.incidents.units().map((unit) => this.simulation.project(unit)),
     );
     if (question) this.receiveQuestion(question);
-  }
-
-  openForIncident(incidentId: string): void {
-    this.incidentFilter.set(incidentId);
-    this.focusedQuestionId.set(this.attention().get(incidentId)?.questionId ?? null);
-    this.open.set(true);
-    this.focusRequest.update((value) => value + 1);
-  }
-
-  setFilter(id: string): void {
-    this.incidentFilter.set(id || null);
-    this.focusedQuestionId.set(null);
   }
 
   draft(question: HumanQuestion): QuestionAnswer {
@@ -433,23 +390,35 @@ export class OperationLogStore {
 
   private applyAction(action: QuestionAction, incidentId: string, questionId: string): string {
     if (action.type === 'set-status') {
-      this.incidents.applyUpdate({ incidentId, incident: { status: action.status } });
+      this.incidents.applyUpdate({
+        incidentId,
+        incident: { status: action.status },
+        event: {
+          id: `${questionId}:status`,
+          incidentId,
+          occurredAt: new Date().toISOString(),
+          kind: 'action',
+          title: `Estado actualizado · ${action.status}`,
+          description: `${incidentId} pasa de «${action.expectedStatus}» a «${action.status}».`,
+          source: 'Agente de coordinación',
+        },
+      });
       return `${incidentId} pasa a «${action.status}».`;
     }
     if (action.type === 'assign-resource') {
       const unit = this.simulation.project(
         this.incidents.units().find((item) => item.id === action.resourceId)!,
       );
-      this.incidents.reassignUnit(unit, incidentId);
+      this.incidents.reassignUnit(unit, incidentId, questionId);
       if (unit.incidentId && unit.incidentId !== incidentId)
         this.incidents.appendEvent({
           id: `${questionId}:transfer:${unit.id}`,
           incidentId: unit.incidentId,
           occurredAt: new Date().toISOString(),
           kind: 'assignment',
-          title: 'Recurso reasignado',
-          description: `${unit.id} ha sido reasignado a ${incidentId}.`,
-          source: 'Coordinación',
+          title: `Vehículo y equipo reasignados · ${unit.label}`,
+          description: `${unit.id} y su equipo pasan a ${incidentId}.`,
+          source: 'Agente de coordinación',
         });
       return `${unit.id} ha sido asignado a ${incidentId}${action.expectedIncidentId ? ` desde ${action.expectedIncidentId}` : ''}.`;
     }

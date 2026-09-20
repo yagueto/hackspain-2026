@@ -1,51 +1,43 @@
 <h1 class="sr-only">Centro de coordinación de emergencias</h1>
 <p class="sr-only" role="alert" aria-atomic="true">{{ log.notification() }}</p>
-<div class="home-workspace" [class.log-open]="log.open()" [class.log-overlay]="logOverlay()">
+<div class="home-workspace">
   <div class="dashboard-grid">
     <app-operational-map
       [addresses]="addresses()"
       [locations]="locations()"
       [selectedIncidentId]="selectedIncidentId()"
       [selectedUnitId]="selectedUnitId()"
-      [visibleUnitIds]="visibleUnitIds()"
+      [visibleUnitIds]="detail() ? null : visibleUnitIds()"
+      [focusedLocationId]="detail() ? (selectedUnitId() ?? selectedIncidentId()) : null"
       (unitSelected)="selectUnit($event)"
       (incidentSelected)="selectIncident($event)"
     />
     <app-split-pane />
-    <div class="operations-column">
-      <app-incident-list
-        [incidents]="log.prioritizedIncidents()"
-        [selectedId]="selectedIncidentId()"
-        [attention]="log.attention()"
-        (incidentSelected)="selectIncident($event)"
-        (responseRequested)="log.openForIncident($event)"
-      />
-      <app-service-feed
-        [communications]="communications()"
-        [resources]="projectedUnits()"
-        [selectedIncidentId]="selectedIncidentId()"
-        [selectedUnitId]="selectedUnitId()"
-        (unitSelected)="selectUnit($event)"
-        (visibleUnitsChanged)="visibleUnitIds.set($event)"
-      />
+    <div class="operations-column" [class.detail-open]="detail()">
+      @if (detail()) {
+        @if (detail() === 'incident') {
+          <app-incidents [embedded]="true" (unitLocated)="locateUnit($event)" />
+        } @else {
+          <app-resources [embedded]="true" />
+        }
+      }
+      <div class="overview-widgets" [hidden]="!!detail()">
+        <app-incident-list
+          [incidents]="log.prioritizedIncidents()"
+          [selectedId]="selectedIncidentId()"
+          [attention]="log.attention()"
+          (incidentSelected)="selectIncident($event)"
+          (responseRequested)="openIncident($event)"
+        />
+        <app-service-feed
+          [communications]="communications()"
+          [resources]="projectedUnits()"
+          [selectedIncidentId]="selectedIncidentId()"
+          [selectedUnitId]="selectedUnitId()"
+          (unitSelected)="selectUnit($event)"
+          (visibleUnitsChanged)="visibleUnitIds.set($event)"
+        />
+      </div>
     </div>
   </div>
-  @if (log.open()) {
-    @if (logOverlay()) {
-      <button
-        type="button"
-        class="log-backdrop"
-        aria-label="Cerrar registro"
-        tabindex="-1"
-        (click)="closeLog()"
-      ></button>
-    }
-    <div class="log-column">
-      <app-operation-log-panel
-        [modal]="logOverlay()"
-        [selectedIncidentId]="selectedIncidentId()"
-        (closeRequested)="closeLog()"
-      />
-    </div>
-  }
 </div>

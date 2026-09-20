@@ -4,92 +4,53 @@
   z-index: 1100;
 }
 .topbar {
-  height: 52px;
+  height: 44px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  padding: 4px var(--page-inset) 0;
+  background: var(--background);
+  font-size: 12px;
+  gap: 20px;
 }
 .brand {
-  display: inline-flex;
-  color: var(--muted);
-}
-.brand app-icon {
-  width: 23px;
-  height: 23px;
-}
-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-nav a,
-nav button {
-  color: var(--muted);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 6px 12px;
-  text-decoration: none;
-  font-size: 15px;
-  line-height: 1.2;
-  white-space: nowrap;
-  cursor: pointer;
-}
-nav :is(a, button):hover {
-  color: var(--text);
-  background: var(--tag);
-}
-nav .active {
-  color: var(--text);
-  background: var(--selected);
-  border-color: var(--separator);
+  font-family:
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Inter',
+    sans-serif;
+  font-size: 2.55em;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  flex-shrink: 0;
 }
 .header-meta {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: var(--page-inset);
   margin-left: auto;
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
 }
-.demo-indicator {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.demo-indicator > span {
-  height: 6px;
-  width: 6px;
-  border-radius: 50%;
-  background: var(--icon);
-}
 .date {
   display: flex;
-  gap: 18px;
+  align-items: center;
+  gap: var(--page-inset);
   font-variant-numeric: tabular-nums;
 }
-.profile {
-  position: relative;
-  color: var(--text);
-}
-.profile summary {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  cursor: pointer;
-  list-style: none;
-}
-.profile summary::-webkit-details-marker {
+.compact-date {
   display: none;
 }
+.profile {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--page-inset) / 2);
+  color: var(--text);
+}
 .profile-name {
-  font-size: 14px;
-  padding-left: 22px;
-  border-left: 1px solid var(--border);
+  font-size: inherit;
 }
 .avatar {
   display: grid;
@@ -100,90 +61,56 @@ nav .active {
   width: 29px;
   height: 29px;
 }
-.profile-menu {
-  position: absolute;
-  right: 0;
-  top: 40px;
-  width: 180px;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-}
-.menu-label {
-  display: block;
-  padding: 8px;
-  color: var(--muted);
-}
-.profile-menu button {
-  width: 100%;
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  text-align: left;
-  padding: 9px;
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 50%;
   background: none;
-  color: var(--text);
+  color: inherit;
   cursor: pointer;
 }
-.profile-menu button:hover,
-.profile-menu button[aria-pressed='true'] {
+.theme-toggle:hover {
   background: var(--selected);
 }
-.pending-count {
-  display: inline-block;
-  border-radius: 3px;
-  padding: 1px 4px;
-  font-size: 11px;
-  color: var(--danger);
-  background: var(--danger-surface);
-  font-variant-numeric: tabular-nums;
+.theme-toggle app-icon {
+  transition:
+    transform 350ms ease,
+    color 350ms ease;
+}
+.theme-toggle[aria-pressed='true'] app-icon {
+  color: var(--text);
+  transform: rotate(-30deg);
 }
 @media (max-width: 1000px) {
   .topbar {
     gap: 14px;
-    padding: 0 16px;
-  }
-  nav {
-    gap: 2px;
-  }
-  .header-meta {
-    gap: 16px;
-  }
-  .date {
-    gap: 10px;
-  }
-  .profile-name {
-    display: none;
   }
 }
 @media (max-width: 700px) {
   .topbar {
-    height: auto;
-    min-height: 52px;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 12px;
-  }
-  nav {
-    order: 3;
-    width: 100%;
-    justify-content: space-between;
-  }
-  nav a,
-  nav button {
-    font-size: 14px;
-  }
-  .date {
-    font-size: 10px;
+    gap: 6px;
   }
   .header-meta {
-    gap: 12px;
-  }
-  .demo-indicator {
     font-size: 10px;
-    gap: 4px;
+    gap: 6px;
+  }
+  .date {
+    gap: 6px;
+  }
+  .full-date,
+  .avatar {
+    display: none;
+  }
+  .compact-date {
+    display: inline;
+  }
+  .theme-toggle {
+    width: 24px;
+    height: 28px;
   }
 }

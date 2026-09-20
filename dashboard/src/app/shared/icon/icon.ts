@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { IconName } from '../../core/models/operations';
 import names from './icon-names.json';
+import spriteVersion from './icon-sprite-version.json';
 
 export function iconHref(name: IconName): string {
-  return `${new URL('tabler-icons.svg', document.baseURI).href}#${names[name]}`;
+  return `${new URL('tabler-icons.svg', document.baseURI).href}?v=${spriteVersion}#${names[name]}`;
 }
 
 export function createIconSvg(name: IconName): SVGSVGElement {

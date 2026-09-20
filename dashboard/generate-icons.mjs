@@ -1,4 +1,5 @@
 import { readFile, writeFile, copyFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 const names = JSON.parse(
   await readFile(new URL('src/app/shared/icon/icon-names.json', import.meta.url), 'utf8'),
@@ -13,9 +14,11 @@ const symbols = await Promise.all(
     return `<symbol id="${name}" viewBox="0 0 24 24">${content}</symbol>`;
   }),
 );
+const sprite = `<svg xmlns="http://www.w3.org/2000/svg">\n${symbols.join('\n')}\n</svg>\n`;
+await writeFile(new URL('public/tabler-icons.svg', import.meta.url), sprite);
 await writeFile(
-  new URL('public/tabler-icons.svg', import.meta.url),
-  `<svg xmlns="http://www.w3.org/2000/svg">\n${symbols.join('\n')}\n</svg>\n`,
+  new URL('src/app/shared/icon/icon-sprite-version.json', import.meta.url),
+  `${JSON.stringify(createHash('sha256').update(sprite).digest('hex').slice(0, 12))}\n`,
 );
 await copyFile(
   new URL('node_modules/@tabler/icons/LICENSE', import.meta.url),
