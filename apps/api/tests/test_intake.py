@@ -186,7 +186,8 @@ async def test_mission_waiting_for_a_unit_dispatches_with_a_fresh_override_windo
     await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
     task = (await client.get("/api/v1/tasks")).json()[0]
     assert task["status"] == "proposed"
-    assert task["outcome"] == NO_RESOURCE
+    await rt.orchestrator.reconcile_intake()
+    assert (await client.get("/api/v1/tasks")).json()[0]["outcome"] == NO_RESOURCE
     assert (await client.get("/api/v1/actions")).json() == []
     # La ventana original caduca mientras la misión sigue esperando un medio.
     async with rt.orchestrator.edit() as s:
@@ -202,6 +203,27 @@ async def test_mission_waiting_for_a_unit_dispatches_with_a_fresh_override_windo
     assert action["status"] == "pending"
     assert action["hold_until"] is not None
     assert datetime.fromisoformat(action["hold_until"]) > now()
+
+
+async def test_a_stalled_mission_does_not_rewrite_the_world_on_every_cycle(
+    client: httpx.AsyncClient,
+) -> None:
+    """Una misión que espera no debe versionar el estado en bucle: escribe y refresca la UI."""
+    rt = runtime_of(client)
+    async with rt.orchestrator.edit() as s:
+        for resource in s.resources.values():
+            if resource.type == ResourceType.fire_engine:
+                resource.status = ResourceStatus.out_of_service
+    await client.post("/api/v1/webhooks/happyrobot/inbound", json=report())
+    assert (await client.get("/api/v1/tasks")).json()[0]["status"] == "proposed"
+    await rt.orchestrator.reconcile_intake()  # explica la espera una vez
+    assert (await client.get("/api/v1/tasks")).json()[0]["outcome"] == NO_RESOURCE
+    settled = rt.state.version
+    for _ in range(5):
+        await rt.orchestrator.reconcile_intake()
+        await rt.orchestrator.locate_pending_reports()
+        await rt.orchestrator.escalate_stale_approvals()
+    assert rt.state.version == settled
 
 
 async def test_vital_report_waits_for_human_confirmation(client: httpx.AsyncClient) -> None:

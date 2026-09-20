@@ -121,6 +121,73 @@ describe('Resource routes on the map', () => {
     expect(calculate).toHaveBeenCalledTimes(1);
   });
 
+  it('advances the unit along its route using the progress reported by the backend', async () => {
+    // La salida y la duración las publica el backend; aquí solo se interpola sobre la ruta.
+    const started = new Date(Date.now() - 168_000).toISOString(); // mitad de 336 s
+    const fixture = await setup([
+      { ...activeUnit, travelStartedAt: started, travelMinutes: 336 / 60 },
+    ]);
+    const origin = activeUnit.coordinates;
+    const marker = () =>
+      fixture.nativeElement.querySelector('.map-marker.kind-unit')?.parentElement as HTMLElement;
+    await vi.waitFor(() => expect(marker()).not.toBeNull());
+    await vi.waitFor(() => {
+      const drawn = fixture.nativeElement.querySelector('.resource-route') as SVGPathElement | null;
+      expect(drawn).not.toBeNull();
+      // El tramo pintado es el que queda, no la ruta entera: la unidad ya ha avanzado.
+      const remaining = drawn!.getAttribute('d') ?? '';
+      expect(remaining.length).toBeGreaterThan(0);
+    });
+    const units = fixture.componentInstance as unknown as {
+      resolvedLocations: () => readonly MapLocation[];
+    };
+    await vi.waitFor(() => {
+      const unit = units.resolvedLocations()[0];
+      expect(unit.coordinates.lat).not.toBe(origin.lat);
+      expect(unit.coordinates.lat).toBeGreaterThan(Math.min(origin.lat, journey.destination.lat));
+      expect(unit.coordinates.lat).toBeLessThan(Math.max(origin.lat, journey.destination.lat));
+      expect(unit.address).toContain('En ruta hacia');
+    });
+    expect(calculate).toHaveBeenCalledTimes(1);
+  });
+
+  it('advances a unit without a road route, as in a citizen call', async () => {
+    // Los avisos ciudadanos no piden ruta al proveedor público, pero la unidad debe avanzar.
+    const from = { lat: 40.2, lng: -5.09 };
+    const to = { lat: 40.45, lng: -3.71 };
+    const fixture = await setup([
+      {
+        ...MOCK_UNITS[1],
+        route: undefined,
+        coordinates: from,
+        travelFrom: from,
+        travelTo: to,
+        travelStartedAt: new Date(Date.now() - 60_000).toISOString(),
+        travelMinutes: 2,
+      },
+    ]);
+    const units = fixture.componentInstance as unknown as {
+      resolvedLocations: () => readonly MapLocation[];
+    };
+    await vi.waitFor(() => {
+      const unit = units.resolvedLocations()[0];
+      expect(unit.coordinates.lat).toBeGreaterThan(from.lat);
+      expect(unit.coordinates.lat).toBeLessThan(to.lat);
+    });
+    expect(calculate).not.toHaveBeenCalled();
+  });
+
+  it('leaves a unit that never reported a departure where it is', async () => {
+    const fixture = await setup([activeUnit]);
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.querySelector('.resource-route')).not.toBeNull(),
+    );
+    const units = fixture.componentInstance as unknown as {
+      resolvedLocations: () => readonly MapLocation[];
+    };
+    expect(units.resolvedLocations()[0].coordinates).toEqual(activeUnit.coordinates);
+  });
+
   it('shows a missing-route state without inventing an ETA', async () => {
     calculate.mockResolvedValue(null);
     const fixture = await setup();

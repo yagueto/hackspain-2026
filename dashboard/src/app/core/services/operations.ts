@@ -175,6 +175,12 @@ export function toOperations(
       area: address(call.location),
       address: address(call.location),
       priority: priority(call.severity),
+      // El agente no puede seguir solo: hay que destacarlo, no solo describirlo.
+      alert: active.some((task) => task.status === 'awaiting_approval')
+        ? ('critical' as const)
+        : active.some((task) => task.blocked_reason)
+          ? ('blocked' as const)
+          : undefined,
       status: active.some((task) => task.status === 'awaiting_approval')
         ? 'CRÍTICO · confirmar'
         : active.some((task) => task.blocked_reason)
@@ -299,6 +305,11 @@ export function toOperations(
         contactId: contact?.id,
         etaMinutes: resource.eta_minutes,
         reportedAt: resource.reported_at,
+        travelStartedAt: resource.travel_started_at,
+        travelMinutes: resource.travel_minutes,
+        positionEstimated: resource.position_estimated,
+        travelFrom: resource.travel_from ? coordinates(resource.travel_from) : undefined,
+        travelTo: destination,
         route:
           allowPublicRoutes &&
           !task?.incoming_call_id &&

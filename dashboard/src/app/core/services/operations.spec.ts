@@ -330,8 +330,13 @@ describe('World snapshot mapping', () => {
     expect(toOperations(state).incidents[0].status).toBe('Enviada automáticamente');
     task.status = 'awaiting_approval';
     expect(toOperations(state).incidents[0].status).toBe('CRÍTICO · confirmar');
+    // Lo que el agente no puede resolver solo se marca para destacarlo, no solo describirlo.
+    expect(toOperations(state).incidents[0].alert).toBe('critical');
     state.tasks = [{ ...task, status: 'proposed', blocked_reason: 'Ubicación no resoluble' }];
     expect(toOperations(state).incidents[0].status).toContain('Bloqueada');
+    expect(toOperations(state).incidents[0].alert).toBe('blocked');
+    state.tasks = [{ ...task, status: 'dispatched' }];
+    expect(toOperations(state).incidents[0].alert).toBeUndefined();
     state.tasks = [];
     expect(toOperations(state).incidents[0].status).toBe('Recibida');
   });

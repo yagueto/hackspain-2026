@@ -3,7 +3,6 @@ import { Subject } from 'rxjs';
 import { OperationLogEvent } from '../models/operation-log';
 import { Coordinates, MapLocation, RouteNavigation } from '../models/operations';
 import { advanceRoute, prepareRoute, RoutePlan } from './route-progress';
-import { Routing } from './routing';
 
 interface DemoFrame {
   key: string;
@@ -12,32 +11,76 @@ interface DemoFrame {
   navigation: RouteNavigation;
 }
 
+/**
+ * Coloca cada unidad sobre su ruta de carretera según el avance que publica el backend.
+ *
+ * No inventa el movimiento: la salida (`travelStartedAt`) y la duración (`travelMinutes`) las
+ * decide el backend, y esto solo interpola entre sus muestras para que el marcador no vaya a
+ * saltos. La posición resultante es una estimación, nunca GPS, y un parte de campo la corrige
+ * porque reinicia esos dos valores en el origen.
+ */
 @Injectable({ providedIn: 'root' })
 export class DemoRouteSimulation {
-  private readonly routing = inject(Routing);
   private readonly destroyRef = inject(DestroyRef);
   private readonly frames = signal<ReadonlyMap<string, DemoFrame>>(new Map());
   private readonly sources = new Map<string, MapLocation>();
-  private readonly journeys = new Map<string, { plan: RoutePlan; startedAt: number }>();
-  private readonly controller = new AbortController();
-  private started = false;
+  private readonly journeys = new Map<string, { plan: RoutePlan }>();
+  /** Reloj compartido del avance: hace recalcular la posición mostrada entre muestras. */
+  private readonly tick = signal(Date.now());
+  private timer?: ReturnType<typeof setInterval>;
   private readonly arrivalEvents = new Subject<OperationLogEvent>();
   readonly arrivals$ = this.arrivalEvents.asObservable();
 
-  start(locations: readonly MapLocation[]): void {
-    if (this.started) return;
-    this.started = true;
+  /**
+   * Se llama en cada actualización, así que engancha también a las unidades que aceptan la
+   * llamada más tarde. No descarga rutas: reutiliza la que ya trajo el mapa, para no pedir
+   * dos veces lo mismo al proveedor público.
+   */
+  sync(locations: readonly MapLocation[], routes: ReadonlyMap<string, RouteNavigation>): void {
+    const active = new Set<string>();
     for (const location of locations) {
       if (location.kind !== 'unit' || location.route?.status !== 'active') continue;
+      active.add(location.id);
+      const previous = this.sources.get(location.id);
       this.sources.set(location.id, location);
-      void this.load(location);
+      const navigation = routes.get(location.id) ?? location.route.navigation;
+      const key = this.key(location);
+      if (navigation?.status !== 'ready') {
+        this.journeys.delete(location.id);
+        continue;
+      }
+      if (previous && this.key(previous) === key && this.journeys.has(location.id)) continue;
+      this.journeys.set(location.id, { plan: prepareRoute(navigation.route) });
+      this.frames.update((frames) =>
+        new Map(frames).set(location.id, {
+          key,
+          position: navigation.route.path[0] ?? location.coordinates,
+          completed: false,
+          navigation,
+        }),
+      );
     }
-    const timer = setInterval(() => this.advance(), 200);
-    this.destroyRef.onDestroy(() => {
-      clearInterval(timer);
-      this.controller.abort();
-      this.arrivalEvents.complete();
-    });
+    for (const id of [...this.sources.keys()]) {
+      if (active.has(id)) continue;
+      this.sources.delete(id);
+      this.journeys.delete(id);
+      this.frames.update((frames) => {
+        const next = new Map(frames);
+        next.delete(id);
+        return next;
+      });
+    }
+    this.timer ??= setInterval(() => {
+      this.tick.set(Date.now());
+      this.advance();
+    }, 500);
+    this.destroyRef.onDestroy(() => this.stop());
+  }
+
+  private stop(): void {
+    clearInterval(this.timer);
+    this.timer = undefined;
+    this.arrivalEvents.complete();
   }
 
   isManaged(location: MapLocation): boolean {
@@ -47,7 +90,9 @@ export class DemoRouteSimulation {
   project(location: MapLocation): MapLocation {
     const frame = this.frames().get(location.id);
     if (!frame || location.route?.status !== 'active' || frame.key !== this.key(location))
-      return location;
+      // Sin ruta por carretera (p. ej. un aviso ciudadano) el avance se interpola en recta
+      // con los mismos datos del backend, en vez de quedarse clavado entre sus muestras.
+      return this.projectWithoutRoute(location);
     return {
       ...location,
       coordinates: frame.position,
@@ -62,75 +107,62 @@ export class DemoRouteSimulation {
     };
   }
 
-  retry(id: string): void {
-    const source = this.sources.get(id);
-    if (source && this.frames().get(id)?.navigation.status === 'error') void this.load(source);
+  private projectWithoutRoute(location: MapLocation): MapLocation {
+    const { travelFrom, travelTo } = location;
+    if (location.kind !== 'unit' || !travelFrom || !travelTo) return location;
+    const fraction = this.fraction(location, this.tick());
+    if (fraction === null) return location;
+    return {
+      ...location,
+      coordinates: {
+        lat: travelFrom.lat + (travelTo.lat - travelFrom.lat) * fraction,
+        lng: travelFrom.lng + (travelTo.lng - travelFrom.lng) * fraction,
+      },
+    };
   }
 
   private key(location: MapLocation): string {
     const route = location.route;
+    // La posición no entra en la clave: cambia en cada muestra y recalcular la ruta a cada
+    // paso dispararía el proveedor público sin necesidad. El origen del trayecto sí.
     return JSON.stringify([
       location.kind,
-      location.coordinates,
+      location.travelStartedAt ?? location.coordinates,
       route?.status,
       route?.destination,
       route?.via,
     ]);
   }
 
-  private async load(location: MapLocation): Promise<void> {
-    const frame: DemoFrame = {
-      key: this.key(location),
-      position: location.coordinates,
-      completed: false,
-      navigation: { status: 'loading' },
-    };
-    this.frames.update((frames) => new Map(frames).set(location.id, frame));
-    try {
-      const route = await this.routing.calculate(
-        location.coordinates,
-        location.route!,
-        this.controller.signal,
-      );
-      if (this.controller.signal.aborted) return;
-      if (route) {
-        this.journeys.set(location.id, { plan: prepareRoute(route), startedAt: performance.now() });
-        this.frames.update((frames) =>
-          new Map(frames).set(location.id, {
-            ...frame,
-            position: route.path[0],
-            navigation: { status: 'ready', route },
-          }),
-        );
-      } else {
-        this.frames.update((frames) =>
-          new Map(frames).set(location.id, { ...frame, navigation: { status: 'unavailable' } }),
-        );
-      }
-    } catch {
-      if (!this.controller.signal.aborted) {
-        this.frames.update((frames) =>
-          new Map(frames).set(location.id, { ...frame, navigation: { status: 'error' } }),
-        );
-      }
-    }
+  /** Fracción del trayecto según el backend; sin datos de salida, no hay avance que mostrar. */
+  private fraction(location: MapLocation, at: number): number | null {
+    const started = location.travelStartedAt ? Date.parse(location.travelStartedAt) : NaN;
+    const minutes = location.travelMinutes ?? 0;
+    if (!Number.isFinite(started) || minutes <= 0) return null;
+    return Math.min(1, Math.max(0, (at - started) / (minutes * 60_000)));
   }
 
   private advance(): void {
     if (!this.journeys.size) return;
-    const now = performance.now();
+    const at = this.tick();
     const frames = new Map(this.frames());
+    let changed = false;
     for (const [id, journey] of this.journeys) {
-      const progress = advanceRoute(journey.plan, ((now - journey.startedAt) / 1000) * 10);
+      const unit = this.sources.get(id);
+      const fraction = unit ? this.fraction(unit, at) : null;
+      if (fraction === null) continue;
+      const progress = advanceRoute(journey.plan, fraction * journey.plan.route.durationSeconds);
+      const previous = frames.get(id);
+      if (!previous) continue;
+      changed = true;
       frames.set(id, {
-        ...frames.get(id)!,
+        ...previous,
         position: progress.position,
         completed: progress.completed,
         navigation: { status: 'ready', route: progress.remaining },
       });
       if (progress.completed) {
         this.journeys.delete(id);
-        const unit = this.sources.get(id);
         if (unit?.incidentId)
           this.arrivalEvents.next({
             id: `arrival:${id}`,
@@ -143,6 +175,6 @@ export class DemoRouteSimulation {
           });
       }
     }
-    this.frames.set(frames);
+    if (changed) this.frames.set(frames);
   }
 }

@@ -55,6 +55,7 @@ export class Home {
   readonly operatorMessage = signal('');
   readonly operatorBusy = signal(false);
   readonly reviewedLocation = signal<string | null>(null);
+  readonly locationOpen = signal(false);
   readonly latitude = signal('');
   readonly longitude = signal('');
   readonly selectedReport = computed(() => {
@@ -80,6 +81,16 @@ export class Home {
     return JSON.stringify([report?.timestamp, report?.location, report?.resolution]);
   });
   readonly locationReviewed = computed(() => this.reviewedLocation() === this.locationVersion());
+  /** Una decisión bloqueada por la ubicación necesita al operador: se abre ya el panel. */
+  readonly needsLocationHelp = computed(() => {
+    const status = this.selectedReport()?.resolution?.status;
+    return (
+      this.reportTasks().some((task) => !!task.blocked_reason) ||
+      status === 'ambiguous' ||
+      status === 'not_found' ||
+      status === 'unavailable'
+    );
+  });
   readonly paused = this.operations.paused;
   readonly hasQueuedOrders = computed(() =>
     this.reportTasks().some((task) => task.status === 'dispatching'),
@@ -156,6 +167,11 @@ export class Home {
       this.latitude.set(point?.lat.toString() || '');
       this.longitude.set(point?.lng.toString() || '');
     });
+    // Si la decisión se bloquea mientras la incidencia ya está abierta, saca los controles
+    // de ubicación a la vista. Solo abre: cerrarlo a mano se respeta.
+    effect(() => {
+      if (this.needsLocationHelp()) this.locationOpen.set(true);
+    });
     effect((onCleanup) => {
       if (!this.log.open() || !this.logOverlay()) return;
       const previous = document.body.style.overflow;
@@ -218,6 +234,7 @@ export class Home {
     this.selectedIncidentId.update((selected) => (selected === id ? null : id));
     this.reviewedLocation.set(null);
     this.operatorMessage.set('');
+    this.locationOpen.set(this.needsLocationHelp());
   }
 
   async searchLocation(): Promise<void> {

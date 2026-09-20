@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app.domain.models import Event, EventKind, ResourceStatus, Severity, TaskStatus
+from app.domain.models import Event, EventKind, Location, ResourceStatus, Severity, TaskStatus
+from app.domain.movement import clear_travel
 from app.domain.state import WorldState
 
 _SEV_ORDER = [Severity.low, Severity.medium, Severity.high, Severity.critical]
@@ -108,8 +109,16 @@ def apply_event(state: WorldState, e: Event) -> list[str]:
                     r.assigned_task_id = None
                     r.assigned_zone_id = None
                     r.status = new_status
+                    clear_travel(r)
             else:
                 r.status = new_status
+            # Un parte de campo con posición manda sobre la estimación del agente.
+            reported = p.get("location")
+            if isinstance(reported, dict) and {"lat", "lng"} <= reported.keys():
+                r.location = Location.model_validate(reported)
+                r.position_estimated = False
+                r.travel_from = None
+                r.travel_started_at = None
             state.upsert_resource(r)
             facts.append(f"{r.name} -> {new_status}")
 

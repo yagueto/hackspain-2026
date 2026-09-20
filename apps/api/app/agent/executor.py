@@ -24,6 +24,7 @@ from app.domain.models import (
     TaskStatus,
     now,
 )
+from app.domain.movement import clear_travel
 from app.domain.state import WorldState
 from app.integrations.happyrobot import HappyRobotClient, HappyRobotError, WorkflowKind
 from app.store.persistence import Store
@@ -157,6 +158,18 @@ class Executor:
             return -eta - coverage + min(resource.capacity, 50) / 10 + rel * 5
 
         return max(candidates, key=score) if candidates else None
+
+    def can_progress(self, task: Task) -> bool:
+        """Si hoy existe destino, medio y contacto para sacar esta tarea adelante.
+
+        Permite no abrir una transacción por una misión que va a quedarse esperando igual.
+        """
+        if location_pending(self.state, task) or invalid_task(self.state, task):
+            return False
+        proposal = Proposal(task, task.resource_types, task.contact_roles)
+        if task.resource_types:
+            return self._pick_resource(proposal, {}) is not None
+        return any(c.role in task.contact_roles for c in self.state.contacts.values())
 
     def _briefing(self, task: Task, contact: Contact) -> dict[str, object]:
         s = self.state
@@ -383,6 +396,7 @@ class Executor:
                         resource.status = ResourceStatus.available
                     resource.assigned_task_id = None
                     resource.assigned_zone_id = None
+                    clear_travel(resource)
         self.state.set_task_status(task.id, TaskStatus.cancelled, reason)
 
     async def send(self, action: Action) -> None:

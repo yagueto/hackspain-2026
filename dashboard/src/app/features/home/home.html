@@ -50,7 +50,16 @@
           @if (selectedReport(); as report) {
             <div class="operator-controls">
               <p>Aviso recibido: {{ reportTime() }}</p>
-              <details>
+              @if (!operatorKey()) {
+                <p class="needs-key" role="note">
+                  Introduce la clave de operador en la barra superior para intervenir: corregir la
+                  ubicación, anular una decisión o confirmar una crítica.
+                </p>
+              }
+              <details
+                [open]="locationOpen()"
+                (toggle)="locationOpen.set($any($event.target).open)"
+              >
                 <summary>Corregir ubicación</summary>
                 @if (operations.meta()?.geocoding_enabled) {
                   <button
@@ -109,7 +118,11 @@
                 </button>
               </details>
               @for (task of reportTasks(); track task.id) {
-                <div class="response-proposal" [class.critical]="task.requires_approval">
+                <div
+                  class="response-proposal"
+                  [class.critical]="task.requires_approval"
+                  [class.stuck]="!!task.blocked_reason"
+                >
                   <div class="proposal-head">
                     <strong>{{ task.title }}</strong>
                     @if (task.autonomous) {
@@ -128,7 +141,10 @@
                     </p>
                   }
                   @if (task.blocked_reason) {
-                    <p class="blocked">{{ task.blocked_reason }}</p>
+                    <p class="blocked">
+                      <strong>Bloqueada:</strong> {{ task.blocked_reason }} Elige una ubicación en
+                      «Corregir ubicación» para que el agente pueda continuar.
+                    </p>
                   }
                   @if (task.outcome) {
                     <p>{{ task.outcome }}</p>

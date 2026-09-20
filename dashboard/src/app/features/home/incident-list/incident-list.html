@@ -13,6 +13,7 @@
         [class.selected]="selectedId() === incident.id"
         [class.awaiting-human]="!!pending"
         [attr.data-urgency]="pending?.urgency"
+        [attr.data-alert]="incident.alert"
       >
         <button
           type="button"
@@ -28,6 +29,9 @@
           <span class="incident-id">{{ incident.id }}</span>
           <span class="incident-name" [title]="incident.title">{{ incident.title }}</span>
           <span class="incident-status" [title]="incident.status">{{ incident.status }}</span>
+          @if (incident.alert) {
+            <span class="sr-only">Requiere intervención del operador</span>
+          }
           <span class="incident-area" [title]="incident.area">{{ incident.area }}</span>
         </button>
         <div class="incident-actions">

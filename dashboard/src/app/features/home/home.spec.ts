@@ -199,6 +199,89 @@ describe('Home resource selection', () => {
     expect(fixture.componentInstance.latitude()).toBe('40.1234');
   });
 
+  it('explains the missing operator key and surfaces a blocked decision', async () => {
+    const operations = TestBed.inject(Operations);
+    const report = {
+      run_id: 'stuck-1',
+      timestamp: '2026-09-19T12:00:00Z',
+      emergency_type: 'incendio',
+      severity: 'grave' as const,
+      escalation_required: true,
+      location: { raw_text: 'Gran Vía 12', confirmed: true },
+      victims: {},
+      resolution: {
+        status: 'ambiguous' as const,
+        candidates: [
+          { lat: 40.41, lng: -3.69, label: 'Museo Chicote', kind: 'amenity' },
+          { lat: 40.42, lng: -3.7, label: 'Portal 12', kind: 'building' },
+        ],
+        selected: null,
+        provider: 'nominatim' as const,
+        error: '',
+      },
+    };
+    operations.snapshot.set({
+      version: 1,
+      generated_at: report.timestamp,
+      incident: { id: 'incident', name: 'Crisis', started_at: report.timestamp },
+      zones: [],
+      fronts: [],
+      resources: [],
+      contacts: [],
+      tasks: [
+        {
+          id: 'stuck-task',
+          title: 'Automático: Bomberos',
+          zone_id: null,
+          resource_ids: [],
+          status: 'proposed',
+          autonomous: true,
+          incoming_call_id: report.run_id,
+          blocked_reason: 'Ubicación no resoluble; requiere que el operador la concrete.',
+        },
+      ],
+      recent_actions: [],
+      incoming_calls: [report],
+      agent: { mode: 'running' },
+    } as WorldSnapshot);
+    (operations.incidents as WritableSignal<Incident[]>).set([
+      {
+        id: 'call:stuck-1',
+        title: 'Aviso',
+        address: 'Gran Vía 12',
+        area: 'Gran Vía 12',
+        priority: 'P1',
+        status: 'Bloqueada: ubicación no resoluble',
+        coordinates: { lat: 40.41, lng: -3.69 },
+        icon: 'fire',
+        alert: 'blocked',
+      },
+    ]);
+    const fixture = await setup();
+    fixture.componentInstance.selectIncident('call:stuck-1');
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    // Sin clave los controles están inertes: hay que decir por qué, no solo desactivarlos.
+    expect(element.querySelector('.needs-key')?.textContent).toContain('barra superior');
+    expect(element.querySelector('.response-proposal.stuck')).not.toBeNull();
+    expect(element.querySelector('.blocked')?.textContent).toContain('Bloqueada');
+    // El panel de ubicación se abre solo y los candidatos están a la vista.
+    expect(element.querySelector('details')?.open).toBe(true);
+    const candidates = element.querySelectorAll<HTMLButtonElement>('.location-candidate');
+    expect(candidates.length).toBe(2);
+    expect(candidates[0].disabled).toBe(true);
+    fixture.componentInstance.operatorKey.set('operator-test');
+    await fixture.whenStable();
+    expect(element.querySelector('.needs-key')).toBeNull();
+    expect(candidates[0].disabled).toBe(false);
+    candidates[0].click();
+    await fixture.whenStable();
+    expect(operations.confirmLocation).toHaveBeenCalledWith(
+      report,
+      report.resolution.candidates[0],
+    );
+  });
+
   it('shows the automatic decision with its reason and lets the operator override it', async () => {
     const operations = TestBed.inject(Operations);
     const report = {

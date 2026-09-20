@@ -71,14 +71,15 @@ export class OperationalMap {
     }
     return states;
   });
+  // Lista de rutas a descargar. Depende solo de la entrada, nunca del avance ya calculado:
+  // si el consumo del avance la filtrase, cambiaría en plena descarga y la repetiría.
   private readonly unmanagedLocations = computed(
     () =>
       this.locations().filter(
         (location) =>
           location.kind === 'unit' &&
           location.route?.status === 'active' &&
-          !location.route.navigation &&
-          !this.simulation.isManaged(location),
+          !location.route.navigation,
       ),
     {
       equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
@@ -209,6 +210,10 @@ export class OperationalMap {
       );
     });
 
+    // Engancha a las unidades que van aceptando la llamada, no solo a las del primer render.
+    // Depende de las rutas ya descargadas, nunca de `resolvedLocations`: eso realimentaría
+    // el propio avance y se iría en bucle.
+    effect(() => this.simulation.sync(this.sourceLocations(), this.fetchedRouteStates()));
     effect(() => {
       if (!this.ready()) return;
       const locations = this.resolvedLocations();
@@ -470,10 +475,7 @@ export class OperationalMap {
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.textContent = 'Reintentar ruta';
-      retry.addEventListener('click', () => {
-        if (location.route?.navigation) this.simulation.retry(location.id);
-        else this.routeRetryVersion.update((value) => value + 1);
-      });
+      retry.addEventListener('click', () => this.routeRetryVersion.update((value) => value + 1));
       popup.append(retry);
     }
     return popup;

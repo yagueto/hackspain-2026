@@ -69,6 +69,13 @@ export interface MapLocation {
   contactId?: string | null;
   etaMinutes?: number | null;
   reportedAt?: string | null;
+  /** Salida y duración del trayecto según el backend: la posición mostrada es estimada. */
+  travelStartedAt?: string | null;
+  travelMinutes?: number | null;
+  positionEstimated?: boolean;
+  /** Extremos del trayecto, para interpolar cuando no hay ruta por carretera que seguir. */
+  travelFrom?: Coordinates;
+  travelTo?: Coordinates;
 }
 
 export interface Incident {
@@ -83,6 +90,8 @@ export interface Incident {
   description?: string;
   locationStatus?: string;
   radiusMeters?: number;
+  /** El agente no puede seguir solo: `blocked` necesita ubicación, `critical` confirmación. */
+  alert?: 'blocked' | 'critical';
 }
 
 export type CommunicationStatus =

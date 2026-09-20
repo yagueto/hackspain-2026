@@ -11,7 +11,13 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from app.agent.executor import Executor, invalid_task, location_pending, reachable
+from app.agent.executor import (
+    NO_RESOURCE,
+    Executor,
+    invalid_task,
+    location_pending,
+    reachable,
+)
 from app.agent.llm import LLMReviewer, Review
 from app.agent.planner import Proposal, propose, replan_needed
 from app.domain.intake import prepare_intake_tasks
@@ -28,12 +34,16 @@ from app.domain.models import (
     Event,
     EventKind,
     EventSource,
+    Location,
     Observation,
     Receipt,
+    Resource,
+    ResourceStatus,
     Severity,
     TaskStatus,
     now,
 )
+from app.domain.movement import advance
 from app.domain.observations import apply_observation
 from app.domain.state import WorldState
 from app.store.persistence import Store, StoreError, VersionConflict
@@ -101,6 +111,7 @@ class Orchestrator:
                     await self.locate_pending_reports()
                     await self.reconcile_intake()
                     await self.escalate_stale_approvals()
+                    await self.advance_missions()
                 if (
                     self.state.incident
                     and self._autoplan
@@ -383,25 +394,75 @@ class Orchestrator:
         ventana para anular y la parada de emergencia.
         """
         stale = self._stale_intake_tasks(self.state)
-        ready = [
-            task.id
-            for task in self.state.tasks.values()
-            if task.autonomous and task.status == TaskStatus.proposed and not task.action_ids
-        ]
-        if not stale and not ready:
+        # Solo se abre una transacción por lo que cambia. Una misión sin medio libre seguiría
+        # entrando aquí en cada ciclo y, al commitear sin cambios, escribiría en la base y
+        # refrescaría el dashboard cada dos segundos para siempre. La espera se explica una
+        # vez y después se calla hasta que algo se mueva.
+        idle = self.executor.bind(self.state)
+        ready: list[str] = []
+        stalled: list[str] = []
+        for waiting in self.state.tasks.values():
+            if not (
+                waiting.autonomous
+                and waiting.status == TaskStatus.proposed
+                and not waiting.action_ids
+            ):
+                continue
+            if idle.can_progress(waiting):
+                ready.append(waiting.id)
+            elif not location_pending(self.state, waiting) and waiting.outcome != NO_RESOURCE:
+                stalled.append(waiting.id)
+        if not stale and not ready and not stalled:
             return
         async with self.edit() as s:
             executor = self.executor.bind(s)
             for task_id in self._stale_intake_tasks(s):
                 await executor.cancel_task(s.tasks[task_id], invalid_task(s, s.tasks[task_id]))
             reliability = {c.id: c.reliability for c in s.contacts.values()}
-            for task_id in sorted(ready, key=lambda i: -s.tasks[i].priority):
+            for task_id in stalled + sorted(ready, key=lambda i: -s.tasks[i].priority):
                 task = s.tasks.get(task_id)
                 if not task or task.status != TaskStatus.proposed or task.action_ids:
+                    continue
+                if task_id in stalled:
+                    task.outcome = NO_RESOURCE
+                    s.upsert_task(task)
                     continue
                 await executor.execute(
                     Proposal(task, task.resource_types, task.contact_roles), reliability
                 )
+
+    def _mission_target(self, state: WorldState, resource: Resource) -> Location | None:
+        task = state.tasks.get(resource.assigned_task_id or "")
+        if not task or task.status in (TaskStatus.done, TaskStatus.cancelled, TaskStatus.failed):
+            return None
+        destination = state.zones.get(task.zone_id or "") or state.fronts.get(task.zone_id or "")
+        return task.target_location or (destination.location if destination else None)
+
+    async def advance_missions(self) -> None:
+        """Acerca a su destino las unidades que aceptaron la llamada.
+
+        La posición es una estimación por tiempo transcurrido, nunca GPS, y solo se mueve lo
+        que está `en_route`: una orden enviada no significa que nadie se haya puesto en marcha.
+        """
+        moving = [
+            resource.id
+            for resource in self.state.resources.values()
+            if resource.status == ResourceStatus.en_route
+            and self._mission_target(self.state, resource) is not None
+        ]
+        if not moving:
+            return
+        at = now()
+        candidate = self.state.copy()
+        changed = False
+        for resource_id in moving:
+            resource = candidate.resources[resource_id]
+            target = self._mission_target(candidate, resource)
+            if target and advance(resource, target, at):
+                candidate.upsert_resource(resource)
+                changed = True
+        if changed:
+            await self._commit(candidate)
 
     async def locate_pending_reports(self) -> None:
         """Resuelve la ubicación de los avisos sin GPS que aún no se han intentado.

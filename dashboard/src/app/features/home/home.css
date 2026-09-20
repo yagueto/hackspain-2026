@@ -164,9 +164,13 @@ app-operational-map {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-.response-proposal.critical {
+.response-proposal.critical,
+.response-proposal.stuck {
   border-color: var(--danger);
   background: var(--danger-surface);
+}
+.response-proposal.stuck {
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 .proposal-head {
   display: flex;
@@ -198,6 +202,12 @@ app-operational-map {
 }
 .response-proposal .approximate {
   color: var(--muted);
+}
+.operator-controls .needs-key {
+  padding: 6px 8px;
+  color: var(--danger);
+  background: var(--danger-surface);
+  border-radius: 4px;
 }
 .countdown {
   display: flex;

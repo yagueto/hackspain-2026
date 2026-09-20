@@ -77,6 +77,18 @@
 .incident-area {
   color: var(--muted);
 }
+/* El agente no puede seguir solo: la fila se distingue sin depender solo del texto. */
+.incident-row[data-alert] {
+  background: var(--danger-surface);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.incident-row[data-alert] .incident-status {
+  color: var(--danger);
+  font-weight: 600;
+}
+.incident-row[data-alert='critical'] .incident-icon {
+  color: var(--danger);
+}
 .priority {
   font-variant-numeric: tabular-nums;
 }

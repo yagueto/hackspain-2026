@@ -202,6 +202,13 @@ class Resource(BaseModel):
     reported_status: ResourceStatus | None = None
     reported_at: datetime | None = None
     notes: list[str] = Field(default_factory=list)
+    # Avance hacia el destino. `position_estimated` marca que `location` es una estimación
+    # por tiempo transcurrido, no telemetría: un parte de campo la sobrescribe.
+    travel_from: Location | None = None
+    travel_started_at: datetime | None = None
+    travel_minutes: float | None = None
+    travel_progress: float = Field(default=0.0, ge=0, le=1)
+    position_estimated: bool = False
 
 
 class Contact(BaseModel):

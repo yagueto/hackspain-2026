@@ -12,6 +12,7 @@ from app.domain.models import (
     CallOutcome,
     EventKind,
     IncomingCall,
+    Location,
     Observation,
     Receipt,
     ResourceStatus,
@@ -55,6 +56,8 @@ class ResourcePayload(Payload):
     status: ResourceStatus
     eta_minutes: float | None = Field(default=None, ge=0)
     task_id: str | None = None
+    # Posición reportada desde el campo: manda sobre la estimación del agente.
+    location: Location | None = None
 
 
 class IntegrationPayload(Payload):

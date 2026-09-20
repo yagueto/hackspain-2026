@@ -179,6 +179,12 @@ export interface WorldSnapshot {
     assigned_zone_id: string | null;
     contact_id: string | null;
     reported_at: string | null;
+    /** Avance hacia el destino publicado por el backend; la posición es estimada, no GPS. */
+    travel_from?: (Coordinates & { label?: string }) | null;
+    travel_started_at?: string | null;
+    travel_minutes?: number | null;
+    travel_progress?: number;
+    position_estimated?: boolean;
     capacity?: number;
     eta_minutes?: number | null;
     notes?: string[];
