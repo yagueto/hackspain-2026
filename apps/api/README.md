@@ -26,9 +26,13 @@ docker compose up -d --wait postgres
 export STORAGE_BACKEND=postgres
 export DATABASE_URL=postgresql://crisis:local-dev-only@127.0.0.1:55433/crisis
 export HAPPYROBOT_MODE=simulated AGENT_AUTOSTART=false
-uv run python -m app.store.migrate --apply
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
+
+Sobre una base vacía no hace falta migrar a mano. Para dejar los ajustes fijos en lugar de
+exportarlos en cada terminal, ponlos en `.env.local` (ignorado por Git, sin API keys).
+Con PostgreSQL el estado sobrevive además a los hot reload de `uvicorn --reload`, que con
+`STORAGE_BACKEND=memory` lo destruyen en cada edición de un `.py`.
 
 La contraseña de Compose es exclusivamente para desarrollo local. Cambia `POSTGRES_PASSWORD`
 y `DATABASE_URL` antes de desplegar; no publiques el puerto de la base de datos. Compose
@@ -40,8 +44,11 @@ La precedencia es: variables del proceso > `.env.local` > `.env` > valores por d
 Para probar sin revisión LLM remota configura además `OPENAI_API_KEY=` en el entorno.
 
 La migración crea el esquema v1 idempotentemente y rechaza tablas incompatibles. Sin `--apply`
-solo inspecciona. El arranque exige un esquema migrado: no degrada silenciosamente a memoria
-si PostgreSQL falla. `SEED_DEMO=true` crea el escenario solo si el incidente no existe; los
+solo inspecciona. **Sobre una base vacía el arranque aplica el esquema por su cuenta** y lo
+registra en el log, así que el paso manual solo hace falta para inspeccionar o para migrar antes
+de arrancar. En cambio, si encuentra el esquema a medias o una versión distinta, falla en alto y
+no toca nada: puede ser una base ajena por un `DATABASE_URL` equivocado o una migración
+interrumpida. El arranque nunca degrada silenciosamente a memoria si PostgreSQL falla. `SEED_DEMO=true` crea el escenario solo si el incidente no existe; los
 siguientes arranques restauran tareas, acciones, asignaciones, recibos e histórico.
 `STORE_POLL_SECONDS` y `STORE_BATCH_SIZE` controlan la sincronización.
 

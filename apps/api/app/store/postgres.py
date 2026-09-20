@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import psycopg
@@ -11,6 +12,8 @@ from pydantic import BaseModel, JsonValue
 from app.config import Settings
 from app.domain.models import Observation, ObservationRow, Receipt, WorldSnapshot
 from app.store.persistence import Store, StoreError, VersionConflict
+
+log = logging.getLogger(__name__)
 
 
 def literal(value: str) -> str:
@@ -97,9 +100,25 @@ class PostgresStore(Store):
                 await self.query(statement)
 
     async def open(self) -> None:
+        tables = {t.name for t in await self.inspect_schema()}
+        if not tables & set(EXPECTED_COLUMNS):
+            # Base recién creada: arrancar el esquema es más útil que fallar en el caso más
+            # inocente. Con tablas a medias no se toca nada: podría ser una base ajena por un
+            # DATABASE_URL equivocado, o una migración interrumpida que hay que revisar.
+            log.info("PostgreSQL sin esquema crisis; aplicando el esquema v1")
+            await self.migrate()
+            tables = {t.name for t in await self.inspect_schema()}
+        if "crisis_schema_version" not in tables:
+            missing = ", ".join(sorted(set(EXPECTED_COLUMNS) - tables))
+            raise StoreError(
+                f"esquema crisis incompleto (faltan: {missing}); "
+                "revísalo y ejecuta `python -m app.store.migrate --apply`"
+            )
         versions = await self.query("SELECT version FROM crisis_schema_version")
         if versions != [{"version": 1}]:
-            raise StoreError("esquema no soportado; revisa python -m app.store.migrate")
+            raise StoreError(
+                "versión de esquema no soportada; revisa `python -m app.store.migrate`"
+            )
 
     async def close(self) -> None:
         pass

@@ -66,6 +66,42 @@ async def test_migration_idempotent_and_schema_version_guard(pg: PostgresStore) 
         await pg.migrate()
 
 
+async def test_open_bootstraps_an_empty_database_but_never_a_partial_schema() -> None:
+    dsn = os.environ.get("TEST_POSTGRES_DSN")
+    if not dsn:
+        pytest.skip("TEST_POSTGRES_DSN no configurado")
+
+    async def store_on(schema: str) -> PostgresStore:
+        async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+            await conn.execute(SQL("CREATE SCHEMA {}").format(Identifier(schema)))
+        return PostgresStore(
+            Settings(database_url=make_conninfo(dsn, options=f"-c search_path={schema}"))
+        )
+
+    async def drop(schema: str) -> None:
+        async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+            await conn.execute(SQL("DROP SCHEMA {} CASCADE").format(Identifier(schema)))
+
+    empty, partial = f"test_{uuid.uuid4().hex}", f"test_{uuid.uuid4().hex}"
+    try:
+        # Base recién creada: arranca el esquema sin exigir el comando manual.
+        fresh = await store_on(empty)
+        await fresh.open()
+        assert await fresh.query("SELECT version FROM crisis_schema_version") == [{"version": 1}]
+        await fresh.open()  # idempotente
+
+        # Esquema a medias: podría ser una base ajena o una migración interrumpida.
+        half = await store_on(partial)
+        await half.query("CREATE TABLE crisis_world (incident_id text PRIMARY KEY)")
+        with pytest.raises(StoreError, match="incompleto"):
+            await half.open()
+        tables = {t.name for t in await half.inspect_schema()}
+        assert tables == {"crisis_world"}  # no se ha creado nada por su cuenta
+    finally:
+        for schema in (empty, partial):
+            await drop(schema)
+
+
 async def test_atomic_snapshot_receipt_assignment_outbox_and_cas(pg: PostgresStore) -> None:
     initial = snapshot()
     await pg.create(initial)
