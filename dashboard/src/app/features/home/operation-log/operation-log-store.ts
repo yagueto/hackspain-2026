@@ -49,7 +49,9 @@ export class OperationLogStore {
   });
   readonly now = this.operations.now;
   readonly open = signal(false);
-  readonly view = signal<'activity' | 'missions' | 'communications' | 'system'>('activity');
+  readonly view = signal<'activity' | 'missions' | 'communications' | 'learning' | 'system'>(
+    'activity',
+  );
   readonly incidentFilter = signal<string | null>(null);
   readonly focusedQuestionId = signal<string | null>(null);
   readonly focusRequest = signal(0);

@@ -777,4 +777,41 @@ describe('Backend-backed incident and coordination stores', () => {
     expect(element.textContent).toContain('Parada activa');
     expect(element.textContent).toContain('Salidas simuladas');
   });
+
+  it('shows what the agent learned in earlier runs without dumping raw results', async () => {
+    const state = snapshot();
+    state.contacts = [{ id: 'con_1', name: 'Jefe de dotación', role: 'firefighter' }];
+    const log = setup(state);
+    const fixture = TestBed.createComponent(OperationLogPanel);
+    log.view.set('learning');
+    await fixture.whenStable();
+    http.expectOne('/api/v1/history/lessons').flush({
+      contact_reliability: { con_1: 0.75, con_missing: 0.2 },
+      recent: [
+        {
+          summary: 'Llamada al jefe de dotación',
+          result: { webhook: { outcome: 'accepted' }, request: { secret: 'no-mostrar' } },
+        },
+      ],
+    });
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('Jefe de dotación');
+    expect(element.textContent).toContain('75%');
+    expect(element.textContent).toContain('Aceptada');
+    expect(element.textContent).not.toContain('no-mostrar');
+    expect(operations.lessons()?.recent).toEqual([
+      { summary: 'Llamada al jefe de dotación', outcome: 'accepted' },
+    ]);
+  });
+
+  it('keeps the previous history and reports an unreadable response', async () => {
+    const log = setup();
+    const fixture = TestBed.createComponent(OperationLogPanel);
+    log.view.set('learning');
+    await fixture.whenStable();
+    http.expectOne('/api/v1/history/lessons').flush({ recent: 'no es una lista' });
+    expect(operations.lessons()).toBeNull();
+    expect(operations.lessonsError()).toContain('no se reconoce');
+  });
 });
