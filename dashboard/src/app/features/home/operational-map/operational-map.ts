@@ -16,10 +16,12 @@ import {
 import * as L from 'leaflet/dist/leaflet-src.esm.js';
 import { MapLocation } from '../../../core/models/operations';
 import { Geocoding, normalizeAddress } from '../../../core/services/geocoding';
-import { Icon, ICON_PATHS } from '../../../shared/icon/icon';
+import { Icon, createIconSvg } from '../../../shared/icon/icon';
+import { Theme } from '../../../core/services/theme';
 import { formatRouteDuration, Routing } from '../../../core/services/routing';
 import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { ResourceRouteLayer, ResourceRouteState } from './resource-route-layer';
+import { MarkerLabels } from './marker-labels';
 
 @Component({
   selector: 'app-operational-map',
@@ -33,6 +35,8 @@ export class OperationalMap {
   readonly locations = input<readonly MapLocation[]>([]);
   readonly selectedUnitId = input<string | null>(null);
   readonly selectedIncidentId = input<string | null>(null);
+  readonly visibleUnitIds = input<readonly string[] | null>(null);
+  readonly focusedLocationId = input<string | null>(null);
   readonly incidentSelected = output<string>();
   readonly unitSelected = output<string>();
   protected readonly showIncidents = signal(true);
@@ -54,6 +58,13 @@ export class OperationalMap {
   private readonly geocoding = inject(Geocoding);
   private readonly routing = inject(Routing);
   private readonly simulation = inject(DemoRouteSimulation);
+  private readonly theme = inject(Theme);
+  private readonly haloLocations = computed(
+    () => this.resolvedLocations().filter((location) => location.kind === 'incident'),
+    {
+      equal: (a, b) => a.length === b.length && a.every((location, index) => location === b[index]),
+    },
+  );
   private readonly fetchedRouteStates = signal<ReadonlyMap<string, ResourceRouteState>>(new Map());
   private readonly routeStates = computed(() => {
     const states = new Map(this.fetchedRouteStates());
@@ -79,15 +90,18 @@ export class OperationalMap {
   private readonly markers = new Map<string, L.Marker>();
   private readonly markerAppearances = new Map<string, string>();
   private routeLayer?: ResourceRouteLayer;
+  private labels?: MarkerLabels;
   private readonly destroyRef = inject(DestroyRef);
   private readonly ready = signal(false);
   private readonly retryVersion = signal(0);
   private map?: L.Map;
   private tiles?: L.TileLayer;
   private markerLayer?: L.LayerGroup;
+  private haloLayer?: L.LayerGroup;
   private resizeObserver?: ResizeObserver;
   private lastLocationKey = '';
   private lastSelection: string | null = null;
+  private lastFocus: string | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -97,24 +111,83 @@ export class OperationalMap {
         minZoom: 3,
         maxZoom: 19,
         zoomSnap: 0.25,
-      }).setView([40.606, -3.711], 13);
-      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
-      }).addTo(this.map);
-      this.tiles.on('tileerror', () => this.tileError.set(true));
+      }).setView([40.734, -3.876], 13);
       this.map.attributionControl.setPrefix(false);
       L.control
-        .zoom({ position: 'bottomright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' })
+        .zoom({
+          position: 'bottomright',
+          zoomInTitle: 'Acercar',
+          zoomOutTitle: 'Alejar',
+          zoomInText: createIconSvg('plus').outerHTML,
+          zoomOutText: createIconSvg('minus').outerHTML,
+        })
         .addTo(this.map);
+      this.map.createPane('incident-halos').style.zIndex = '350';
+      this.haloLayer = L.layerGroup().addTo(this.map);
       this.markerLayer = L.layerGroup().addTo(this.map);
       this.routeLayer = new ResourceRouteLayer(this.map, (id) => this.unitSelected.emit(id));
+      this.labels = new MarkerLabels(this.map, (location) => this.selectLocation(location));
+      this.map.on('zoom move resize', () => this.renderLabels());
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
         this.resizeObserver.observe(this.canvas().nativeElement);
       }
       this.ready.set(true);
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.map) return;
+      this.tiles?.remove();
+      this.tileError.set(false);
+      this.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+      }).addTo(this.map);
+      this.tiles.on('tileerror', () => this.tileError.set(true));
+    });
+
+    effect(() => {
+      if (!this.ready() || !this.haloLayer) return;
+      const locations = this.haloLocations();
+      const selected = this.selectedIncidentId();
+      const dark = this.theme.current() === 'dark';
+      const visible = this.showIncidents();
+      this.haloLayer.clearLayers();
+      if (!visible) return;
+      for (const location of locations) {
+        if (
+          !location.radiusMeters ||
+          !Number.isFinite(location.radiusMeters) ||
+          location.radiusMeters <= 0
+        )
+          continue;
+        const active = location.incidentId === selected;
+        const color = dark ? '#e5e5e5' : '#666666';
+        for (const scale of [1, 0.7]) {
+          L.circle([location.coordinates.lat, location.coordinates.lng], {
+            radius: location.radiusMeters * scale,
+            pane: 'incident-halos',
+            className: `incident-range${active ? ' is-selected' : ''}`,
+            interactive: false,
+            color,
+            weight: active ? 1.5 : 1,
+            opacity: active ? 0.65 : 0.25,
+            fillColor: color,
+            fillOpacity: active ? 0.12 : 0.045,
+          }).addTo(this.haloLayer);
+        }
+        L.circle([location.coordinates.lat, location.coordinates.lng], {
+          radius: location.radiusMeters,
+          pane: 'incident-halos',
+          className: 'incident-range-wave',
+          interactive: false,
+          color,
+          weight: active ? 2 : 1.5,
+          opacity: 0.75,
+          fill: false,
+        }).addTo(this.haloLayer);
+      }
     });
 
     effect((onCleanup) => {
@@ -139,6 +212,7 @@ export class OperationalMap {
 
     effect(() => {
       if (this.selectedUnitId()) this.showUnits.set(true);
+      if (this.selectedIncidentId()) this.showIncidents.set(true);
     });
 
     effect(() => {
@@ -156,7 +230,12 @@ export class OperationalMap {
       if (!this.ready()) return;
       const locations = this.resolvedLocations();
       const states = this.routeStates();
-      this.routeLayer?.render(locations, states, this.selectedUnitId(), this.showUnits());
+      this.routeLayer?.render(
+        locations.filter((location) => this.isVisible(location, true, true)),
+        states,
+        this.selectedUnitId(),
+        this.showUnits(),
+      );
       for (const location of locations) {
         const marker = this.markers.get(location.id);
         if (!marker?.isPopupOpen()) continue;
@@ -173,7 +252,7 @@ export class OperationalMap {
     });
   }
 
-  protected fitLocations(): void {
+  protected fitLocations(animate = true): void {
     const visible = this.visibleLocations();
     if (visible.length && this.map) {
       const points = visible.map((location) => location.coordinates);
@@ -186,10 +265,11 @@ export class OperationalMap {
         )
           points.push(...state.route.path);
       }
-      this.map.fitBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
+      this.map.flyToBounds(L.latLngBounds(points.map((point) => [point.lat, point.lng])), {
         padding: [48, 58],
         maxZoom: 15,
-        animate: false,
+        animate: animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
       });
     }
   }
@@ -283,7 +363,6 @@ export class OperationalMap {
       if (!marker) {
         marker = L.marker([location.coordinates.lat, location.coordinates.lng], {
           icon: this.createIcon(location, selectedUnitId ? null : selectedId, selected),
-          title: `${location.label} · ${location.address}`,
           alt: location.label,
           keyboard: true,
         }).addTo(this.markerLayer);
@@ -294,13 +373,15 @@ export class OperationalMap {
             location,
             untracked(() => this.routeStates().get(location.id)),
           ),
-          { maxWidth: 250 },
+          { maxWidth: 250, autoPan: false },
         );
         marker.on('click', () => {
-          if (location.kind === 'unit') this.unitSelected.emit(location.id);
-          else if (location.kind === 'incident' && location.incidentId)
-            this.incidentSelected.emit(location.incidentId);
+          this.selectLocation(location);
         });
+        marker.on('mouseover', () => this.labels?.hover(location.id, true));
+        marker.on('mouseout', () => this.labels?.hover(location.id, false));
+        marker.getElement()?.addEventListener('focus', () => this.labels?.hover(location.id, true));
+        marker.getElement()?.addEventListener('blur', () => this.labels?.hover(location.id, false));
         marker.on('popupopen', () => {
           const current = this.resolvedLocations().find((item) => item.id === location.id);
           if (current)
@@ -313,11 +394,21 @@ export class OperationalMap {
         }
         const point = L.latLng(location.coordinates.lat, location.coordinates.lng);
         if (!marker.getLatLng().equals(point)) marker.setLatLng(point);
-        marker.getElement()?.setAttribute('title', `${location.label} · ${location.address}`);
       }
+      const state = this.routeStates().get(location.id);
+      if (location.route?.status === 'active' && state?.status === 'ready') {
+        marker.closePopup();
+        marker.unbindPopup();
+      } else if (!marker.getPopup()) {
+        marker.bindPopup(this.popupContent(location, state), { maxWidth: 250, autoPan: false });
+        if (selected) marker.openPopup();
+      }
+      if (!selected) marker.closePopup();
+      marker.getElement()?.setAttribute('aria-label', location.label);
       marker.setZIndexOffset(selected ? 1000 : location.kind === 'incident' ? 500 : 0);
       if (selected) selectedMarker = marker;
     }
+    const focusId = this.focusedLocationId();
     const locationKey = locations.map((location) => location.id).join('|');
     const selectionKey = selectedUnitId
       ? `unit:${selectedUnitId}`
@@ -326,12 +417,49 @@ export class OperationalMap {
         : null;
     if (locationKey !== this.lastLocationKey) {
       this.lastLocationKey = locationKey;
-      untracked(() => this.fitLocations());
-    } else if (selectionKey !== this.lastSelection && selectedMarker) {
-      this.map.panTo(selectedMarker.getLatLng(), { animate: false });
+      if (!focusId) untracked(() => this.fitLocations(false));
+    } else if (
+      selectionKey !== this.lastSelection &&
+      selectedMarker &&
+      focusId === this.lastFocus
+    ) {
+      this.map.flyTo(selectedMarker.getLatLng(), this.map.getZoom(), {
+        animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+        duration: 0.65,
+      });
       selectedMarker.openPopup();
     }
     this.lastSelection = selectionKey;
+    const focused = visible.find((location) => location.id === focusId);
+    if (focusId !== this.lastFocus) {
+      if (focused) {
+        this.map.flyTo([focused.coordinates.lat, focused.coordinates.lng], 15, {
+          animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+          duration: 0.65,
+        });
+        this.lastFocus = focusId;
+      } else if (!focusId && this.lastFocus) {
+        untracked(() => this.fitLocations());
+        this.lastFocus = null;
+      }
+    }
+    this.renderLabels();
+  }
+
+  private selectLocation(location: MapLocation): void {
+    if (location.kind === 'unit') this.unitSelected.emit(location.id);
+    else if (location.kind === 'incident' && location.incidentId)
+      this.incidentSelected.emit(location.incidentId);
+  }
+
+  private renderLabels(): void {
+    this.labels?.render(
+      this.visibleLocations(),
+      this.markers,
+      this.routeStates(),
+      this.selectedUnitId(),
+      this.selectedIncidentId(),
+    );
   }
 
   private async loadRoutes(locations: readonly MapLocation[], signal: AbortSignal): Promise<void> {
@@ -405,7 +533,15 @@ export class OperationalMap {
   }
 
   private isVisible(location: MapLocation, incidents: boolean, units: boolean): boolean {
-    return location.kind === 'place' || (location.kind === 'incident' ? incidents : units);
+    return (
+      location.kind === 'place' ||
+      (location.kind === 'incident'
+        ? incidents
+        : units &&
+          (location.id === this.selectedUnitId() ||
+            this.visibleUnitIds() === null ||
+            this.visibleUnitIds()!.includes(location.id)))
+    );
   }
 
   private isSelected(
@@ -428,26 +564,9 @@ export class OperationalMap {
     element.className = `map-marker kind-${location.kind}${related ? ' is-related' : ''}${selected ? ' is-selected' : ''}`;
     const symbol = document.createElement('span');
     symbol.className = 'marker-symbol';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    for (const [name, value] of Object.entries({
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': '1.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
-      'aria-hidden': 'true',
-    }))
-      svg.setAttribute(name, value);
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', ICON_PATHS[location.icon]);
-    svg.append(path);
-    symbol.append(svg);
-    const label = document.createElement('span');
-    label.className = 'marker-label';
-    label.textContent = location.label;
-    element.append(symbol, label);
-    const size = location.kind === 'incident' ? 52 : 40;
+    symbol.append(createIconSvg(location.icon));
+    element.append(symbol);
+    const size = location.kind === 'incident' ? 46 : 34;
     return L.divIcon({
       html: element,
       className: 'operation-marker',

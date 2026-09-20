@@ -24,10 +24,7 @@
                 "input": "public"
               }
             ],
-            "styles": [
-              "src/styles.css",
-              "src/home-card-actions.css"
-            ]
+            "styles": ["src/styles.css"]
           },
           "configurations": {
             "production": {

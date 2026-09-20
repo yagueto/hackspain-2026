@@ -6,58 +6,49 @@
     </div>
   </div>
   <div
+    appAnimateList
     id="incidents-list"
     class="incident-list"
-    [appPaginatedList]="incidents()"
-    [itemKey]="incidentKey"
-    [selectedKey]="selectedId()"
-    #pager="paginatedList"
+    tabindex="0"
+    aria-label="Lista de incidencias"
   >
-    @for (incident of pager.visibleItems(); track incident.id) {
+    @for (incident of sortedIncidents(); track incident.id) {
       @let pending = attention().get(incident.id);
       <article
         class="incident-row"
         [class.selected]="selectedId() === incident.id"
         [class.awaiting-human]="!!pending"
         [attr.data-urgency]="pending?.urgency"
+        (click)="pending && responseRequested.emit(incident.id)"
       >
         <button
           type="button"
           class="incident-select"
-          [attr.aria-label]="'Mostrar ' + incident.id + ' en el mapa'"
-          [attr.aria-pressed]="selectedId() === incident.id"
-          (click)="incidentSelected.emit(incident.id)"
+          [attr.aria-label]="
+            pending ? 'Ver detalles de ' + incident.id : 'Mostrar ' + incident.id + ' en el mapa'
+          "
+          [attr.aria-pressed]="pending ? null : selectedId() === incident.id"
+          (click)="
+            $event.stopPropagation();
+            pending ? responseRequested.emit(incident.id) : incidentSelected.emit(incident.id)
+          "
         >
-          <span class="incident-icon"><app-icon [name]="incident.icon" /></span>
-          <span class="incident-info">
-            <span class="incident-name">
-              <strong>{{ incident.id }}</strong
-              ><span class="separator">·</span>{{ incident.title }}
-            </span>
-            <span class="status-badge">
-              <span>{{ incident.priority }}</span
-              ><span class="status-dot"></span>{{ incident.status }}
-            </span>
-            <span class="incident-area">{{ incident.area }}</span>
-          </span>
+          <app-icon class="incident-icon" [name]="incident.icon" />
+          <span class="priority" [attr.aria-label]="'Prioridad ' + priority(incident)">{{
+            priority(incident)
+          }}</span>
+          <span class="incident-id">{{ incident.id }}</span>
+          <span class="incident-name" [title]="incident.title">{{ incident.title }}</span>
+          <span class="incident-status" [title]="incident.status">{{ incident.status }}</span>
+          <span class="incident-area" [title]="incident.area">{{ incident.area }}</span>
         </button>
         <div class="incident-actions">
-          @if (pending) {
-            <button
-              type="button"
-              class="respond-button"
-              [attr.aria-label]="'Responder ' + pending.count + ' preguntas de ' + incident.id"
-              (click)="responseRequested.emit(incident.id)"
-            >
-              Responder <span>{{ pending.count }}</span>
-            </button>
-          }
           <a
             class="detail-link"
-            routerLink="/incidencias"
+            routerLink="/"
             [queryParams]="{ incidencia: incident.id }"
             [attr.aria-label]="'Ver detalles de ' + incident.id"
-            title="Ver detalles"
+            (click)="$event.stopPropagation()"
           >
             <span>Detalles</span><app-icon name="chevron" />
           </a>
@@ -67,11 +58,4 @@
       <p class="empty-state">No hay incidencias en seguimiento.</p>
     }
   </div>
-  <app-pagination
-    [page]="pager.pageIndex()"
-    [pageCount]="pager.pageCount()"
-    label="incidencias"
-    controls="incidents-list"
-    (pageChanged)="pager.goToPage($event)"
-  />
 </section>

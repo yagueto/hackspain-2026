@@ -1,30 +1,36 @@
 <a class="skip-link" href="#main-content">Saltar al contenido</a>
 <app-header />
 <main id="main-content" tabindex="-1"><router-outlet /></main>
-@if (outsideHome()) {
-  <p class="sr-only" role="alert">{{ log.notification() }}</p>
-  <button
-    type="button"
-    class="global-log-toggle"
-    [attr.aria-expanded]="log.open()"
-    aria-controls="operation-log"
-    (click)="log.open.set(!log.open())"
-  >
-    Registro
-    @if (log.pending().length) {
-      · {{ log.pending().length }} pendiente
-    }
-  </button>
-  @if (log.open()) {
-    <div class="global-log-overlay">
-      <button
-        class="global-log-backdrop"
-        type="button"
-        tabindex="-1"
-        aria-label="Cerrar registro"
-        (click)="log.open.set(false)"
-      ></button>
-      <app-operation-log-panel [modal]="true" (closeRequested)="log.open.set(false)" />
+@if (demoNoticeOpen()) {
+  <aside class="demo-notice" aria-labelledby="demo-notice-title">
+    <div role="status">
+      <h2 id="demo-notice-title">Aviso de demostración</h2>
+      <p>Este mockup muestra datos ficticios con fines ilustrativos.</p>
+      <p class="demo-shortcut">Pulsa <kbd>Espacio</kbd> para avanzar la simulación.</p>
     </div>
-  }
+    <button
+      class="demo-notice-close"
+      type="button"
+      aria-label="Cerrar aviso de demostración"
+      (click)="demoNoticeOpen.set(false)"
+    >
+      <app-icon name="close" />
+    </button>
+  </aside>
 }
+<footer class="statusbar">
+  <span
+    class="connection"
+    [class.unstable]="!connection.stable()"
+    role="status"
+    aria-live="polite"
+    title="Conectividad del navegador y recepción de eventos."
+  >
+    {{ connection.stable() ? 'Conexión estable' : 'Conexión inestable' }}
+    <span class="signal-bars" aria-hidden="true">
+      @for (bar of [1, 2, 3]; track bar) {
+        <span [class.active]="bar <= connection.bars()"></span>
+      }
+    </span>
+  </span>
+</footer>

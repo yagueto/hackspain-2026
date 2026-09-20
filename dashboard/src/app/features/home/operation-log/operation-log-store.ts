@@ -18,7 +18,7 @@ import {
 } from '../../../core/models/operation-log';
 import { DemoRouteSimulation } from '../../../core/services/demo-route-simulation';
 import { IncidentStore } from '../../incidents/incident-store';
-import { createDemoQuestion } from './operation-log.mock';
+import { createDemoCallEvents, createDemoQuestion } from './operation-log.mock';
 
 export const OPERATION_LOG_UPDATES = new InjectionToken<Observable<OperationLogUpdate>>(
   'OPERATION_LOG_UPDATES',
@@ -35,39 +35,27 @@ export class OperationLogStore {
   readonly answers$ = this.responseEvents.asObservable();
   readonly questions = this.questionState.asReadonly();
   readonly now = signal(Date.now());
-  readonly open = signal(false);
-  readonly incidentFilter = signal<string | null>(null);
-  readonly focusedQuestionId = signal<string | null>(null);
-  readonly focusRequest = signal(0);
-  readonly notification = signal('');
+  private readonly demoNotification = signal('');
+  readonly notification = computed(() => {
+    const pending = this.pending();
+    const latest = pending.at(-1);
+    if (!latest) return this.demoNotification();
+    const label = pending.length === 1 ? 'pregunta pendiente' : 'preguntas pendientes';
+    return `${latest.incidentId} necesita respuesta. ${pending.length} ${label}.`;
+  });
   readonly incomingError = signal(false);
   readonly drafts = signal<Readonly<Record<string, QuestionAnswer>>>({});
   readonly errors = signal<Readonly<Record<string, string>>>({});
   private sequence = 0;
   private demoSequence = 0;
+  private readonly visibleRescueEventIds = signal<ReadonlySet<string>>(
+    new Set(['INC-003:reported', 'demo:INC-003:call:0', 'demo:INC-003:call:1']),
+  );
   private started = false;
 
   readonly pending = computed(() =>
     this.questions().filter((question) => question.status === 'pending'),
   );
-  readonly visiblePending = computed(() =>
-    this.pending().filter(
-      (question) => !this.incidentFilter() || question.incidentId === this.incidentFilter(),
-    ),
-  );
-  readonly history = computed(() => {
-    const pending = new Set(this.pending().map((question) => question.id));
-    return this.incidents
-      .events()
-      .filter(
-        (event) =>
-          (!this.incidentFilter() || event.incidentId === this.incidentFilter()) &&
-          !(event.kind === 'question' && event.questionId && pending.has(event.questionId)),
-      )
-      .sort(
-        (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id),
-      );
-  });
   readonly attention = computed<ReadonlyMap<string, IncidentAttention>>(() => {
     const result = new Map<string, IncidentAttention>();
     for (const question of this.pending()) {
@@ -133,6 +121,8 @@ export class OperationLogStore {
       typeof incoming.prompt !== 'string' ||
       !incoming.prompt.trim() ||
       incoming.prompt.length > 2000 ||
+      (incoming.context !== undefined &&
+        (typeof incoming.context !== 'string' || incoming.context.length > 1000)) ||
       this.questions().some((item) => item.id === incoming.id)
     )
       return false;
@@ -204,79 +194,182 @@ export class OperationLogStore {
       source: 'Agente de coordinación',
     });
     this.expireDue();
-    if (this.questions().find((item) => item.id === question.id)?.status === 'pending')
-      this.notification.set(
-        `${question.incidentId} necesita respuesta. ${this.pending().length} preguntas pendientes.`,
-      );
     return true;
   }
 
-  advanceDemo(): void {
-    const incident = DEMO_INCIDENTS[this.demoSequence];
-    if (!incident) return;
+  visibleTimelineEvents(events: readonly OperationLogEvent[]): readonly OperationLogEvent[] {
+    const visible = this.visibleRescueEventIds();
+    return events.filter((event) => event.incidentId !== 'INC-003' || visible.has(event.id));
+  }
+
+  advanceDemo(): string | null {
+    const dispatchingFirstIncident = this.demoSequence === 1;
+    const incident = DEMO_INCIDENTS[Math.max(0, this.demoSequence - 1)];
+    if (!incident) {
+      if (
+        this.visibleRescueEventIds().has('demo:rescue-decision') &&
+        !this.visibleRescueEventIds().has('INC-003:assigned:B-03')
+      )
+        return this.dispatchRescue();
+      const next = this.incidents
+        .events()
+        .filter(
+          (event) => event.incidentId === 'INC-003' && !this.visibleRescueEventIds().has(event.id),
+        )
+        .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))[0];
+      if (!next) return null;
+      this.visibleRescueEventIds.update((visible) => new Set(visible).add(next.id));
+      return next.incidentId;
+    }
     this.demoSequence++;
-    this.incidents.createIncident(incident, {
-      ...DEMO_INCIDENT_DETAILS[incident.id],
-      openedAt: new Date().toISOString(),
-    });
+    const openedAt = new Date().toISOString();
+    if (!dispatchingFirstIncident) {
+      this.incidents.createIncident(incident, {
+        ...DEMO_INCIDENT_DETAILS[incident.id],
+        openedAt,
+      });
+    }
+    const callEvents = createDemoCallEvents(incident.id, openedAt);
+    const visibleCallEvents =
+      this.demoSequence === 1
+        ? callEvents.slice(0, -1)
+        : dispatchingFirstIncident
+          ? callEvents.slice(-1)
+          : callEvents;
+    for (const event of visibleCallEvents) this.incidents.appendEvent(event);
     const dispatch = (id: string, onSite = false) => {
       const unit = this.incidents.units().find((item) => item.id === id);
       if (unit) this.incidents.reassignUnit(this.simulation.project(unit), incident.id, onSite);
     };
     if (this.demoSequence === 1) {
-      dispatch('B-03');
-      dispatch('A-01');
-      this.notification.set('Primer incendio: B-03 y A-01 asignados y en camino.');
-    } else if (this.demoSequence === 2) {
-      dispatch('T-01', true);
-      this.incidents.updateCommunication(
-        'T-01',
-        'Transformador principal averiado. Producción detenida; pendiente de intervención humana.',
-        'Recibida',
+      this.demoNotification.set(
+        'Fuga de gas notificada. Afectados fuera de la planta; recursos pendientes de movilización.',
       );
-      this.receiveQuestion(createDemoQuestion(incident));
-      this.openForIncident(incident.id);
-    } else {
-      this.incidents.appendEvent({
-        id: 'demo:fire-capacity',
-        incidentId: incident.id,
-        occurredAt: new Date().toISOString(),
-        kind: 'action',
-        title: 'Sin bomberos disponibles',
-        description:
-          'Las tres unidades están ocupadas: B-03 en INC-001, B-07 en la excarcelación de INC-004 y B-09 en el rescate de INC-008. Se reasigna B-03 al segundo incendio por riesgo inmediato para las viviendas.',
-        source: 'Coordinación',
-      });
+    } else if (dispatchingFirstIncident) {
       this.incidents.applyUpdate({
-        incidentId: 'INC-001',
-        incident: { status: 'Pendiente de relevo de bomberos' },
+        incidentId: incident.id,
+        incident: { status: 'Recursos en camino' },
         details: {
           affectedNote:
-            'Se mantiene A-01 para atender a los evacuados. B-03 se desvía a INC-003 por mayor riesgo; se solicita relevo de extinción. El incendio sigue abierto.',
+            'Todos los afectados están fuera de la planta. A-01 se moviliza para atenderlos y B-03 para controlar la fuga de gas.',
         },
       });
       dispatch('B-03');
-      this.notification.set(
-        'Segundo incendio: B-03 reasignado desde INC-001 a INC-003. A-01 permanece en la primera incidencia.',
+      dispatch('A-01');
+      this.incidents.updateCommunication(
+        'B-03',
+        'Equipo 1 en camino para controlar la fuga de gas. No queda nadie dentro de la planta.',
+        'Aceptada',
+      );
+      this.incidents.updateCommunication(
+        'A-01',
+        'Asistencia médica en camino para atender a los afectados fuera de la planta.',
+        'Aceptada',
+      );
+      this.recordDemoEvent(
+        incident.id,
+        'demo:coordination',
+        'Coordinación',
+        'Emergencias · A-01 → Afectados. Bomberos · Equipo 1, B-03 → Fuga de gas. Todos los afectados están fuera; no hay personas atrapadas en la primera zona.',
+      );
+      this.demoNotification.set(
+        'Fuga de gas: asistencia médica para los afectados y bomberos para controlar la fuga.',
+      );
+    } else if (this.demoSequence === 3) {
+      dispatch('T-01', true);
+      this.incidents.updateCommunication(
+        'T-01',
+        'Explosión en la línea principal. Producción detenida; pendiente de la decisión empresarial del operador.',
+        'Recibida',
+      );
+      this.recordDemoEvent(
+        incident.id,
+        'demo:production-stopped',
+        'Producción detenida',
+        'La explosión detiene la línea principal. Supervisión humana: elegir entre recuperación parcial inmediata con una línea alternativa o reparar la principal para recuperar mayor capacidad.',
+      );
+      this.receiveQuestion(createDemoQuestion(incident));
+    } else {
+      for (const [index, id] of ['B-07', 'B-09', 'B-11'].entries()) {
+        const unit = this.incidents.units().find((item) => item.id === id)!;
+        const message = `${unit.label} sigue en ${unit.incidentId}: ${unit.address}. No puede abandonar su intervención.`;
+        this.recordDemoEvent(
+          incident.id,
+          `demo:unavailable:${id}`,
+          `Equipo ${index + 2} · ${id} → No disponible`,
+          message,
+        );
+        this.incidents.updateCommunication(id, message, 'En ejecución');
+      }
+      this.recordDemoEvent(
+        incident.id,
+        'demo:rescue-decision',
+        'Agente · Reasignación autónoma',
+        'No hay más equipos disponibles. Voy a reasignar recursos de la primera zona para rescatar a las personas atrapadas.',
+        'Agente',
+      );
+      this.demoNotification.set(
+        'Segunda explosión notificada: personas atrapadas. Buscando equipo de rescate.',
       );
     }
-    if (!this.pending().length) {
-      this.incidentFilter.set(incident.id);
-      this.focusedQuestionId.set(null);
-    }
-    this.open.set(true);
+    return incident.id;
   }
 
-  openForIncident(incidentId: string): void {
-    this.incidentFilter.set(incidentId);
-    this.focusedQuestionId.set(this.attention().get(incidentId)?.questionId ?? null);
-    this.open.set(true);
-    this.focusRequest.update((value) => value + 1);
+  private dispatchRescue(): string | null {
+    const unit = this.incidents.units().find((item) => item.id === 'B-03');
+    if (!unit || unit.incidentId !== 'INC-001') return null;
+    const reducedCoverage =
+      'La fuga sigue pendiente y la primera zona queda con menos recursos. A-01 permanece con los afectados, todos fuera. B-03 se reasigna al edificio B para rescatar a las personas atrapadas; se solicita relevo para el control de la fuga.';
+    this.incidents.applyUpdate({
+      incidentId: 'INC-001',
+      incident: { status: 'Fuga pendiente · Recursos reducidos' },
+      details: { affectedNote: reducedCoverage },
+    });
+    this.recordDemoEvent(
+      'INC-001',
+      'demo:reduced-coverage',
+      'Primera zona → Menos recursos',
+      reducedCoverage,
+    );
+    this.incidents.applyUpdate({
+      incidentId: 'INC-003',
+      incident: { status: 'Rescate prioritario · Recursos en camino' },
+    });
+    this.incidents.reassignUnit(this.simulation.project(unit), 'INC-003');
+    this.incidents.updateCommunication(
+      'B-03',
+      'Equipo 1 reasignado desde la fuga de gas para rescatar a las personas atrapadas en la segunda explosión. Prioridad máxima.',
+      'Aceptada',
+    );
+    this.recordDemoEvent(
+      'INC-003',
+      'demo:rescue-priority',
+      'Rescate segunda zona → Prioridad máxima',
+      'Conflicto · Autonomía · Adaptación: B-03 se moviliza desde INC-001 a INC-003. La primera zona queda con recursos reducidos y A-01 mantiene la asistencia médica. La decisión de producción de INC-002 se conserva.',
+    );
+    this.visibleRescueEventIds.update((visible) => new Set(visible).add('INC-003:assigned:B-03'));
+    this.demoNotification.set(
+      'Segunda explosión: rescate con prioridad máxima. B-03 reasignado; primera zona con recursos reducidos.',
+    );
+    return 'INC-003';
   }
 
-  setFilter(id: string): void {
-    this.incidentFilter.set(id || null);
-    this.focusedQuestionId.set(null);
+  private recordDemoEvent(
+    incidentId: string,
+    id: string,
+    title: string,
+    description: string,
+    source = 'Coordinación',
+  ): void {
+    this.incidents.appendEvent({
+      id,
+      incidentId,
+      occurredAt: new Date().toISOString(),
+      kind: 'action',
+      title,
+      description,
+      source,
+    });
   }
 
   draft(question: HumanQuestion): QuestionAnswer {
@@ -371,7 +464,7 @@ export class OperationLogStore {
           .filter((option) => normalized.optionIds.includes(option.id))
           .map((option) => option.action ?? { type: 'none' as const });
     const targets = actions.flatMap((action) =>
-      action.type === 'set-status' || action.type === 'power-plan'
+      action.type === 'set-status' || action.type === 'production-plan'
         ? ['status']
         : action.type === 'assign-resource'
           ? [action.resourceId]
@@ -415,6 +508,18 @@ export class OperationLogStore {
       description: answerLabel,
       source: source === 'timeout' ? 'Sistema · tiempo agotado' : 'Coordinador',
     });
+    if (!invalid && actions.some((action) => action.type === 'production-plan')) {
+      this.recordDemoEvent(
+        question.incidentId,
+        `${question.id}:plan`,
+        'Plan actualizado',
+        answerLabel,
+      );
+      const status = this.incidents
+        .incidents()
+        .find((incident) => incident.id === question.incidentId)!.status;
+      this.recordDemoEvent(question.incidentId, `${question.id}:production`, status, outcome);
+    }
     this.incidents.appendEvent({
       id: `${question.id}:result`,
       incidentId: question.incidentId,
@@ -432,9 +537,10 @@ export class OperationLogStore {
     if (action == null) return true;
     if (typeof action !== 'object') return false;
     if (action.type === 'none' || action.type === 'note') return true;
-    if (action.type === 'power-plan')
+    if (action.type === 'production-plan')
       return (
-        ['backup', 'repair'].includes(action.strategy) && typeof action.expectedStatus === 'string'
+        ['alternative', 'repair'].includes(action.strategy) &&
+        typeof action.expectedStatus === 'string'
       );
     if (action.type === 'set-status')
       return (
@@ -454,12 +560,12 @@ export class OperationLogStore {
     const incident = this.incidents.incidents().find((item) => item.id === incidentId);
     if (!incident) return 'la incidencia ya no está disponible.';
     if (
-      (action.type === 'set-status' || action.type === 'power-plan') &&
+      (action.type === 'set-status' || action.type === 'production-plan') &&
       incident.status !== action.expectedStatus
     )
       return 'el estado de la incidencia ya ha cambiado.';
     if (
-      action.type === 'power-plan' &&
+      action.type === 'production-plan' &&
       (incidentId !== 'INC-002' ||
         !this.incidents
           .units()
@@ -479,20 +585,21 @@ export class OperationLogStore {
   }
 
   private applyAction(action: QuestionAction, incidentId: string): string {
-    if (action.type === 'power-plan') {
-      const backup = action.strategy === 'backup';
-      const status = backup
-        ? 'Producción parcial · 40 %'
-        : 'Reparación principal · producción parada';
-      const outcome = backup
-        ? 'T-01 activa el transformador de respaldo: producción parcial inmediata al 40 %. El transformador principal sigue pendiente de reparación.'
-        : 'T-01 inicia la reparación del transformador principal: producción parada durante unos 90 minutos; capacidad prevista del 100 % al finalizar.';
+    if (action.type === 'production-plan') {
+      const alternative = action.strategy === 'alternative';
+      const status = alternative
+        ? 'Producción parcial recuperada'
+        : 'Línea principal en reparación · Producción detenida';
+      const outcome = alternative
+        ? 'T-01 activa la línea de producción alternativa: recuperación parcial inmediata. La línea principal sigue pendiente de reparación.'
+        : 'T-01 inicia la reparación de la línea principal: la producción permanece detenida durante más tiempo, con mayor capacidad prevista al finalizar.';
       this.incidents.applyUpdate({
         incidentId,
         incident: { status },
         details: { affectedNote: outcome },
       });
       this.incidents.updateCommunication('T-01', outcome, 'En ejecución');
+      this.demoNotification.set(`Plan actualizado. ${status}.`);
       return outcome;
     }
     if (action.type === 'set-status') {

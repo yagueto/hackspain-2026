@@ -1,181 +1,119 @@
 :host {
   display: block;
+  position: relative;
+  z-index: 1100;
 }
 .topbar {
-  height: 62px;
+  height: 44px;
   display: flex;
   align-items: center;
-  padding: 0 25px;
-  gap: 25px;
-  background: #1c2023;
-  border-bottom: 1px solid var(--border);
+  padding: 4px var(--page-inset) 0;
+  background: var(--background);
+  font-size: 12px;
+  gap: 20px;
 }
 .brand {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  color: var(--blue);
-  background: #128ef014;
-  border: 1px solid #258eef30;
-  border-radius: 8px;
-}
-.brand app-icon {
-  width: 21px;
-  height: 21px;
-}
-nav {
-  align-self: stretch;
-  display: flex;
-  align-items: stretch;
-  gap: 28px;
-}
-nav a,
-nav button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 0 2px;
-  border: 0;
-  background: none;
+  color: inherit;
   text-decoration: none;
-  color: #a5aab2;
-  font-size: 15px;
+  border-radius: 3px;
+  font-family:
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Inter',
+    sans-serif;
+  font-size: 2.55em;
   font-weight: 500;
-}
-nav a.active {
-  color: #f5f7fa;
-}
-nav a.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  height: 3px;
-  left: 0;
-  right: 0;
-  background: #eef4fa;
-  border-radius: 2px 2px 0 0;
-}
-nav button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
+  letter-spacing: 0;
+  line-height: 1;
+  flex-shrink: 0;
 }
 .header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--page-inset);
   margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 25px;
-}
-.demo-indicator {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #a1aab1;
   font-size: 12px;
+  color: var(--muted);
   white-space: nowrap;
-}
-.demo-indicator > span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #72b996;
-  box-shadow: 0 0 0 3px #72b99610;
-}
-.clock {
-  margin-left: 9px;
-  color: #d5dee7;
-  font-variant-numeric: tabular-nums;
 }
 .date {
-  color: #9198a0;
-  font-size: 13px;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--page-inset);
+  font-variant-numeric: tabular-nums;
+}
+.compact-date {
+  display: none;
 }
 .profile {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-left: 23px;
-  border-left: 1px solid #3a3e42;
+  gap: calc(var(--page-inset) / 2);
+  color: var(--text);
 }
 .profile-name {
-  display: grid;
-  gap: 2px;
-  text-align: right;
-}
-.profile-name strong {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: inherit;
 }
 .avatar {
-  width: 32px;
-  height: 32px;
-  border: 2px solid #65727d;
+  display: grid;
+  place-items: center;
+  background: var(--selected);
+  color: var(--muted);
   border-radius: 50%;
-  overflow: hidden;
+  width: 29px;
+  height: 29px;
+}
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--selected);
+}
+.theme-toggle app-icon {
+  transition:
+    transform 350ms ease,
+    color 350ms ease;
+}
+.theme-toggle[aria-pressed='true'] app-icon {
+  color: var(--text);
+  transform: rotate(-30deg);
 }
 @media (max-width: 1000px) {
   .topbar {
-    gap: 17px;
-    padding: 0 18px;
-  }
-  nav {
-    gap: 22px;
-  }
-  .header-meta {
-    gap: 17px;
+    gap: 14px;
   }
 }
-@media (max-height: 760px) and (min-width: 801px) {
+@media (max-width: 700px) {
   .topbar {
-    height: 46px;
-  }
-  .brand {
-    width: 28px;
-    height: 28px;
-  }
-  .avatar {
-    width: 28px;
-    height: 28px;
-  }
-}
-@media (max-width: 800px) {
-  .topbar {
-    display: grid;
-    height: auto;
-    padding: 0 14px;
-    gap: 0;
-  }
-  .brand,
-  .profile-name {
-    display: none;
-  }
-  nav {
-    height: 48px;
-    gap: 24px;
-  }
-  nav a,
-  nav button {
-    font-size: 14px;
+    gap: 6px;
   }
   .header-meta {
-    min-height: 40px;
-    width: 100%;
-    gap: 12px;
-    border-top: 1px solid #ffffff08;
-  }
-  .demo-indicator {
-    font-size: 11px;
+    font-size: 10px;
+    gap: 6px;
   }
   .date {
-    margin-left: auto;
-    font-size: 12px;
+    gap: 6px;
   }
-  .profile {
-    padding-left: 12px;
-  }
+  .full-date,
   .avatar {
-    width: 26px;
-    height: 26px;
+    display: none;
+  }
+  .compact-date {
+    display: inline;
+  }
+  .theme-toggle {
+    width: 24px;
+    height: 28px;
   }
 }

@@ -1,29 +1,23 @@
-import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
-import { IconName, Incident, MapLocation } from '../../core/models/operations';
-import { Icon } from '../../shared/icon/icon';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { Communication, Incident, MapLocation } from '../../core/models/operations';
+import { IncidentStore } from './incident-store';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { IncidentDetails, IncidentEvent } from './incidents.mock';
-
-const SERVICE_NAMES: Partial<Record<IconName, string>> = {
-  'fire-truck': 'Bomberos',
-  helicopter: 'Apoyo aéreo',
-  bus: 'Transporte',
-  medical: 'Sanitarios',
-  shield: 'Policía',
-  tools: 'Mantenimiento eléctrico',
-  truck: 'Logística',
-};
+import { OperationTimeline } from '../home/operation-log/operation-timeline';
+import { ServiceFeed } from '../home/service-feed/service-feed';
+import { MOCK_RESOURCE_PROFILES } from '../resources/resources.mock';
+import { Icon } from '../../shared/icon/icon';
 
 @Component({
   selector: 'app-incident-activity',
-  imports: [DatePipe, Icon],
+  imports: [OperationTimeline, ServiceFeed, Icon],
   templateUrl: './incident-activity.html',
   styleUrl: './incident-activity.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IncidentActivity {
   private readonly simulation = inject(DemoRouteSimulation);
+  private readonly store = inject(IncidentStore);
   readonly incident = input.required<Incident>();
   readonly details = input<IncidentDetails>();
   readonly timeline = input.required<readonly IncidentEvent[]>();
@@ -31,17 +25,28 @@ export class IncidentActivity {
   readonly selectedUnitId = input<string | null>(null);
   readonly updateError = input(false);
   readonly unitSelected = output<string>();
-
-  protected serviceName(unit: MapLocation): string {
-    return SERVICE_NAMES[unit.icon] ?? 'Recurso de apoyo';
-  }
-
-  protected serviceStatus(unit: MapLocation): string {
-    unit = this.simulation.project(unit);
-    return unit.route?.status === 'active'
-      ? 'En camino'
-      : unit.route?.status === 'completed'
-        ? 'En destino'
-        : 'Asignado';
-  }
+  protected readonly projectedServices = computed(() =>
+    this.services().map((unit) => this.simulation.project(unit)),
+  );
+  protected readonly communications = computed<readonly Communication[]>(() =>
+    this.services().map((unit) => {
+      const communication = this.store
+        .communications()
+        .filter((item) => item.vehicle === unit.id)
+        .sort((a, b) => b.time.localeCompare(a.time))[0];
+      return {
+        ...(communication ?? {
+          id: unit.id,
+          time: '',
+          status: 'Asignado' as const,
+          message: `${unit.label} asignado a ${this.incident().id}.`,
+          service: MOCK_RESOURCE_PROFILES[unit.icon]?.service ?? 'Apoyo',
+          vehicle: unit.id,
+          agent: '',
+          icon: unit.icon,
+        }),
+        incidentId: this.incident().id,
+      };
+    }),
+  );
 }

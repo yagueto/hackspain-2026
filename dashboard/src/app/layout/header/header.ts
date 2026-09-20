@@ -7,23 +7,19 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { Icon } from '../../shared/icon/icon';
+import { Theme } from '../../core/services/theme';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, RouterLinkActive, Icon],
+  imports: [Icon, RouterLink],
   templateUrl: './header.html',
   styleUrl: './header.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Header {
-  protected readonly navigation = [
-    { label: 'Inicio', path: '/', available: true },
-    { label: 'Incidencias', path: '/incidencias', available: true },
-    { label: 'Recursos', path: '/recursos', available: true },
-    { label: 'Logs', path: '/logs', available: false },
-  ];
+  protected readonly theme = inject(Theme);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dateFormatter = new Intl.DateTimeFormat('es-ES', {
     day: '2-digit',
@@ -35,9 +31,14 @@ export class Header {
     minute: '2-digit',
     hour12: false,
   });
+  private readonly compactDateFormatter = new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+  });
   protected readonly now = signal(new Date());
   protected readonly date = computed(() => this.dateFormatter.format(this.now()));
   protected readonly time = computed(() => this.timeFormatter.format(this.now()));
+  protected readonly compactDate = computed(() => this.compactDateFormatter.format(this.now()));
 
   constructor() {
     afterNextRender(() => {

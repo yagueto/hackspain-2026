@@ -1,0 +1,48 @@
+<section class="timeline-section" [attr.aria-labelledby]="'timeline-' + incidentId()">
+  <div class="panel-heading">
+    <div class="heading-title">
+      <h2 [id]="'timeline-' + incidentId()">Línea temporal</h2>
+    </div>
+  </div>
+  <p class="sr-only" role="status">
+    {{ visibleEvents().length }} eventos. Último evento: {{ visibleEvents().at(-1)?.title }}.
+    {{ visibleEvents().at(-1)?.description }}
+  </p>
+  @if (updateError() || log.incomingError()) {
+    <p class="update-error" role="alert">
+      Se ha interrumpido la recepción de eventos. Se mantiene la última información recibida.
+    </p>
+  }
+  <ol class="timeline" aria-label="Eventos de la incidencia en orden cronológico">
+    @for (event of visibleEvents(); track event.id) {
+      @let question =
+        event.kind === 'question' && event.questionId
+          ? questions().get(event.questionId!)
+          : undefined;
+      @let awaiting = question?.status === 'pending';
+      <li
+        class="timeline-event"
+        [class.awaiting-human]="awaiting"
+        [attr.data-event-id]="event.id"
+        [animate.enter]="incidentId() === 'INC-003' ? 'timeline-enter' : ''"
+      >
+        @if (!awaiting) {
+          <time [attr.datetime]="event.occurredAt" [attr.title]="event.occurredAt">{{
+            event.occurredAt | date: 'dd/MM · HH:mm' : '+0200'
+          }}</time>
+          <span class="timeline-dot" aria-hidden="true"></span>
+        }
+        <div class="event-content">
+          @if (awaiting && question) {
+            <app-urgent-question-card [question]="question" />
+          } @else {
+            <h3>{{ question ? 'Pregunta resuelta' : event.title }}</h3>
+            <p>{{ event.description }}</p>
+          }
+        </div>
+      </li>
+    } @empty {
+      <li class="empty-state">Todavía no hay eventos registrados.</li>
+    }
+  </ol>
+</section>

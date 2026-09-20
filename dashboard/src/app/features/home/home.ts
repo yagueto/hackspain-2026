@@ -1,30 +1,26 @@
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  afterNextRender,
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  DestroyRef,
-  ElementRef,
-  effect,
-  inject,
-  signal,
-  viewChild,
-} from '@angular/core';
+  ActivatedRoute,
+  NavigationSkipped,
+  NavigationSkippedCode,
+  ParamMap,
+  Router,
+} from '@angular/router';
 import { MapLocation } from '../../core/models/operations';
 import { IncidentList } from './incident-list/incident-list';
 import { OperationalMap } from './operational-map/operational-map';
 import { ServiceFeed } from './service-feed/service-feed';
 import { SplitPane } from '../../shared/split-pane/split-pane';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
-import { Icon } from '../../shared/icon/icon';
 import { IncidentStore } from '../incidents/incident-store';
 import { OperationLogStore } from './operation-log/operation-log-store';
-import { OperationLogPanel } from './operation-log/operation-log-panel';
+import { Incidents } from '../incidents/incidents';
+import { Resources } from '../resources/resources';
 
 @Component({
   selector: 'app-home',
-  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, Icon, OperationLogPanel],
-  host: { '(window:keydown)': 'handleKeyboard($event)' },
+  imports: [OperationalMap, IncidentList, ServiceFeed, SplitPane, Incidents, Resources],
   templateUrl: './home.html',
   styleUrl: './home.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,10 +28,10 @@ import { OperationLogPanel } from './operation-log/operation-log-panel';
 export class Home {
   private readonly simulation = inject(DemoRouteSimulation);
   private readonly store = inject(IncidentStore);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router, { optional: true });
   protected readonly log = inject(OperationLogStore);
-  protected readonly logOverlay = signal(false);
-  private readonly logToggle = viewChild<ElementRef<HTMLButtonElement>>('logToggle');
+  readonly detail = signal<'incident' | 'resource' | null>(null);
   readonly incidents = this.store.incidents;
   readonly units = this.store.units;
   readonly communications = this.store.communications;
@@ -45,6 +41,7 @@ export class Home {
   );
   readonly selectedIncidentId = signal<string | null>(null);
   readonly selectedUnitId = signal<string | null>(null);
+  readonly visibleUnitIds = signal<readonly string[] | null>(null);
   readonly locations = computed<MapLocation[]>(() => [
     ...this.incidents().map((incident) => ({
       id: incident.id,
@@ -54,51 +51,52 @@ export class Home {
       icon: incident.icon,
       kind: 'incident' as const,
       incidentId: incident.id,
+      radiusMeters: incident.radiusMeters,
     })),
     ...this.units(),
   ]);
 
   constructor() {
-    effect((onCleanup) => {
-      if (!this.log.open() || !this.logOverlay()) return;
-      const previous = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      onCleanup(() => {
-        document.body.style.overflow = previous;
-      });
+    this.simulation.journeyStarts$.pipe(takeUntilDestroyed()).subscribe((unit) => {
+      if (unit.id === 'B-03' && unit.incidentId === 'INC-003') this.locateUnit(unit.id);
     });
-    afterNextRender(() => {
-      const media = window.matchMedia('(max-width: 1199px)');
-      const update = () => this.logOverlay.set(media.matches);
-      update();
-      media.addEventListener('change', update);
-      this.destroyRef.onDestroy(() => media.removeEventListener('change', update));
+    this.route?.queryParamMap
+      .pipe(takeUntilDestroyed())
+      .subscribe((params) => this.syncSelection(params));
+    this.router?.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (
+        event instanceof NavigationSkipped &&
+        event.code === NavigationSkippedCode.IgnoredSameUrlNavigation &&
+        this.route
+      )
+        this.syncSelection(this.route.snapshot.queryParamMap);
     });
   }
 
-  protected toggleLog(): void {
-    if (this.log.open()) this.closeLog();
-    else {
-      this.log.focusedQuestionId.set(null);
-      this.log.open.set(true);
-    }
+  private syncSelection(params: ParamMap): void {
+    const incidentId = params.get('incidencia');
+    const unitId = params.get('recurso');
+    const incident = this.incidents().find((item) => item.id === incidentId);
+    const unit = this.units().find((item) => item.kind === 'unit' && item.id === unitId);
+    this.detail.set(incident ? 'incident' : unit ? 'resource' : null);
+    this.selectedIncidentId.set(incident?.id ?? null);
+    this.selectedUnitId.set(incident ? null : (unit?.id ?? null));
   }
 
-  protected closeLog(): void {
-    this.log.open.set(false);
-    queueMicrotask(() => this.logToggle()?.nativeElement.focus({ preventScroll: true }));
+  protected openIncident(id: string): void {
+    void this.router?.navigate(['/'], { queryParams: { incidencia: id } });
   }
 
-  protected handleKeyboard(event: KeyboardEvent): void {
-    if (event.isComposing) return;
-    if (event.key === 'Escape' && this.log.open()) {
-      event.preventDefault();
-      this.closeLog();
-    }
+  protected locateUnit(id: string): void {
+    this.selectedUnitId.set(id);
   }
 
   selectIncident(id: string): void {
     if (this.incidents().some((incident) => incident.id === id)) {
+      if (this.detail()) {
+        this.openIncident(id);
+        return;
+      }
       this.selectedUnitId.set(null);
       this.selectedIncidentId.update((selected) => (selected === id ? null : id));
     }
@@ -106,6 +104,10 @@ export class Home {
 
   selectUnit(id: string): void {
     if (this.units().some((unit) => unit.kind === 'unit' && unit.id === id)) {
+      if (this.detail()) {
+        void this.router?.navigate(['/'], { queryParams: { recurso: id } });
+        return;
+      }
       this.selectedIncidentId.set(null);
       this.selectedUnitId.update((selected) => (selected === id ? null : id));
     }

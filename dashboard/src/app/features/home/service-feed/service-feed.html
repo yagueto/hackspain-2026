@@ -1,62 +1,73 @@
-<section class="panel resources-panel" aria-labelledby="resources-title">
+<section
+  class="panel resources-panel"
+  [attr.aria-labelledby]="associated() ? 'services-heading' : 'resources-title'"
+>
   <div class="panel-heading resources-heading">
     <div class="heading-title">
-      <h2 id="resources-title">Recursos</h2>
+      <h2 [id]="associated() ? 'services-heading' : 'resources-title'">
+        {{ associated() ? 'Servicios asociados' : 'Recursos' }}
+      </h2>
       <span class="count-badge" aria-live="polite">{{ filteredCommunications().length }}</span>
     </div>
-    <button
-      type="button"
-      class="filter-button"
-      [class.is-active]="filterCount() > 0"
-      [attr.aria-expanded]="filtersOpen()"
-      aria-controls="resource-filters"
-      (click)="filtersOpen.set(!filtersOpen())"
-    >
-      <app-icon name="filter" /> Filtrar
-      @if (filterCount()) {
-        <span class="filter-count">{{ filterCount() }}</span>
-      }
-    </button>
-  </div>
-  @if (filtersOpen()) {
-    <div
-      id="resource-filters"
-      class="filters"
-      role="group"
-      aria-label="Filtrar recursos por categoría"
-    >
+    @if (!associated()) {
       <button
         type="button"
-        class="category-chip"
-        [class.is-active]="!filterCount()"
-        [attr.aria-pressed]="!filterCount()"
-        (click)="selectedServices.set([])"
+        class="filter-button"
+        [class.is-active]="filterCount() > 0"
+        [attr.aria-expanded]="filtersOpen()"
+        aria-controls="resource-filters"
+        (click)="filtersOpen.set(!filtersOpen())"
       >
-        Todos
+        <app-icon name="filter" /> Filtrar
+        @if (filterCount()) {
+          <span class="filter-count">{{ filterCount() }}</span>
+        }
       </button>
-      @for (service of services(); track service) {
-        <button
-          type="button"
-          class="category-chip"
-          [class.is-active]="selectedServices().includes(service)"
-          [attr.aria-pressed]="selectedServices().includes(service)"
-          (click)="toggleService(service)"
-        >
-          {{ service }}
-        </button>
-      }
+    }
+  </div>
+  @if (!associated()) {
+    <div
+      id="resource-filters"
+      class="filters-collapse"
+      [class.is-open]="filtersOpen()"
+      [inert]="!filtersOpen()"
+      [attr.aria-hidden]="!filtersOpen()"
+    >
+      <div class="filters-clip">
+        <div class="filters" role="group" aria-label="Filtrar recursos por categoría">
+          <button
+            type="button"
+            class="category-chip"
+            [class.is-active]="!filterCount()"
+            [attr.aria-pressed]="!filterCount()"
+            (click)="selectedServices.set([])"
+          >
+            Todos
+          </button>
+          @for (service of services(); track service) {
+            <button
+              type="button"
+              class="category-chip"
+              [class.is-active]="selectedServices().includes(service)"
+              [attr.aria-pressed]="selectedServices().includes(service)"
+              (click)="toggleService(service)"
+            >
+              {{ service }}
+            </button>
+          }
+        </div>
+      </div>
     </div>
   }
   <div
-    id="resources-list"
+    appAnimateList
+    [id]="associated() ? 'associated-services-list' : 'resources-list'"
     class="feed-list"
-    [appPaginatedList]="filteredCommunications()"
-    [itemKey]="resourceKey"
-    [selectedKey]="selectedUnitId()"
-    #pager="paginatedList"
+    tabindex="0"
+    [attr.aria-label]="associated() ? 'Servicios asociados' : 'Lista de recursos'"
   >
-    @for (item of pager.visibleItems(); track item.id) {
-      @let unit = resource(item.vehicle);
+    @for (item of filteredCommunications(); track item.id) {
+      @let status = resourceStatus(item);
       <article
         class="communication"
         [class.related]="
@@ -72,43 +83,47 @@
           [attr.aria-pressed]="item.vehicle === selectedUnitId()"
           (click)="unitSelected.emit(item.vehicle)"
         >
-          <app-icon class="service-icon" [name]="item.icon" />
-          <span class="communication-body">
-            <strong class="resource-code">{{ item.vehicle }}</strong>
-            <span class="resource-meta">
-              <span>{{ item.incidentId }}</span>
-              <span>{{ unit?.address ?? 'Ubicación no disponible' }}</span>
-              <span class="communication-status">{{ resourceStatus(item) }}</span>
-            </span>
-          </span>
+          <app-icon class="service-icon" [name]="resource(item.vehicle)?.icon ?? item.icon" />
+          <span class="resource-code">{{ item.vehicle }}</span>
+          <span class="resource-agent" [title]="item.agent || 'Sin asignar'">{{
+            item.agent || 'Sin asignar'
+          }}</span>
+          <span class="resource-mission" [title]="item.message">{{ item.message }}</span>
+          <span class="incident-tag">{{ item.incidentId || 'Sin asignar' }}</span>
+          <span
+            class="communication-status"
+            [class.destination]="status === 'En destino'"
+            [class.en-route]="status === 'En ruta'"
+            >{{ status }}</span
+          >
         </button>
-        <a
-          class="detail-link"
-          routerLink="/recursos"
-          [queryParams]="{ recurso: item.vehicle }"
-          [attr.aria-label]="'Ver detalles de ' + item.vehicle"
-          title="Ver detalles"
-        >
-          <span>Detalles</span><app-icon name="chevron" />
-        </a>
+        @if (associated()) {
+          <button
+            class="detail-link locate-button"
+            type="button"
+            [attr.aria-label]="'Localizar ' + item.vehicle + ' en el mapa'"
+            (click)="unitSelected.emit(item.vehicle)"
+          >
+            <app-icon name="locate" /><span>Localizar</span>
+          </button>
+        } @else {
+          <a
+            class="detail-link"
+            routerLink="/"
+            [queryParams]="{ recurso: item.vehicle }"
+            [attr.aria-label]="'Ver detalles de ' + item.vehicle"
+            ><span>Detalles</span><app-icon name="chevron"
+          /></a>
+        }
       </article>
     } @empty {
-      <div class="empty-state">
-        <p>
-          {{
-            communications().length
-              ? 'No hay recursos en las categorías seleccionadas.'
-              : 'No hay recursos disponibles.'
-          }}
-        </p>
-      </div>
+      <p class="empty-state">
+        {{
+          communications().length
+            ? 'No hay recursos en las categorías seleccionadas.'
+            : 'No hay recursos disponibles.'
+        }}
+      </p>
     }
   </div>
-  <app-pagination
-    [page]="pager.pageIndex()"
-    [pageCount]="pager.pageCount()"
-    label="recursos"
-    controls="resources-list"
-    (pageChanged)="pager.goToPage($event)"
-  />
 </section>

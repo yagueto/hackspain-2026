@@ -21,7 +21,7 @@ export const MOCK_RESOURCE_PROFILES: Partial<Record<IconName, ResourceProfile>> 
     type: 'Autobomba y equipo de intervención',
     crew: 5,
     base: 'Base de bomberos · Zona este de Tres Cantos',
-    capabilities: ['Extinción', 'Rescate', 'Apertura de accesos'],
+    capabilities: ['Control de fugas de gas', 'Rescate', 'Extinción', 'Apertura de accesos'],
   },
   helicopter: {
     service: 'Apoyo aéreo',
@@ -52,11 +52,15 @@ export const MOCK_RESOURCE_PROFILES: Partial<Record<IconName, ResourceProfile>> 
     capabilities: ['Evacuación', 'Seguridad', 'Control de tráfico'],
   },
   tools: {
-    service: 'Mantenimiento eléctrico',
-    type: 'Equipo técnico de alta tensión',
+    service: 'Mantenimiento industrial',
+    type: 'Equipo técnico de producción',
     crew: 3,
-    base: 'Mantenimiento · Edificio A, subestación eléctrica de Tres Cantos',
-    capabilities: ['Transformadores', 'Alimentación de respaldo', 'Reparación eléctrica'],
+    base: 'Mantenimiento · Edificio A, planta industrial de demostración',
+    capabilities: [
+      'Línea de producción alternativa',
+      'Reparación de la línea principal',
+      'Continuidad de producción',
+    ],
   },
   truck: {
     service: 'Logística',

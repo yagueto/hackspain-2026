@@ -16,10 +16,21 @@ export type IconName =
   | 'locate'
   | 'layers'
   | 'chevron'
+  | 'back'
   | 'close'
   | 'pin'
+  | 'user'
   | 'radio'
-  | 'log';
+  | 'log'
+  | 'disabled'
+  | 'municipal'
+  | 'civil-protection'
+  | 'infrastructure'
+  | 'plus'
+  | 'minus'
+  | 'sun'
+  | 'moon'
+  | 'search';
 
 export interface Coordinates {
   lat: number;
@@ -51,6 +62,7 @@ export interface MapLocation {
   icon: IconName;
   kind: 'incident' | 'unit' | 'place';
   incidentId?: string;
+  radiusMeters?: number;
   route?: ResourceRoute;
 }
 
@@ -59,13 +71,22 @@ export interface Incident {
   title: string;
   area: string;
   address: string;
-  priority: 'P0' | 'P1' | 'P2';
+  priority?: 'P0' | 'P1' | 'P2' | 'P3' | null;
   status: string;
   icon: IconName;
   coordinates: Coordinates;
+  radiusMeters?: number;
 }
 
-export type CommunicationStatus = 'Recibida' | 'Aceptada' | 'En ejecución' | 'Confirmada';
+export const PRIORITY_LEVEL: Record<NonNullable<Incident['priority']>, number> = {
+  P0: 1,
+  P1: 2,
+  P2: 3,
+  P3: 4,
+};
+
+export type CommunicationStatus =
+  'Recibida' | 'Aceptada' | 'En ejecución' | 'Confirmada' | 'Asignado';
 
 export interface Communication {
   id: string;

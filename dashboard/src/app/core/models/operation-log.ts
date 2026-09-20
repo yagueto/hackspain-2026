@@ -18,7 +18,7 @@ export interface OperationLogEvent {
 export type QuestionAction =
   | { type: 'none' | 'note' }
   | { type: 'set-status'; status: string; expectedStatus: string }
-  | { type: 'power-plan'; strategy: 'backup' | 'repair'; expectedStatus: string }
+  | { type: 'production-plan'; strategy: 'alternative' | 'repair'; expectedStatus: string }
   | { type: 'assign-resource'; resourceId: string; expectedIncidentId: string | null };
 
 export interface QuestionOption {
@@ -37,6 +37,7 @@ export interface IncomingQuestion {
   id: string;
   incidentId: string;
   prompt: string;
+  context?: string;
   urgency: QuestionUrgency;
   input: QuestionInput;
   options?: readonly QuestionOption[];

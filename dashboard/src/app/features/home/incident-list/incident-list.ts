@@ -1,14 +1,22 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Incident } from '../../../core/models/operations';
-import { IncidentAttention } from '../../../core/models/operation-log';
+import { Incident, PRIORITY_LEVEL } from '../../../core/models/operations';
+import { IncidentAttention, URGENCY_RANK } from '../../../core/models/operation-log';
 import { Icon } from '../../../shared/icon/icon';
-import { PaginatedList } from '../../../shared/pagination/paginated-list';
-import { Pagination } from '../../../shared/pagination/pagination';
+import { AnimateList } from '../../../shared/animate-list';
 
 @Component({
   selector: 'app-incident-list',
-  imports: [Icon, PaginatedList, Pagination, RouterLink],
+  imports: [Icon, RouterLink, AnimateList],
   templateUrl: './incident-list.html',
   styleUrl: './incident-list.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,5 +27,38 @@ export class IncidentList {
   readonly attention = input<ReadonlyMap<string, IncidentAttention>>(new Map());
   readonly incidentSelected = output<string>();
   readonly responseRequested = output<string>();
-  protected readonly incidentKey = (incident: Incident) => incident.id;
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  protected readonly sortedIncidents = computed(() =>
+    [...this.incidents()].sort((a, b) => {
+      const left = this.attention().get(a.id);
+      const right = this.attention().get(b.id);
+      if (left && right) {
+        return (
+          URGENCY_RANK[left.urgency] - URGENCY_RANK[right.urgency] ||
+          left.firstSequence - right.firstSequence
+        );
+      }
+      if (left || right) return left ? -1 : 1;
+      return this.priorityRank(a) - this.priorityRank(b);
+    }),
+  );
+
+  constructor() {
+    effect(() => {
+      this.selectedId();
+      queueMicrotask(() =>
+        this.element.nativeElement
+          .querySelector('.selected')
+          ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }),
+      );
+    });
+  }
+
+  protected priority(incident: Incident): string {
+    return incident.priority ? String(PRIORITY_LEVEL[incident.priority]) : '—';
+  }
+
+  private priorityRank(incident: Incident): number {
+    return incident.priority ? PRIORITY_LEVEL[incident.priority] : Number.POSITIVE_INFINITY;
+  }
 }

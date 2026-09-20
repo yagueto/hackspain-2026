@@ -23,6 +23,8 @@ export class DemoRouteSimulation {
   private started = false;
   private readonly arrivalEvents = new Subject<OperationLogEvent>();
   readonly arrivals$ = this.arrivalEvents.asObservable();
+  private readonly journeyStartEvents = new Subject<MapLocation>();
+  readonly journeyStarts$ = this.journeyStartEvents.asObservable();
 
   start(locations: readonly MapLocation[]): void {
     const active = new Map(
@@ -53,6 +55,7 @@ export class DemoRouteSimulation {
       clearInterval(timer);
       this.controller.abort();
       this.arrivalEvents.complete();
+      this.journeyStartEvents.complete();
     });
   }
 
@@ -120,6 +123,7 @@ export class DemoRouteSimulation {
             navigation: { status: 'ready', route },
           }),
         );
+        this.journeyStartEvents.next(location);
       } else {
         this.frames.update((frames) =>
           new Map(frames).set(location.id, { ...frame, navigation: { status: 'unavailable' } }),

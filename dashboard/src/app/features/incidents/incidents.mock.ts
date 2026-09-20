@@ -4,6 +4,7 @@ export interface IncidentDetails {
   category: string;
   openedAt: string;
   affected: number | null;
+  assistanceNeeded?: number;
   affectedNote: string;
 }
 
@@ -23,27 +24,28 @@ export const MOCK_INCIDENT_DETAILS: Record<string, IncidentDetails> = {
     category: 'Rescate',
     openedAt,
     affected: 3,
-    affectedNote: 'Tres vecinos atrapados. B-09 asegura la estructura y mantiene el rescate.',
+    affectedNote:
+      'Tres vecinos atrapados. B-09 mantiene el rescate y B-11 asegura la estructura; ninguno puede abandonar la intervención.',
   },
 };
 
 export const DEMO_INCIDENT_DETAILS: Record<string, Omit<IncidentDetails, 'openedAt'>> = {
   'INC-001': {
-    category: 'Industrial',
-    affected: 6,
+    category: 'Riesgo químico · Fuga de gas',
+    affected: null,
     affectedNote:
-      'Almacén evacuado. Dos trabajadores con inhalación leve de humo; se movilizan B-03 y A-01.',
+      'Varios afectados, todos fuera de la planta. No queda nadie dentro. Se necesita asistencia médica y un equipo de bomberos para controlar la fuga de gas.',
   },
   'INC-002': {
-    category: 'Suministro eléctrico',
-    affected: 45,
+    category: 'Industrial · Continuidad de producción',
+    affected: null,
     affectedNote:
-      'Fallo del transformador principal. Producción detenida; T-01 espera la decisión del coordinador.',
+      'Una explosión ha detenido la producción. El informante permanece en una zona segura. T-01 espera la decisión empresarial: activar la línea alternativa o reparar la principal.',
   },
   'INC-003': {
-    category: 'Forestal',
-    affected: 12,
+    category: 'Industrial · Rescate de personas atrapadas',
+    affected: null,
     affectedNote:
-      'Fuego próximo a cuatro viviendas. Las tres unidades de bomberos están ocupadas; se prioriza el riesgo para las personas.',
+      'Segunda explosión en el edificio B, con personas atrapadas. Se solicita otro equipo de emergencia.',
   },
 };

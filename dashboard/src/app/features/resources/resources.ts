@@ -1,21 +1,23 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { MapLocation } from '../../core/models/operations';
+import { MapLocation, PRIORITY_LEVEL } from '../../core/models/operations';
 import { DemoRouteSimulation } from '../../core/services/demo-route-simulation';
 import { formatRouteDuration } from '../../core/services/routing';
 import { Icon } from '../../shared/icon/icon';
 import { OperationalMap } from '../home/operational-map/operational-map';
 import { IncidentStore } from '../incidents/incident-store';
 import { MOCK_RESOURCE_PROFILES } from './resources.mock';
+import { OperationTimeline } from '../home/operation-log/operation-timeline';
 
 const normalize = (value: string) =>
   value
@@ -25,12 +27,19 @@ const normalize = (value: string) =>
 
 @Component({
   selector: 'app-resources',
-  imports: [DatePipe, DecimalPipe, RouterLink, Icon, OperationalMap],
+  imports: [DatePipe, RouterLink, Icon, OperationalMap, OperationTimeline],
   templateUrl: './resources.html',
-  styleUrls: ['../incidents/incidents.css', './resources.css'],
+  styleUrls: [
+    '../incidents/incidents.css',
+    '../incidents/incident-activity.css',
+    './resources.css',
+  ],
+  host: { '[class.embedded]': 'embedded()' },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Resources {
+  readonly embedded = input(false);
+  protected readonly priorityLevels = PRIORITY_LEVEL;
   protected readonly store = inject(IncidentStore);
   private readonly simulation = inject(DemoRouteSimulation);
   private readonly route = inject(ActivatedRoute);
@@ -79,6 +88,12 @@ export class Resources {
   protected readonly currentIncident = computed(() =>
     this.store.incidents().find((incident) => incident.id === this.selectedSource()?.incidentId),
   );
+  protected readonly timeline = computed(() =>
+    this.store
+      .events()
+      .filter((event) => event.incidentId === this.currentIncident()?.id)
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)),
+  );
   protected readonly communication = computed(() =>
     this.latestCommunication(this.selectedSource()?.id ?? ''),
   );
@@ -107,6 +122,7 @@ export class Resources {
             icon: incident.icon,
             kind: 'incident',
             incidentId: incident.id,
+            radiusMeters: incident.radiusMeters,
           },
         ]
       : [unit];
@@ -170,6 +186,9 @@ export class Resources {
   }
 
   private latestCommunication(id: string) {
-    return this.store.communications().find((item) => item.vehicle === id);
+    return this.store
+      .communications()
+      .filter((item) => item.vehicle === id)
+      .sort((a, b) => b.time.localeCompare(a.time))[0];
   }
 }

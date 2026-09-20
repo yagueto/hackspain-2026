@@ -86,14 +86,33 @@ export class IncidentStore {
       );
       if (
         incident &&
-        ['Recursos en camino', 'Bomberos reasignados en camino'].includes(incident.status) &&
+        ['Recursos en camino', 'Rescate prioritario · Recursos en camino'].includes(
+          incident.status,
+        ) &&
         assigned.length &&
         assigned.every((unit) => this.simulation.project(unit).route?.status === 'completed')
-      )
+      ) {
+        const status =
+          incident.id === 'INC-003'
+            ? 'Rescate en curso · Prioridad máxima'
+            : 'Control de fuga y atención sanitaria';
         this.applyUpdate({
           incidentId: incident.id,
-          incident: { status: incident.id === 'INC-003' ? 'En extinción' : 'En atención' },
+          incident: { status },
+          event: {
+            id: `${incident.id}:intervention-started`,
+            incidentId: incident.id,
+            occurredAt: event.occurredAt,
+            kind: 'action',
+            title: status,
+            description:
+              incident.id === 'INC-003'
+                ? 'B-03 llega a la segunda zona e inicia el rescate de las personas atrapadas. La primera zona sigue con recursos reducidos.'
+                : 'B-03 interviene en la fuga de gas y A-01 atiende a los afectados fuera de la planta. La incidencia sigue abierta.',
+            source: 'Coordinación',
+          },
         });
+      }
     });
   }
 

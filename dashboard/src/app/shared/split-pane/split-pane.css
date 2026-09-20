@@ -1,7 +1,50 @@
-:host { position: relative; z-index: 20; display: grid; place-items: center; min-width: 14px; height: 100%; cursor: col-resize; touch-action: none; outline: none; }
-:host::before { content: ''; position: absolute; inset: 0 3px; border-radius: 5px; background: transparent; transition: background 120ms; }
-span { position: relative; width: 3px; height: 54px; border-radius: 3px; background: #4c5862; box-shadow: 0 0 0 1px #1118; transition: height 120ms, background 120ms; }
-:host(:hover)::before, :host(:focus-visible)::before, :host(:active)::before { background: #138fe51c; }
-:host(:hover) span, :host(:focus-visible) span, :host(:active) span { height: 76px; background: #28a4f5; }
-:host(:focus-visible) { outline: 2px solid #76c6ff; outline-offset: -2px; border-radius: 5px; }
-@media (max-width: 800px) { :host { display: none; } }
+:host {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  min-width: 14px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+:host::before {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 5px;
+  background: transparent;
+  transition: background 120ms;
+}
+span {
+  position: relative;
+  width: 2px;
+  height: 40px;
+  border-radius: 3px;
+  background: transparent;
+  transition:
+    height 120ms,
+    background 120ms;
+}
+:host(:hover)::before,
+:host(:focus-visible)::before,
+:host(:active)::before {
+  background: var(--tag);
+}
+:host(:hover) span,
+:host(:focus-visible) span,
+:host(:active) span {
+  height: 60px;
+  background: var(--icon);
+}
+:host(:focus-visible) {
+  outline: 2px solid var(--border);
+  outline-offset: -2px;
+  border-radius: 5px;
+}
+@media (max-width: 800px) {
+  :host {
+    display: none;
+  }
+}
