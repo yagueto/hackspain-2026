@@ -1,4 +1,4 @@
-# HackSpain 2026 — ¿Puede la IA gestionar una crisis?
+# HackSpain 2026: ¿Puede la IA gestionar una crisis?
 
 > [!IMPORTANT]
 > **¿Por qué la demo pública utiliza datos mock?**
